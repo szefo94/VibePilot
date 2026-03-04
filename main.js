@@ -72,6 +72,20 @@ const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1), tailMaterial)
 const hStab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.15, 0.8), bodyMaterial); hStab.position.set(0, 0, -1.8);
 const corePlaneComponents = [body, nose, leftWing, rightWing, tailFin, hStab];
 plane.add(...corePlaneComponents);
+// --- Body upgrades ---
+const attachMat = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.7 });
+// Wing barrel launchers — one tube at each wing tip
+const barrelGeo = new THREE.CylinderGeometry(0.09, 0.09, 1.1, 6); barrelGeo.rotateX(Math.PI / 2);
+const leftBarrel  = new THREE.Mesh(barrelGeo, attachMat); leftBarrel.position.set(-5.9, -0.12, 0.55);
+const rightBarrel = new THREE.Mesh(barrelGeo, attachMat); rightBarrel.position.set(5.9, -0.12, 0.55);
+// Bomb pod — slightly larger horizontal cylinder under centre body
+const bombPodGeo = new THREE.CylinderGeometry(0.28, 0.28, 2.0, 8); bombPodGeo.rotateX(Math.PI / 2);
+const bombPod = new THREE.Mesh(bombPodGeo, attachMat); bombPod.position.set(0, -0.78, 0.2);
+// Napalm containers — two small cylinders under rear body
+const napPodGeo = new THREE.CylinderGeometry(0.17, 0.2, 1.4, 6); napPodGeo.rotateX(Math.PI / 2);
+const napPodL = new THREE.Mesh(napPodGeo, attachMat); napPodL.position.set(-0.36, -0.68, -1.4);
+const napPodR = new THREE.Mesh(napPodGeo, attachMat); napPodR.position.set( 0.36, -0.68, -1.4);
+plane.add(leftBarrel, rightBarrel, bombPod, napPodL, napPodR);
 plane.position.set(0, groundLevel + 20, 0);
 scene.add(plane);
 const planePartBoxes = corePlaneComponents.map(() => new THREE.Box3());
@@ -170,7 +184,11 @@ const BOMB_MAX_AMMO = 4,  BOMB_RELOAD_TIME = 300;  // reload ~5 s at 60 fps
 const MISSILE_MAX_AMMO = 3,  MISSILE_RELOAD_TIME = 600; // reload ~10 s
 const FLARE_MAX_AMMO = 2,    FLARE_RELOAD_TIME = 900, FLARE_DURATION = 180; // effect 3 s, reload 15 s
 const NAPALM_MAX_AMMO = 2,   NAPALM_RELOAD_TIME = 480, NAPALM_TICK_INTERVAL = 30, NAPALM_DURATION = 300;
-const missileDamage = 80, missileAoERadius = 25, missileSpeed = 2.2, missileLife = 300, missileHomingStr = 0.05;
+const missileDamage = 80, missileAoERadius = 25, missileLife = 300, missileHomingStr = 0.09;
+const MISSILE_INITIAL_SPEED = bulletSpeed * 0.5;   // 0.9 — slow on launch
+const MISSILE_FINAL_SPEED   = bulletSpeed * 2;     // 3.6 — twice gun speed at cruise
+const MISSILE_ACCEL         = 0.05;               // speed added per dt after drop phase
+const MISSILE_DROP_PHASE    = 22;                 // dt frames of downward fall before homing
 const napalmDamage = 8, napalmRadius = 55;
 
 // ================================================================
@@ -190,7 +208,7 @@ let missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
 let flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
 let napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
 // Entities
-const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], napalmFireParticles = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
+const bullets = [], bombs = [], missiles = [], missileTrailParticles = [], napalmBombs = [], napalmPatches = [], napalmFireParticles = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
@@ -204,6 +222,8 @@ const bombMaterial = new THREE.MeshStandardMaterial({ color: "#222", roughness: 
 // --- Missile resources ---
 const _missileGeo = new THREE.CylinderGeometry(0.3, 0.6, 4, 6);
 const _missileMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+const _missileTrailGeo = new THREE.SphereGeometry(0.18, 4, 3);
+const _missileTrailMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true });
 // --- Napalm fire particle resources ---
 const _napalmFireGeo = new THREE.SphereGeometry(1.5, 6, 4);
 const _napalmFireMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true });
@@ -973,14 +993,27 @@ function fireMissile() {
     groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryTarget(() => u.position, () => u.userData.hp > 0); });
     airUnits.forEach(au => { if (au.hp > 0) tryTarget(() => au.group.position, () => au.hp > 0); });
     enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryTarget(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
-    plane.getWorldDirection(_sv1);
-    const m = new THREE.Mesh(_missileGeo, _missileMat);
-    m.position.copy(plane.position).addScaledVector(_sv1, 4);
-    m.velocity = _sv1.clone().multiplyScalar(missileSpeed);
-    m.target = target;
-    m.life = missileLife;
-    m.quaternion.setFromUnitVectors(_up3, m.velocity.clone().normalize());
-    missiles.push(m); scene.add(m);
+    plane.getWorldDirection(_sv1); // forward
+    // World positions of wing-tip barrels
+    const lTip = new THREE.Vector3(-5.9, -0.12, 0.55).applyMatrix4(plane.matrixWorld);
+    const rTip = new THREE.Vector3( 5.9, -0.12, 0.55).applyMatrix4(plane.matrixWorld);
+    const spawnOne = (origin) => {
+        const m = new THREE.Mesh(_missileGeo, _missileMat);
+        m.position.copy(origin);
+        // Initial velocity: slow forward + downward drop
+        m.velocity = _sv1.clone().multiplyScalar(MISSILE_INITIAL_SPEED);
+        m.velocity.y -= 0.18;
+        m.target = target;
+        m.life = missileLife;
+        m.speed = MISSILE_INITIAL_SPEED;
+        m.dropPhase = MISSILE_DROP_PHASE;
+        m.trailTimer = 0;
+        _sv2.copy(m.velocity).normalize();
+        m.quaternion.setFromUnitVectors(_up3, _sv2);
+        missiles.push(m); scene.add(m);
+    };
+    spawnOne(lTip);
+    spawnOne(rTip);
 }
 function dropNapalm() {
     const b = new THREE.Mesh(bombGeometry, napalmBombMaterial);
@@ -1457,15 +1490,35 @@ function updateProjectiles(dt) {
     // Missiles (§5.7)
     for (let i = missiles.length - 1; i >= 0; i--) {
         const m = missiles[i];
-        // Homing — steer velocity toward live target
-        if (m.target && m.target.alive()) {
-            _sv1.subVectors(m.target.pos(), m.position).normalize().multiplyScalar(missileSpeed);
-            m.velocity.lerp(_sv1, missileHomingStr * dt);
+        if (m.dropPhase > 0) {
+            // Drop phase — fall downward, no homing, slow speed
+            m.dropPhase -= dt;
+            m.velocity.y -= 0.045 * dt; // pull down
+        } else {
+            // Cruise phase — speed ramp + homing
+            m.speed = Math.min(MISSILE_FINAL_SPEED, m.speed + MISSILE_ACCEL * dt);
+            if (m.target && m.target.alive()) {
+                _sv1.subVectors(m.target.pos(), m.position).normalize().multiplyScalar(m.speed);
+                m.velocity.lerp(_sv1, missileHomingStr * dt);
+            } else {
+                // No target: maintain direction at increasing speed
+                _sv2.copy(m.velocity).normalize().multiplyScalar(m.speed);
+                m.velocity.lerp(_sv2, 0.08 * dt);
+            }
         }
         m.position.addScaledVector(m.velocity, dt);
         m.life -= dt;
         _sv2.copy(m.velocity).normalize();
         if (_sv2.length() > 0.001) m.quaternion.setFromUnitVectors(_up3, _sv2);
+        // Trail particles
+        m.trailTimer -= dt;
+        if (m.trailTimer <= 0) {
+            m.trailTimer = 2.5;
+            const tp = new THREE.Mesh(_missileTrailGeo, _missileTrailMat.clone());
+            tp.position.copy(m.position);
+            tp.life = tp.maxLife = 20;
+            missileTrailParticles.push(tp); scene.add(tp);
+        }
         const expired = m.life <= 0 || Math.abs(m.position.x) > MAP_BOUNDARY || Math.abs(m.position.z) > MAP_BOUNDARY;
         const groundHit = m.position.y <= groundLevel + 3;
         // Collision check vs ground, air, enemies
@@ -1520,6 +1573,13 @@ function updateProjectiles(dt) {
             }
             scene.remove(m); missiles.splice(i, 1);
         }
+    }
+    // Missile trail particles
+    for (let i = missileTrailParticles.length - 1; i >= 0; i--) {
+        const tp = missileTrailParticles[i];
+        tp.life -= dt;
+        tp.material.opacity = Math.max(0, (tp.life / tp.maxLife) * 0.75);
+        if (tp.life <= 0) { scene.remove(tp); tp.material.dispose(); missileTrailParticles.splice(i, 1); }
     }
     // Napalm bombs (§5.7) — fall like regular bombs, create burn patches on landing
     for (let i = napalmBombs.length - 1; i >= 0; i--) {
