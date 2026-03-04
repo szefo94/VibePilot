@@ -190,7 +190,7 @@ let missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
 let flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
 let napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
 // Entities
-const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
+const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], napalmFireParticles = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
@@ -204,6 +204,9 @@ const bombMaterial = new THREE.MeshStandardMaterial({ color: "#222", roughness: 
 // --- Missile resources ---
 const _missileGeo = new THREE.CylinderGeometry(0.3, 0.6, 4, 6);
 const _missileMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+// --- Napalm fire particle resources ---
+const _napalmFireGeo = new THREE.SphereGeometry(1.5, 6, 4);
+const _napalmFireMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true });
 // --- Flare particle resources ---
 const _flarePGeo = new THREE.SphereGeometry(0.5, 6, 4);
 const _flarePMatBase = new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true });
@@ -1004,8 +1007,8 @@ function deployFlareEffect() {
             ).normalize();
             const fp = new THREE.Mesh(_flarePGeo, _flarePMatBase.clone());
             fp.position.copy(plane.position);
-            fp.velocity = _sv3.clone().multiplyScalar(1.0 + Math.random() * 1.0);
-            fp.life = fp.maxLife = 80 + Math.random() * 60;
+            fp.velocity = _sv3.clone().multiplyScalar(0.05 + Math.random() * 0.05);
+            fp.life = fp.maxLife = FLARE_DURATION;
             flareParticles.push(fp); scene.add(fp);
         }
     }
@@ -1445,7 +1448,7 @@ function updateProjectiles(dt) {
     for (let i = flareParticles.length - 1; i >= 0; i--) {
         const fp = flareParticles[i];
         fp.position.addScaledVector(fp.velocity, dt);
-        fp.velocity.y -= 0.012 * dt; // gentle gravity pull
+        fp.velocity.y -= 0.001 * dt; // negligible droop — stays spread
         fp.life -= dt;
         fp.material.opacity = Math.max(0, fp.life / fp.maxLife);
         if (fp.life <= 0) { scene.remove(fp); fp.material.dispose(); flareParticles.splice(i, 1); }
@@ -1527,15 +1530,28 @@ function updateProjectiles(dt) {
             const pm = new THREE.Mesh(napalmPatchGeo, napalmPatchMat.clone());
             pm.position.set(b.position.x, groundLevel + 0.3, b.position.z);
             scene.add(pm);
-            napalmPatches.push({ pos: pm.position, life: NAPALM_DURATION, tick: 0, mesh: pm });
+            napalmPatches.push({ pos: pm.position, life: NAPALM_DURATION, tick: 0, vTick: 0, mesh: pm });
             scene.remove(b); napalmBombs.splice(i, 1);
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); napalmBombs.splice(i, 1); }
     }
     // Napalm patches — tick damage over time (§5.7)
     for (let i = napalmPatches.length - 1; i >= 0; i--) {
         const p = napalmPatches[i];
-        p.life -= dt; p.tick -= dt;
-        p.mesh.material.opacity = 0.65 * Math.max(0, p.life / NAPALM_DURATION);
+        p.life -= dt; p.tick -= dt; p.vTick -= dt;
+        p.mesh.material.opacity = 0.4 * Math.max(0, p.life / NAPALM_DURATION);
+        // Spawn fire spheres across the full patch area every ~7 frames
+        if (p.vTick <= 0) {
+            p.vTick = 7;
+            for (let f = 0; f < 4; f++) {
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.sqrt(Math.random()) * napalmRadius; // uniform circle distribution
+                const nfp = new THREE.Mesh(_napalmFireGeo, _napalmFireMat.clone());
+                nfp.position.set(p.pos.x + Math.cos(angle) * r, groundLevel + 0.5, p.pos.z + Math.sin(angle) * r);
+                nfp.velocity = new THREE.Vector3(0, 0.06 + Math.random() * 0.08, 0); // rise
+                nfp.life = nfp.maxLife = 18 + Math.random() * 18;
+                napalmFireParticles.push(nfp); scene.add(nfp);
+            }
+        }
         if (p.tick <= 0) {
             p.tick = NAPALM_TICK_INTERVAL;
             const dmg = napalmDamage * playerDamageMultiplier;
@@ -1557,6 +1573,17 @@ function updateProjectiles(dt) {
             }
         }
         if (p.life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); napalmPatches.splice(i, 1); }
+    }
+    // Napalm fire particle animation
+    for (let i = napalmFireParticles.length - 1; i >= 0; i--) {
+        const nfp = napalmFireParticles[i];
+        nfp.position.addScaledVector(nfp.velocity, dt);
+        nfp.life -= dt;
+        const t = nfp.life / nfp.maxLife;           // 1→0 as it dies
+        const s = Math.sin(t * Math.PI);             // bell curve: 0 → peak → 0
+        nfp.scale.setScalar(s * 1.8 + 0.2);
+        nfp.material.opacity = Math.min(1, s * 1.5);
+        if (nfp.life <= 0) { scene.remove(nfp); nfp.material.dispose(); napalmFireParticles.splice(i, 1); }
     }
     // Enemy bullets
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
