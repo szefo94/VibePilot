@@ -190,7 +190,7 @@ let missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
 let flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
 let napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
 // Entities
-const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], enemyBullets = [], activeExplosions = []; // §4.5
+const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
@@ -204,6 +204,9 @@ const bombMaterial = new THREE.MeshStandardMaterial({ color: "#222", roughness: 
 // --- Missile resources ---
 const _missileGeo = new THREE.CylinderGeometry(0.3, 0.6, 4, 6);
 const _missileMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+// --- Flare particle resources ---
+const _flarePGeo = new THREE.SphereGeometry(0.5, 6, 4);
+const _flarePMatBase = new THREE.MeshBasicMaterial({ color: 0xffdd55, transparent: true });
 // --- Napalm resources ---
 const napalmBombMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: .6, emissive: 0x441100 });
 const napalmPatchGeo = new THREE.CylinderGeometry(napalmRadius, napalmRadius, 0.5, 20);
@@ -300,7 +303,7 @@ document.addEventListener('keydown', e => {
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
     else if (k === 'e') { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }
     else if (k === 'r') { if (missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; } }
-    else if (k === 'q') { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }
+    else if (k === 'q') { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; deployFlareEffect(); if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }
     else if (k === 'x') { if (napalmAmmo > 0) { dropNapalm(); if (--napalmAmmo <= 0) napalmReloadTimer = NAPALM_RELOAD_TIME; } }
     else if (keys.hasOwnProperty(k)) keys[k] = true;
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
@@ -983,6 +986,30 @@ function dropNapalm() {
     b.velocity = f.clone().multiplyScalar(speed).add(new THREE.Vector3(0, -.05, 0));
     napalmBombs.push(b); scene.add(b);
 }
+function deployFlareEffect() {
+    // Angel-wings pattern: two arcs of bright particles spreading left and right
+    plane.getWorldDirection(_sv1); // forward
+    _sv2.crossVectors(new THREE.Vector3(0, 1, 0), _sv1).normalize(); // right
+    const COUNT = 10; // particles per wing
+    for (let wing = -1; wing <= 1; wing += 2) { // -1 = left, +1 = right
+        for (let j = 0; j < COUNT; j++) {
+            const t = j / (COUNT - 1); // 0..1 across the arc
+            // Arc spans from roughly forward-side to backward-side (~18° to ~162° of π)
+            const arc = Math.PI * (0.1 + t * 0.8);
+            // Direction = sideways component (sin) + backward component (-cos) + downward bias
+            _sv3.set(
+                Math.sin(arc) * wing * _sv2.x + (-Math.cos(arc)) * _sv1.x,
+                -0.25 - t * 0.15,  // tips arc slightly lower, like spread wings
+                Math.sin(arc) * wing * _sv2.z + (-Math.cos(arc)) * _sv1.z
+            ).normalize();
+            const fp = new THREE.Mesh(_flarePGeo, _flarePMatBase.clone());
+            fp.position.copy(plane.position);
+            fp.velocity = _sv3.clone().multiplyScalar(1.0 + Math.random() * 1.0);
+            fp.life = fp.maxLife = 80 + Math.random() * 60;
+            flareParticles.push(fp); scene.add(fp);
+        }
+    }
+}
 // Deduplicated enemy bullet spawning (§3.2) — used by ground turrets and air units
 const _up3 = new THREE.Vector3(0, 1, 0);
 function spawnEnemyBullet(fromPos, targetPos) {
@@ -1414,6 +1441,15 @@ function updateProjectiles(dt) {
     if (missileAmmo <= 0) { missileReloadTimer -= dt; if (missileReloadTimer <= 0) { missileAmmo = MISSILE_MAX_AMMO; missileReloadTimer = 0; } }
     if (flareAmmo   <= 0) { flareReloadTimer   -= dt; if (flareReloadTimer   <= 0) { flareAmmo  = FLARE_MAX_AMMO;   flareReloadTimer   = 0; } }
     if (flareTimer   > 0) flareTimer -= dt;
+    // Flare angel-wing particles
+    for (let i = flareParticles.length - 1; i >= 0; i--) {
+        const fp = flareParticles[i];
+        fp.position.addScaledVector(fp.velocity, dt);
+        fp.velocity.y -= 0.012 * dt; // gentle gravity pull
+        fp.life -= dt;
+        fp.material.opacity = Math.max(0, fp.life / fp.maxLife);
+        if (fp.life <= 0) { scene.remove(fp); fp.material.dispose(); flareParticles.splice(i, 1); }
+    }
     if (napalmAmmo  <= 0) { napalmReloadTimer  -= dt; if (napalmReloadTimer  <= 0) { napalmAmmo = NAPALM_MAX_AMMO;  napalmReloadTimer  = 0; } }
     // Missiles (§5.7)
     for (let i = missiles.length - 1; i >= 0; i--) {
