@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+> **Prompt:** "collecting green collectibles should also prompt progress, completing should be stated at row 2 below conquered bases. green collectibles should derive naming after star constellations. at row 3 there should be completed marker clusters. pick adequate naming scheme"
+
+### Features
+- **Constellation system**: Each collectible chain is named after one of 20 star constellations (Orion, Cassiopeia, Perseus … Vela). Per-pickup notification shows "★ Name N/total"; completion awards +50 XP and adds an entry to conquered panel row 2.
+- **Corridor system**: Each hoop chain is named "Corridor Alpha/Beta/…/Theta". Per-ring notification shows "◆ Name N/total"; completing all rings awards +75 XP and adds an entry to conquered panel row 3.
+- **3-row conquered panel**: Panel restructured into three scrolling ticker rows — `BASE` (row 1), `★ CNS` constellations (row 2), `◆ RNG` corridors (row 3). Each row has its own colour (cyan / gold / orange).
+
+---
+
+> **Prompt:** "homing missiles should have trails, also they should move slower on deployment (like half the speed of machine gun), and then speed up to twice the speed of machine gun as it goes. the path it takes on shoot should go like this: fall down couple of metres, then start going into the direction of the target. add body upgrades to player plane, homing missiles should be send in pairs from ends of each wing. Wing barrel should be placed at the end of the wing. napalm container should be 2 smaller cylinders under rear end of the main body cylinder. bomb container should be a little bigger cylinder near middle of main body cylinder"
+
+### Features
+- **Missile overhaul – two-phase flight**: Launch speed = 0.5× bullet speed; drop-phase (22 frames) pulls nose down (-0.18 y, gravity 0.045/dt). After drop phase speed ramps (+0.05/dt) to 2× bullet speed while homing re-engages.
+- **Missile paired launch**: Fires 2 missiles simultaneously from world-space wing-tip positions (±5.9, −0.12, 0.55 local), computed via `applyMatrix4`.
+- **Missile trail particles**: Orange spheres (0.18 r) spawn behind each missile every 2.5 frames, life 20 frames, opacity fades with `life/maxLife × 0.75`.
+- **Plane body upgrades**:
+  - Wing barrel launchers — dark-grey cylinders at each wing tip (±5.9, −0.12, 0.55).
+  - Bomb pod — horizontal cylinder under centre fuselage (0, −0.78, 0.2).
+  - Napalm containers — two small angled cylinders under rear body (±0.36, −0.68, −1.4).
+
+---
+
+> **Prompt:** "animate flares in style of ac130 angel wings"
+
+### Features
+- **Flare angel-wing effect**: Deploying flares spawns 20 bright gold particles (10 per side) in symmetric arc formation spreading left and right from the plane — visually resembling AC-130 angel-wing flare drops.
+
+---
+
+> **Prompt:** "flares should spread much slower, it should match the timer of active flare. napalm should do animation of small spheres on the target in entirety of its range"
+
+### Changed
+- **Flare spread tuned**: Particle velocity reduced to 0.05–0.10 units/frame; particle lifetime set to `FLARE_DURATION` (180 frames) so particles persist for the full protection window. Gravity reduced to 0.001/frame.
+- **Napalm fire particles**: Each active napalm patch spawns 4 rising fire-sphere particles every 7 frames, uniformly distributed across the full patch radius using `r = √(random) × radius`. Particles animate with a sin-bell scale/opacity curve (peak mid-life).
+
+---
+
 > **Prompt:** "can you implement 5.7 and also add ammo to it?"
 
 ### Features
