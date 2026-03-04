@@ -258,7 +258,11 @@ const fleetNames       = ['Poseidon','Neptune','Triton','Leviathan','Aegir','Kra
 const squadronNames    = ['Ares','Mars','Artemis','Orion','Thor','Odin','Sirius','Polaris'];
 const hoverWingNames   = ['Icarus','Pegasus','Hermes','Valkyrie','Zephyr','Aura'];
 const strikeWingNames  = ['Apollo','Talon','Falcon','Hawk','Raptor','Griffin'];
+const CONSTELLATION_NAMES = ['Orion','Cassiopeia','Perseus','Andromeda','Lyra','Aquila','Cygnus','Scorpius','Leo','Gemini','Taurus','Aries','Pisces','Sagittarius','Draco','Hercules','Pegasus','Ophiuchus','Centaurus','Vela'];
+const CORRIDOR_NAMES = ['Corridor Alpha','Corridor Beta','Corridor Gamma','Corridor Delta','Corridor Epsilon','Corridor Zeta','Corridor Eta','Corridor Theta'];
 let aibaseIdx = 0, forwardBaseIdx = 0, fleetIdx = 0, squadronIdx = 0, hoverWingIdx = 0, strikeWingIdx = 0;
+// Constellation / corridor tracking maps (id → { name, total, remaining, completed })
+const constellations = {}, corridors = {};
 let notifSlot = 0;
 
 // --- Enemy setup ---
@@ -386,14 +390,13 @@ function showCongratsBanner(bmName) {
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('visible')));
     setTimeout(() => { el.classList.remove('visible'); el.classList.add('fade-out'); setTimeout(() => el.remove(), 750); }, 3200);
 }
-function addToConqueredPanel(bmName) {
-    const panel = document.getElementById('conquered-panel');
-    if (!panel) return;
-    let scroll = document.getElementById('conquered-scroll');
-    if (!scroll) { scroll = document.createElement('div'); scroll.id = 'conquered-scroll'; panel.appendChild(scroll); }
-    const entry = document.createElement('span'); entry.className = 'conquered-entry'; entry.textContent = `✓ ${bmName}`; scroll.appendChild(entry);
+function addToConqueredRow(text, scrollId) {
+    const scroll = document.getElementById(scrollId);
+    const wrap = scroll && scroll.parentElement; // cpanel-scroll-wrap
+    if (!scroll || !wrap) return;
+    const entry = document.createElement('span'); entry.className = 'conquered-entry'; entry.textContent = text; scroll.appendChild(entry);
     requestAnimationFrame(() => {
-        const overflow = scroll.scrollWidth - panel.clientWidth;
+        const overflow = scroll.scrollWidth - wrap.clientWidth;
         if (overflow > 0) {
             const duration = Math.max(4, scroll.scrollWidth / 50);
             scroll.style.animation = 'none';
@@ -402,6 +405,7 @@ function addToConqueredPanel(bmName) {
         } else { scroll.style.animation = 'none'; }
     });
 }
+function addToConqueredPanel(bmName) { addToConqueredRow(`✓ ${bmName}`, 'row1-scroll'); }
 function notifyBase(u) {
     if (!u.userData.baseId) return;
     const bm = basesById[u.userData.baseId];
@@ -846,9 +850,9 @@ function spawnSingleEnemy() {
     l.label = createUnitLabel("Fighter", lvl, totalHp, totalHp); scene.add(l.label.sprite);
     enemies.push(l);
 }
-function addCollectibleAt(x, y, z) {
+function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
-    m.position.set(x, y, z); m.userData = { type: 'collectible', collisionRadius: collectibleRadius };
+    m.position.set(x, y, z); m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null };
     collectibles.push(m); scene.add(m);
 }
 
@@ -879,22 +883,32 @@ function spawnChain(cx, cy, cz, cfg, addFn) {
 }
 function spawnCollectibleChains(count) {
     for (let i = 0; i < count; i++) {
-        spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 40, ceilingLevel - 40), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), COLLECTIBLE_CFG, addCollectibleAt);
+        const id = `c${i}`;
+        const name = CONSTELLATION_NAMES[i % CONSTELLATION_NAMES.length];
+        const before = collectibles.length;
+        spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 40, ceilingLevel - 40), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), COLLECTIBLE_CFG, (x, y, z) => addCollectibleAt(x, y, z, id));
+        const total = collectibles.length - before;
+        constellations[id] = { name, total, remaining: total, completed: false };
     }
 }
 function spawnHoopChains(count) {
-    const addHoop = (x, y, z) => {
+    const addHoop = (x, y, z, corridorId) => {
         const r = randomRange(15, 30);
         const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
         m.position.set(x, y, z); m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
         const mk = new THREE.Mesh(markerGeometry, markerMaterial); mk.position.copy(m.position);
-        mk.userData = { type: 'marker', collisionRadius: markerRadius, hoopMesh: m };
+        mk.userData = { type: 'marker', collisionRadius: markerRadius, hoopMesh: m, corridorId: corridorId || null };
         m.updateMatrixWorld(true);
         m.userData = { type: 'torus', markerMesh: mk, boundingBox: new THREE.Box3().setFromObject(m), matrixWorldInverse: new THREE.Matrix4().copy(m.matrixWorld).invert() }; // (§2.2)
         markers.push(mk); obstacles.push(m); scene.add(m, mk);
     };
     for (let i = 0; i < count; i++) {
-        spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 50, ceilingLevel - 50), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), HOOP_CFG, addHoop);
+        const id = `r${i}`;
+        const name = CORRIDOR_NAMES[i % CORRIDOR_NAMES.length];
+        const before = markers.length;
+        spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 50, ceilingLevel - 50), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), HOOP_CFG, (x, y, z) => addHoop(x, y, z, id));
+        const total = markers.length - before;
+        corridors[id] = { name, total, remaining: total, completed: false };
     }
 }
 function spawnSingleHoopWithMarker() {
@@ -1286,14 +1300,43 @@ function resolveCollisions() {
                 scene.remove(m.userData.hoopMesh);
                 obstacles.splice(obstacles.indexOf(m.userData.hoopMesh), 1);
             }
-            score += 10; scoreElement.textContent = score; addXP(15); spawnSingleHoopWithMarker();
+            score += 10; scoreElement.textContent = score; addXP(15);
+            const cid = m.userData.corridorId;
+            if (cid && corridors[cid] && !corridors[cid].completed) {
+                const cor = corridors[cid];
+                cor.remaining--;
+                const done = cor.remaining <= 0;
+                if (done) {
+                    cor.completed = true;
+                    showNotification(`◆ ${cor.name} — ALL RINGS  +75 XP`, true);
+                    if (!isGameOver) addXP(75);
+                    addToConqueredRow(`◆ ${cor.name}`, 'row3-scroll');
+                } else {
+                    showNotification(`◆ ${cor.name}  ${cor.total - cor.remaining}/${cor.total}`);
+                }
+            }
+            spawnSingleHoopWithMarker();
         }
     }
     // Player vs Collectibles
     for (let i = collectibles.length - 1; i >= 0; i--) {
         if (plane.position.distanceToSquared(collectibles[i].position) < (planeMarkerCollisionRadius + collectibleRadius) ** 2) {
+            const sid = collectibles[i].userData.constellationId;
             scene.remove(collectibles[i]); collectibles.splice(i, 1);
             score += 5; scoreElement.textContent = score; addXP(8);
+            if (sid && constellations[sid] && !constellations[sid].completed) {
+                const con = constellations[sid];
+                con.remaining--;
+                const collected = con.total - con.remaining;
+                if (con.remaining <= 0) {
+                    con.completed = true;
+                    showNotification(`★ ${con.name} Constellation — COMPLETE  +50 XP`, true);
+                    if (!isGameOver) addXP(50);
+                    addToConqueredRow(`★ ${con.name}`, 'row2-scroll');
+                } else {
+                    showNotification(`★ ${con.name}  ${collected}/${con.total}`);
+                }
+            }
         }
     }
     // Player vs World obstacles
