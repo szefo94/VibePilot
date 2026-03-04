@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+> **Prompt:** "if missle hits player it should trigger explosion / update angular rates, make it progress bar, full when on full rotation acceleration empty when rotation is 0 / add speed/ velocity indicator min to max with progress bar" + "angular rates are positive and negative, do progress bar before letters and after so it is like <----->P<-----> etc and update rates on specific value" + "collision box info slightly overlaps coords box, fix it so it is above coords box"
+
+### Features
+- **Explosion on enemy missile hit**: Enemy bullets now spawn a `createExplosion()` at impact point on contact with the player (visual fires even when flares deflect the shot).
+- **Bidirectional angular rate bars**: The `#map-constraints` HUD panel now shows pitch / roll / yaw rates as dual progress bars flanking the axis label (`[neg] P [pos]`). Orange bar fills left for negative rate, green bar fills right for positive rate. Numeric value (`+0.000`) shown to the right.
+- **Speed progress bar**: Speed indicator added below angular rates — a single blue bar spanning min→max speed range.
+
+### Bug Fixes
+- **Right-panel overlap fixed**: `#debug-info` (collision box legend) and `#map-constraints` (coords / rates) wrapped in a `#right-panel` flex column anchored `bottom: 10px; right: 10px`. Both panels now stack cleanly regardless of content height, eliminating the overlap caused by the hardcoded `bottom: 305px` offset.
+
+---
+
 > **Prompt:** "maybe this will improve performance, do radar like circles on minimap, animate scan every 3 seconds and synchronize with minimap update" + "with every sweep completed radar should update location of elements, only one update should be made to radar during that time" + "player location should also be frozen until full sweep"
 
 ### Features

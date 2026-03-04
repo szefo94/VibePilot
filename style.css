@@ -78,17 +78,84 @@ canvas {
     text-align: right;
 }
 
-#map-constraints {
+#right-panel {
+    position: absolute;
     bottom: 10px;
     right: 10px;
-    top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+#right-panel > .ui-overlay {
+    position: static;
+}
+
+#map-constraints {
     text-align: right;
 }
 
+.rate-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    margin-top: 2px;
+}
+
+.rate-label {
+    width: 10px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--hud-dim);
+    flex-shrink: 0;
+}
+
+.rate-val {
+    font-size: 10px;
+    color: var(--hud-dim);
+    width: 46px;
+    text-align: right;
+    flex-shrink: 0;
+    font-family: monospace;
+}
+
+.rate-track {
+    width: 55px;
+    height: 6px;
+    background: rgba(0, 255, 136, 0.08);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.rate-track-wide {
+    width: 116px;
+}
+
+.rate-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0%;
+    background: var(--hud-primary);
+    transition: width 0.05s linear;
+}
+
+.rate-fill-neg {
+    left: auto;
+    right: 0;
+    background: #ff6633;
+}
+
+.rate-fill-speed {
+    background: #44aaff;
+}
+
 #debug-info {
-    bottom: 305px;
-    right: 10px;
-    top: auto;
     text-align: right;
     font-size: 11px;
     line-height: 1.8;

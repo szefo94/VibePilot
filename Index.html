@@ -38,6 +38,7 @@
         <span style="color: #00ff88;">Hostile: <span id="ground-distance">N/A</span></span><br>
         <span style="color: #ffcc00;">Marker: <span id="marker-distance">N/A</span></span>
     </div>
+    <div id="right-panel">
     <div id="debug-info" class="ui-overlay">
         <strong>B: Toggle Collision Boxes</strong><br>
         <span style="color:#00ff88;">■ Player</span><br>
@@ -55,10 +56,13 @@
         HDG: <span id="rot-hdg">0</span>°<br>
         PCH: <span id="rot-pch">0</span>°<br>
         BNK: <span id="rot-bnk">0</span>°<br>
-        <strong>Angular Rates:</strong><br>
-        Pitch: <span id="rate-pitch">+0.000</span><br>
-        Roll: &nbsp;<span id="rate-roll">+0.000</span><br>
-        Yaw: &nbsp;<span id="rate-yaw">+0.000</span>
+        <strong>Angular Rates:</strong>
+        <div class="rate-row"><div class="rate-track"><div id="rate-pitch-neg" class="rate-fill rate-fill-neg"></div></div><span class="rate-label">P</span><div class="rate-track"><div id="rate-pitch-pos" class="rate-fill"></div></div><span class="rate-val" id="rate-pitch-val">+0.000</span></div>
+        <div class="rate-row"><div class="rate-track"><div id="rate-roll-neg"  class="rate-fill rate-fill-neg"></div></div><span class="rate-label">R</span><div class="rate-track"><div id="rate-roll-pos"  class="rate-fill"></div></div><span class="rate-val" id="rate-roll-val">+0.000</span></div>
+        <div class="rate-row"><div class="rate-track"><div id="rate-yaw-neg"   class="rate-fill rate-fill-neg"></div></div><span class="rate-label">Y</span><div class="rate-track"><div id="rate-yaw-pos"   class="rate-fill"></div></div><span class="rate-val" id="rate-yaw-val">+0.000</span></div>
+        <strong>Speed:</strong>
+        <div class="rate-row"><div class="rate-track rate-track-wide"><div id="speed-bar" class="rate-fill rate-fill-speed"></div></div></div>
+    </div>
     </div>
     <div id="minimap-container">
         <canvas id="minimap"></canvas>

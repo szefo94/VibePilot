@@ -164,7 +164,10 @@ markerArrow.position.set(-1.5, 1.5, 0); groundTargetArrow.position.set(1.5, 1.5,
 markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
 plane.add(markerArrow, groundTargetArrow, enemyArrow);
 // --- UI Elements & Minimap ---
-const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchElement = document.getElementById('rate-pitch'), rateRollElement = document.getElementById('rate-roll'), rateYawElement = document.getElementById('rate-yaw');
+const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchPos = document.getElementById('rate-pitch-pos'), ratePitchNeg = document.getElementById('rate-pitch-neg'), ratePitchVal = document.getElementById('rate-pitch-val'),
+    rateRollPos  = document.getElementById('rate-roll-pos'),  rateRollNeg  = document.getElementById('rate-roll-neg'),  rateRollVal  = document.getElementById('rate-roll-val'),
+    rateYawPos   = document.getElementById('rate-yaw-pos'),   rateYawNeg   = document.getElementById('rate-yaw-neg'),   rateYawVal   = document.getElementById('rate-yaw-val'),
+    speedBarEl   = document.getElementById('speed-bar');
 const gunBarEl = document.getElementById('gun-bar'), gunStatusEl = document.getElementById('gun-status');
 const bombBarEl = document.getElementById('bomb-bar'), bombStatusEl = document.getElementById('bomb-status');
 const missileBarEl = document.getElementById('missile-bar'), missileStatusEl = document.getElementById('missile-status');
@@ -275,7 +278,7 @@ const enemyColors = [16711680, 255, 16711935, 65535, 16747520, 15790320, 8388736
 const enemyPartHP = 1, numEnemies = 10, enemySpeed = .05, enemyScale = 2;
 const defaultEnemyHpOffsetY = 5 * enemyScale;
 const numAirbases = 5, numForwardBases = 8, numCarrierGroups = 2, numDestroyerSquadrons = 3;
-const enemyBulletSpeed = .8, enemyBulletLife = 200, enemyBulletDamage = 5;
+const enemyBulletSpeed = 1.2, enemyBulletLife = 200, enemyBulletDamage = 15;
 const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 120;
 const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
@@ -290,11 +293,11 @@ const numObstacles = 80, targetHoopCount = 0, numHoopChains = 8;
 function _createEnemyBulletMesh() {
     const b = new THREE.Group();
     b.add(
-        new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, 2.5, 8), new THREE.MeshBasicMaterial({ color: 0xff4400 })),
-        new THREE.Mesh(new THREE.ConeGeometry(.35, 1, 8),             new THREE.MeshBasicMaterial({ color: 0xff8800 }))
+        new THREE.Mesh(new THREE.CylinderGeometry(.75, .75, 5.5, 8), new THREE.MeshBasicMaterial({ color: 0xff2200 })),
+        new THREE.Mesh(new THREE.ConeGeometry(.75, 2, 8),             new THREE.MeshBasicMaterial({ color: 0xff6600 }))
     );
-    b.children[1].position.y = 1.75;
-    b.userData = { type: 'enemy_bullet', collisionRadius: 1.5, damage: 0 };
+    b.children[1].position.y = 3.75;
+    b.userData = { type: 'enemy_bullet', collisionRadius: 2.8, damage: 0 };
     return b;
 }
 const _enemyBulletPool = [];
@@ -1246,8 +1249,18 @@ function updateHUD() {
     const pch = Math.round(Math.atan2(_rotFwd.y, Math.sqrt(_rotFwd.x * _rotFwd.x + _rotFwd.z * _rotFwd.z)) * 180 / Math.PI);
     const bnk = Math.round(plane.rotation.z * 180 / Math.PI);
     rotHdgElement.textContent = hdg + '°'; rotPchElement.textContent = (pch >= 0 ? '+' : '') + pch + '°'; rotBnkElement.textContent = (bnk >= 0 ? '+' : '') + bnk + '°';
-    const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(3);
-    ratePitchElement.textContent = fmt(pitchRate); rateRollElement.textContent = fmt(rollRate); rateYawElement.textContent = fmt(yawRate);
+    const rPct = (v, max) => Math.round(Math.abs(v) / max * 100) + '%';
+    const rFmt = v => (v >= 0 ? '+' : '') + v.toFixed(3);
+    ratePitchPos.style.width = pitchRate > 0 ? rPct(pitchRate, maxPitchRate) : '0%';
+    ratePitchNeg.style.width = pitchRate < 0 ? rPct(pitchRate, maxPitchRate) : '0%';
+    ratePitchVal.textContent = rFmt(pitchRate);
+    rateRollPos.style.width  = rollRate  > 0 ? rPct(rollRate,  maxRollRate)  : '0%';
+    rateRollNeg.style.width  = rollRate  < 0 ? rPct(rollRate,  maxRollRate)  : '0%';
+    rateRollVal.textContent  = rFmt(rollRate);
+    rateYawPos.style.width   = yawRate   > 0 ? rPct(yawRate,   maxYawRate)   : '0%';
+    rateYawNeg.style.width   = yawRate   < 0 ? rPct(yawRate,   maxYawRate)   : '0%';
+    rateYawVal.textContent   = rFmt(yawRate);
+    speedBarEl.style.width   = Math.round((speed - minSpeed) / (maxSpeed - minSpeed) * 100) + '%';
     updateAmmoHUD();
 }
 
@@ -1388,6 +1401,7 @@ function resolveCollisions() {
         for (let i = enemyBullets.length - 1; i >= 0; i--) {
             const b = enemyBullets[i];
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
+                createExplosion(b.position);
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
                 if (flareTimer > 0) continue; // §5.7: flares active — deflect bullet
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
