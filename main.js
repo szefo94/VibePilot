@@ -117,8 +117,8 @@ function updateWingTrail(trail, tipLocal) {
     trail.pts.geometry.attributes.color.needsUpdate = true;
     trail.pts.geometry.setDrawRange(0, trail.count);
 }
-const wingTrailL = createWingTrail(); wingTrailL.pts.frustumCulled = false;
-const wingTrailR = createWingTrail(); wingTrailR.pts.frustumCulled = false;
+const wingTrailL = createWingTrail(); wingTrailL.pts.frustumCulled = false; wingTrailL.pts.visible = false;
+const wingTrailR = createWingTrail(); wingTrailR.pts.frustumCulled = false; wingTrailR.pts.visible = false;
 
 // --- Scratch vectors — reused each frame to avoid allocations (§2.6) ---
 const _sv1 = new THREE.Vector3();
