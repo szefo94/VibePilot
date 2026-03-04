@@ -146,6 +146,65 @@ canvas {
     88%, 100% { transform: translateX(var(--ticker-dist, 0)); }
 }
 
+/* ── Ammo HUD (bottom-center) ──────────────────────────────────── */
+#ammo-hud {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--hud-bg);
+    border: 1px solid var(--hud-border);
+    border-top: 2px solid var(--hud-border-bright);
+    box-shadow: var(--hud-glow);
+    padding: 8px 14px;
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.ammo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ammo-label {
+    width: 36px;
+    color: var(--hud-amber);
+    text-shadow: 0 0 5px rgba(255, 204, 0, 0.6);
+}
+
+.ammo-track {
+    width: 140px;
+    height: 8px;
+    background: rgba(0, 255, 136, 0.08);
+    border: 1px solid var(--hud-border);
+    overflow: hidden;
+}
+
+.ammo-fill {
+    height: 100%;
+    width: 100%;
+    background: var(--hud-primary);
+    box-shadow: 0 0 4px rgba(0, 255, 136, 0.6);
+    transition: width 0.08s linear, background 0.15s;
+}
+
+.ammo-status {
+    min-width: 52px;
+    text-align: right;
+    color: var(--hud-primary);
+    text-shadow: var(--text-glow);
+    font-size: 10px;
+    transition: color 0.15s;
+}
+
 #paused {
     position: absolute;
     top: 50%;

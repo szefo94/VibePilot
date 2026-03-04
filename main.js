@@ -146,6 +146,8 @@ markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visib
 plane.add(markerArrow, groundTargetArrow, enemyArrow);
 // --- UI Elements & Minimap ---
 const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchElement = document.getElementById('rate-pitch'), rateRollElement = document.getElementById('rate-roll'), rateYawElement = document.getElementById('rate-yaw');
+const gunBarEl = document.getElementById('gun-bar'), gunStatusEl = document.getElementById('gun-status');
+const bombBarEl = document.getElementById('bomb-bar'), bombStatusEl = document.getElementById('bomb-status');
 const minimap = document.getElementById('minimap'), minimapCtx = minimap.getContext('2d'), MINIMAP_SIZE = 400;
 minimap.width = MINIMAP_SIZE; minimap.height = MINIMAP_SIZE;
 const MINIMAP_HALF_R_SQ = (MINIMAP_SIZE / 2) * (MINIMAP_SIZE / 2); // §2.7 squared threshold for hypot checks
@@ -171,6 +173,8 @@ let isGameOver = false, isPaused = false;
 let pitchRate = 0, rollRate = 0, yawRate = 0, speed = .1;
 // Cooldowns
 let shootCooldown = 0, bombCooldown = 0;
+let gunAmmo = GUN_MAX_AMMO, gunReloadTimer = 0;
+let bombAmmo = BOMB_MAX_AMMO, bombReloadTimer = 0;
 // Entities
 const bullets = [], bombs = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
@@ -219,6 +223,9 @@ const enemyBulletSpeed = .8, enemyBulletLife = 200, enemyBulletDamage = 5;
 const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 120;
 const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
+// --- Ammo system (§5.7) ---
+const GUN_MAX_AMMO = 60, GUN_RELOAD_TIME = 180;   // reload ~3 s at 60 fps (dt units)
+const BOMB_MAX_AMMO = 4,  BOMB_RELOAD_TIME = 300;  // reload ~5 s at 60 fps
 // --- Obstacle resources ---
 const greyObstacleMaterial = new THREE.MeshStandardMaterial({ color: 8947848, roughness: .8 });
 const torusMaterial = new THREE.MeshStandardMaterial({ color: 16711680, roughness: .6 });
@@ -273,7 +280,7 @@ document.addEventListener('keydown', e => {
     if (isGameOver) return;
     const k = e.key.toLowerCase();
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
-    else if (k === 'e') { if (bombCooldown <= 0) { dropBomb(); bombCooldown = bombCooldownTime; } }
+    else if (k === 'e') { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }
     else if (keys.hasOwnProperty(k)) keys[k] = true;
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
 });
@@ -1012,7 +1019,7 @@ function updatePhysics(dt) {
     plane.rotateX(pitchRate * dt); plane.rotateZ(rollRate * dt); plane.rotateY(yawRate * dt);
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, speed * dt);
-    if (keys[' '] && shootCooldown <= 0) { fireBullet(); shootCooldown = shootCooldownTime; }
+    if (keys[' '] && shootCooldown <= 0 && gunAmmo > 0) { fireBullet(); shootCooldown = shootCooldownTime; if (--gunAmmo <= 0) gunReloadTimer = GUN_RELOAD_TIME; }
     plane.updateMatrixWorld(true);
     // Update player bounding boxes (§2.1 — applyMatrix4 avoids per-vertex iteration)
     corePlaneComponents.forEach((m, i) => planePartBoxes[i].copy(planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));
@@ -1108,6 +1115,26 @@ function updateHUD() {
     rotHdgElement.textContent = hdg + '°'; rotPchElement.textContent = (pch >= 0 ? '+' : '') + pch + '°'; rotBnkElement.textContent = (bnk >= 0 ? '+' : '') + bnk + '°';
     const fmt = v => (v >= 0 ? '+' : '') + v.toFixed(3);
     ratePitchElement.textContent = fmt(pitchRate); rateRollElement.textContent = fmt(rollRate); rateYawElement.textContent = fmt(yawRate);
+    updateAmmoHUD();
+}
+
+function updateAmmoHUD() {
+    const gunPct = gunAmmo / GUN_MAX_AMMO * 100;
+    gunBarEl.style.width = gunPct + '%';
+    gunBarEl.style.background = gunAmmo === 0 ? 'transparent'
+        : gunAmmo < GUN_MAX_AMMO * 0.25 ? 'var(--hud-red)'
+        : gunAmmo < GUN_MAX_AMMO * 0.5  ? 'var(--hud-amber)'
+        : 'var(--hud-primary)';
+    gunStatusEl.textContent  = gunAmmo  <= 0 ? (gunReloadTimer  / TARGET_FPS).toFixed(1) + 's' : gunAmmo  + '/' + GUN_MAX_AMMO;
+    gunStatusEl.style.color  = gunAmmo  <= 0 ? 'var(--hud-red)' : 'var(--hud-primary)';
+
+    const bombPct = bombAmmo / BOMB_MAX_AMMO * 100;
+    bombBarEl.style.width = bombPct + '%';
+    bombBarEl.style.background = bombAmmo === 0 ? 'transparent'
+        : bombAmmo === 1 ? 'var(--hud-red)'
+        : 'var(--hud-orange)';
+    bombStatusEl.textContent = bombAmmo <= 0 ? (bombReloadTimer / TARGET_FPS).toFixed(1) + 's' : bombAmmo + '/' + BOMB_MAX_AMMO;
+    bombStatusEl.style.color = bombAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
 }
 
 function resolveCollisions() {
@@ -1307,6 +1334,8 @@ function updateProjectiles(dt) {
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
     if (bombCooldown > 0) bombCooldown -= dt;
+    if (gunAmmo   <= 0) { gunReloadTimer  -= dt; if (gunReloadTimer  <= 0) { gunAmmo  = GUN_MAX_AMMO;  gunReloadTimer  = 0; } }
+    if (bombAmmo  <= 0) { bombReloadTimer -= dt; if (bombReloadTimer <= 0) { bombAmmo = BOMB_MAX_AMMO; bombReloadTimer = 0; } }
     // Enemy bullets
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
         const b = enemyBullets[i];

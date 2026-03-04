@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+> **Prompt:** "i really like 5.7, in addition you can add ammo to spacebar machinegun and bomb. add ui at bottom center with progress bar of ammo, after ammo ends show reload timer on the right of progress bar of the ammo. also, maybe put prompt given in changes file so it tracks what instruction was given"
+
+### Features
+- **§5.7 – Ammo system**: Machinegun (spacebar) has 60 rounds, bombs have 4. When depleted, each auto-reloads independently (gun ~3 s, bomb ~5 s).
+- **Ammo HUD**: Bottom-centre panel with two progress bars (GUN / BOMB). Bar colour shifts amber → red as ammo runs low, goes empty when depleted. Status label shows `XX/MAX` count while loaded and a live countdown (`X.Xs`) during reload.
+
+---
+
+> **Prompt:** "refactor 4.1: rebuild airbase logic, turrets can't be destroyed unless you destroy airbase first. same for control tower. apply 4.1 suggestion. about 4.3, after 20 level damage gain should increment less. apply 4.5"
+
 ### Changed
 - Wing trails now start hidden on game spawn; press **N** to toggle them on/off
 
