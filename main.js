@@ -148,6 +148,7 @@ plane.add(markerArrow, groundTargetArrow, enemyArrow);
 const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchElement = document.getElementById('rate-pitch'), rateRollElement = document.getElementById('rate-roll'), rateYawElement = document.getElementById('rate-yaw');
 const minimap = document.getElementById('minimap'), minimapCtx = minimap.getContext('2d'), MINIMAP_SIZE = 400;
 minimap.width = MINIMAP_SIZE; minimap.height = MINIMAP_SIZE;
+const MINIMAP_HALF_R_SQ = (MINIMAP_SIZE / 2) * (MINIMAP_SIZE / 2); // §2.7 squared threshold for hypot checks
 
 // ================================================================
 // --- Flight Config (easy-edit tuning knobs) ---
@@ -216,6 +217,7 @@ const defaultEnemyHpOffsetY = 5 * enemyScale;
 const numAirbases = 5, numForwardBases = 8, numCarrierGroups = 2, numDestroyerSquadrons = 3;
 const enemyBulletSpeed = .8, enemyBulletLife = 200, enemyBulletDamage = 5;
 const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 120;
+const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
 // --- Obstacle resources ---
 const greyObstacleMaterial = new THREE.MeshStandardMaterial({ color: 8947848, roughness: .8 });
@@ -412,37 +414,31 @@ function disposeGroup(obj) {
 function createGroundUnit(type) {
     const u = new THREE.Group();
     let hp, collR, hpY, xp, n, turretPivotRef = null, hostile = false, l = 1;
-    const m = {
-        tank:      new THREE.MeshStandardMaterial({ color: 4957216 }),
-        truck:     new THREE.MeshStandardMaterial({ color: 8388608 }),
-        airport:   new THREE.MeshStandardMaterial({ color: 6710886 }),
-        destroyer: new THREE.MeshStandardMaterial({ color: 5592422 }),
-        carrier:   new THREE.MeshStandardMaterial({ color: 4473925 }),
-        turret:    new THREE.MeshStandardMaterial({ color: 3355443 }),
-    };
+    const UNIT_MAT_COLORS = { tank: 4957216, truck: 8388608, airport: 6710886, destroyer: 5592422, carrier: 4473925, turret: 3355443 };
+    const unitMat = new THREE.MeshStandardMaterial({ color: UNIT_MAT_COLORS[type] }); // one material per call, not 6
     switch (type) {
         case 'tank':
             n = "Tank"; l = ~~randomRange(1, 4); hp = 20 * l; collR = 3.5 * 3; hpY = 1.5 * 3 + 5; xp = 35 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), m.tank));
-            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), m.tank); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), m.tank), tb); u.add(tp); turretPivotRef = tp; }
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), unitMat));
+            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), tb); u.add(tp); turretPivotRef = tp; }
             u.scale.set(3, 3, 3); break;
         case 'turret':
             n = "Turret"; l = ~~randomRange(2, 5); hp = 15 * l; collR = 2.5 * 3; hpY = 1.5 * 3 + 5; xp = 30 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4), m.turret));
-            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), m.turret); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), m.turret), tb); u.add(tp); turretPivotRef = tp; }
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4), unitMat));
+            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), tb); u.add(tp); turretPivotRef = tp; }
             u.scale.set(3, 3, 3); break;
         case 'truck':
             n = "Truck"; l = 1; hp = 5; collR = 3 * 2.5; hpY = 2 * 2.5 + 4; xp = 10;
             u.position.y = groundLevel + 2 + 2 * 2.5 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), m.truck), new THREE.Mesh(new THREE.BoxGeometry(2, 1.8, 5), m.truck));
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 1.8, 5), unitMat));
             u.children[0].position.z = 1.5; u.children[1].position.z = -1; u.scale.set(2.5, 2.5, 2.5); break;
         case 'airport':
             n = "Airbase"; l = 5; hp = 150; collR = 100; hpY = 25; xp = 200; u.position.y = groundLevel + 2;
-            const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), m.airport);
-            const mainBuilding = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 10), m.airport); mainBuilding.position.set(25, 10, 0);
-            const towerBase = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 30, 8), m.airport); towerBase.position.set(25, 15, -25);
+            const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), unitMat);
+            const mainBuilding = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 10), unitMat); mainBuilding.position.set(25, 10, 0);
+            const towerBase = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 30, 8), unitMat); towerBase.position.set(25, 15, -25);
             const towerCab = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 }));
             towerCab.position.set(25, 34, -25);
             u.add(runway, mainBuilding, towerBase, towerCab);
@@ -451,11 +447,11 @@ function createGroundUnit(type) {
             break;
         case 'destroyer':
             n = "Destroyer"; l = ~~randomRange(3, 6); hp = 40 * l; collR = 10 * 5; hpY = 4 * 5; xp = 75 * l; hostile = true; u.position.y = waterLevel;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), m.destroyer), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), m.destroyer), new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), m.destroyer), new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 3, 8), m.destroyer));
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat), new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 3, 8), unitMat));
             u.children[1].position.set(0, 2, -2); u.children[2].position.set(0, 1.5, 5); u.children[3].position.set(0, 1.5, 6.5); u.children[3].rotation.x = Math.PI / 2; u.scale.set(5, 5, 5); break;
         case 'carrier':
             n = "Carrier"; l = 10; hp = 200; collR = 18 * 8; hpY = 6 * 8; xp = 300; u.position.y = waterLevel;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(8, 3, 35), m.carrier), new THREE.Mesh(new THREE.BoxGeometry(12, .5, 32), m.carrier), new THREE.Mesh(new THREE.BoxGeometry(2, 3, 6), m.carrier));
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(8, 3, 35), unitMat), new THREE.Mesh(new THREE.BoxGeometry(12, .5, 32), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 3, 6), unitMat));
             u.children[1].position.y = 1.75; u.children[2].position.set(5, 3.5, -2); u.scale.set(8, 8, 8); break;
     }
     const label = createUnitLabel(n, l, hp, hp); scene.add(label.sprite);
@@ -686,7 +682,7 @@ function createAirUnit(type, x, y, z) {
     const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: collR, xpValue: xp, isHostile: hostile, baseId: null, label, shootCooldown: 0, userData: { hp, baseId: null } };
     return au;
 }
-function destroyAirUnit(au, idx) {
+function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
     createExplosion(au.group.position);
     disposeGroup(au.group);
     scene.remove(au.group);
@@ -917,9 +913,9 @@ function coneHitsSphere(apex, base, baseR, center, sphereR) {
 // ================================================================
 function fireBullet() {
     const b = _playerBulletPool.pop() || new THREE.Mesh(_playerBulletGeo, _playerBulletMat);
-    const d = new THREE.Vector3(); plane.getWorldDirection(d);
-    b.position.copy(plane.position).add(d.clone().multiplyScalar(3));
-    b.velocity = d.multiplyScalar(bulletSpeed);
+    plane.getWorldDirection(_sv1);
+    b.position.copy(plane.position).addScaledVector(_sv1, 3);
+    b.velocity = _sv1.clone().multiplyScalar(bulletSpeed); // clone needed — velocity persists on bullet
     b.life = bulletLife;
     b.userData = { type: 'bullet', collisionRadius: .3, damage: bulletDamage * playerDamageMultiplier };
     bullets.push(b); scene.add(b);
@@ -1038,7 +1034,7 @@ function updateAI(dt) {
         if (au.hp <= 0) continue;
         if (au.velocity) {
             au.group.position.addScaledVector(au.velocity, dt);
-            au.group.lookAt(au.group.position.clone().add(au.velocity));
+            _sv3.addVectors(au.group.position, au.velocity); au.group.lookAt(_sv3);
             if (Math.abs(au.group.position.x) > MAP_BOUNDARY * 0.85 || Math.abs(au.group.position.z) > MAP_BOUNDARY * 0.85) {
                 const len = au.velocity.length();
                 _sv3.set(-au.group.position.x, 0, -au.group.position.z).normalize().multiplyScalar(len);
@@ -1056,7 +1052,7 @@ function updateAI(dt) {
         if (au.label) au.label.sprite.position.copy(au.group.position).add(_sv3.set(0, au.collisionRadius + 8, 0));
         if (au.isHostile) {
             au.shootCooldown = Math.max(0, au.shootCooldown - dt);
-            if (au.shootCooldown <= 0 && au.group.position.distanceTo(plane.position) < hostileUnitShootingRange) {
+            if (au.shootCooldown <= 0 && au.group.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
                 _sv3.copy(au.group.position).add(_sv2.set(0, 2, 0));
                 spawnEnemyBullet(_sv3, plane.position);
                 au.shootCooldown = hostileUnitShootingCooldownTime;
@@ -1082,7 +1078,7 @@ function updateAI(dt) {
         }
         if (u.userData.isHostile && u.userData.hp > 0) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
-            if (u.userData.shootCooldown <= 0 && u.position.distanceTo(plane.position) < hostileUnitShootingRange) {
+            if (u.userData.shootCooldown <= 0 && u.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
                 fireHostileBullet(u); u.userData.shootCooldown = hostileUnitShootingCooldownTime;
             }
         }
@@ -1111,7 +1107,7 @@ function resolveCollisions() {
     // Player vs Markers — sphere check (§4.2: dispose torus geometry on pickup)
     for (let i = markers.length - 1; i >= 0; i--) {
         const m = markers[i];
-        if (plane.position.distanceTo(m.position) < planeMarkerCollisionRadius + m.userData.collisionRadius) {
+        if (plane.position.distanceToSquared(m.position) < (planeMarkerCollisionRadius + m.userData.collisionRadius) ** 2) {
             scene.remove(m);
             markers.splice(i, 1);
             if (m.userData.hoopMesh) {
@@ -1124,7 +1120,7 @@ function resolveCollisions() {
     }
     // Player vs Collectibles
     for (let i = collectibles.length - 1; i >= 0; i--) {
-        if (plane.position.distanceTo(collectibles[i].position) < planeMarkerCollisionRadius + collectibleRadius) {
+        if (plane.position.distanceToSquared(collectibles[i].position) < (planeMarkerCollisionRadius + collectibleRadius) ** 2) {
             scene.remove(collectibles[i]); collectibles.splice(i, 1);
             score += 5; scoreElement.textContent = score; addXP(8);
         }
@@ -1161,14 +1157,14 @@ function resolveCollisions() {
     }
     if (!isGameOver) {
         for (const au of airUnits) {
-            if (au.hp > 0 && au.group.position.distanceTo(plane.position) < au.collisionRadius + planeSphereRadius) { triggerGameOver(); break; }
+            if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) { triggerGameOver(); break; }
         }
     }
     // Player vs Enemy Bullets
     if (!isGameOver) {
         for (let i = enemyBullets.length - 1; i >= 0; i--) {
             const b = enemyBullets[i];
-            if (plane.position.distanceTo(b.position) < planeSphereRadius + b.userData.collisionRadius) {
+            if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
@@ -1183,9 +1179,9 @@ function resolveCollisions() {
         let hit = false;
         // vs Enemies (no grid — enemy fighters scattered with bounding boxes)
         for (const e of enemies) {
-            if (e.parts.some(p => p.userData.hp > 0 && b.position.distanceTo(p.position) < b.userData.collisionRadius + (p.userData.collisionRadius || 1))) {
+            if (e.parts.some(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; })) {
                 scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
-                const part = e.parts.find(p => p.userData.hp > 0 && b.position.distanceTo(p.position) < b.userData.collisionRadius + (p.userData.collisionRadius || 1));
+                const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; });
                 if (part) part.userData.hp -= b.userData.damage;
                 let totalHp = 0; e.parts.forEach(p => totalHp += p.userData.hp);
                 updateUnitLabel(e.label, totalHp);
@@ -1202,17 +1198,17 @@ function resolveCollisions() {
             if ('group' in obj) {
                 const au = obj;
                 if (au.hp <= 0) continue;
-                if (b.position.distanceTo(au.group.position) < b.userData.collisionRadius + au.collisionRadius) {
+                if (b.position.distanceToSquared(au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2) {
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
-                    if (au.hp <= 0) destroyAirUnit(au, airUnits.indexOf(au));
+                    if (au.hp <= 0) destroyAirUnit(au);
                 }
             } else {
                 // Ground unit
                 const u = obj;
                 if (u.userData.bombOnly || u.userData.hp <= 0) continue;
-                if (b.position.distanceTo(u.position) < b.userData.collisionRadius + u.userData.collisionRadius) {
+                if (b.position.distanceToSquared(u.position) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
                     if (u.userData.hp <= 0) {
@@ -1275,7 +1271,7 @@ function updateProjectiles(dt) {
             bombAffectedBases.forEach(id => notifyBase({ userData: { baseId: id, hp: 0 } }));
             for (let ai = airUnits.length - 1; ai >= 0; ai--) {
                 const au = airUnits[ai];
-                if (au.hp > 0 && au.group.position.distanceTo(b.position) < b.userData.aoERadius) {
+                if (au.hp > 0 && au.group.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
                     if (au.hp <= 0) { if (au.baseId) bombAffectedBases.add(au.baseId); destroyAirUnit(au, ai); }
@@ -1283,7 +1279,7 @@ function updateProjectiles(dt) {
             }
             for (let ei = enemies.length - 1; ei >= 0; ei--) {
                 const ae = enemies[ei];
-                if (ae.parts.some(p => p.position.distanceTo(b.position) < b.userData.aoERadius)) {
+                if (ae.parts.some(p => p.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius)) {
                     ae.parts.forEach(p => { p.userData.hp -= b.userData.damage; });
                     let th = 0; ae.parts.forEach(p => th += Math.max(0, p.userData.hp));
                     updateUnitLabel(ae.label, th); if (th <= 0) destroyLogicalEnemy(ae.id);
@@ -1368,8 +1364,8 @@ function animate() {
 function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
     const playerPos = plane.position, scale = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE;
-    const forward = new THREE.Vector3(); plane.getWorldDirection(forward);
-    const playerAngle = Math.atan2(forward.x, forward.z);
+    plane.getWorldDirection(_sv1);
+    const playerAngle = Math.atan2(_sv1.x, _sv1.z);
     minimapCtx.save();
     minimapCtx.translate(MINIMAP_SIZE / 2, MINIMAP_SIZE / 2);
     minimapCtx.rotate(playerAngle);
@@ -1380,11 +1376,11 @@ function updateMinimap() {
     minimapCtx.fillStyle = 'rgba(85,107,47,0.7)';
     islets.forEach(islet => {
         const ip = getMinimapPoint(islet), ir = islet.radius * scale;
-        if (Math.hypot(ip.x, ip.y) < MINIMAP_SIZE / 2 + ir) { minimapCtx.beginPath(); minimapCtx.arc(ip.x, ip.y, ir, 0, Math.PI * 2); minimapCtx.fill(); }
+        const _rd = MINIMAP_SIZE / 2 + ir; if (ip.x*ip.x + ip.y*ip.y < _rd*_rd) { minimapCtx.beginPath(); minimapCtx.arc(ip.x, ip.y, ir, 0, Math.PI * 2); minimapCtx.fill(); }
     });
     const drawDot = (wp, color) => {
         const mp = getMinimapPoint(wp);
-        if (Math.hypot(mp.x, mp.y) < MINIMAP_SIZE / 2) { minimapCtx.fillStyle = color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3); }
+        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) { minimapCtx.fillStyle = color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3); }
     };
     markers.forEach(m => drawDot(m.position, 'yellow'));
     collectibles.forEach(c => drawDot(c.position, '#00ff44'));
@@ -1393,7 +1389,7 @@ function updateMinimap() {
     airUnits.forEach(au => {
         if (au.hp <= 0) return;
         const mp = getMinimapPoint(au.group.position);
-        if (Math.hypot(mp.x, mp.y) < MINIMAP_SIZE / 2) {
+        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) {
             minimapCtx.fillStyle = au.isHostile ? '#ff4444' : '#aaddff';
             minimapCtx.beginPath(); minimapCtx.moveTo(mp.x, mp.y - 5); minimapCtx.lineTo(mp.x - 4, mp.y + 3); minimapCtx.lineTo(mp.x + 4, mp.y + 3); minimapCtx.closePath(); minimapCtx.fill();
         }
@@ -1402,7 +1398,7 @@ function updateMinimap() {
     baseMarkers.forEach(bm => {
         if (bm.eliminated) return;
         const mp = getMinimapPoint(bm.position);
-        if (Math.hypot(mp.x, mp.y) < MINIMAP_SIZE / 2) {
+        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) {
             const color = bm.isHostile ? '#ff8844' : '#88ccff';
             minimapCtx.fillStyle = color; minimapCtx.fillRect(mp.x - 3, mp.y - 3, 6, 6);
             const sx = MINIMAP_SIZE / 2 + mp.x * Math.cos(playerAngle) - mp.y * Math.sin(playerAngle);
