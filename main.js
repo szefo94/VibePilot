@@ -161,6 +161,9 @@ const maxPitchRate = .025, maxRollRate = .035, maxYawRate = .03;
 const rotAccel = .00085;
 const rotDamping = .85;
 const bulletDamage = 1, bombDamage = 40, bombAoERadius = 50, bulletSpeed = 1.8, bulletLife = 150, shootCooldownTime = 4;
+// --- Ammo system (§5.7) ---
+const GUN_MAX_AMMO = 60, GUN_RELOAD_TIME = 180;   // reload ~3 s at 60 fps (dt units)
+const BOMB_MAX_AMMO = 4,  BOMB_RELOAD_TIME = 300;  // reload ~5 s at 60 fps
 
 // ================================================================
 // --- Game State (§1.3 — grouped by concern) ---
@@ -223,9 +226,6 @@ const enemyBulletSpeed = .8, enemyBulletLife = 200, enemyBulletDamage = 5;
 const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 120;
 const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
-// --- Ammo system (§5.7) ---
-const GUN_MAX_AMMO = 60, GUN_RELOAD_TIME = 180;   // reload ~3 s at 60 fps (dt units)
-const BOMB_MAX_AMMO = 4,  BOMB_RELOAD_TIME = 300;  // reload ~5 s at 60 fps
 // --- Obstacle resources ---
 const greyObstacleMaterial = new THREE.MeshStandardMaterial({ color: 8947848, roughness: .8 });
 const torusMaterial = new THREE.MeshStandardMaterial({ color: 16711680, roughness: .6 });
