@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+> **Prompt:** "can you implement 5.7 and also add ammo to it?"
+
+### Features
+- **§5.7 – Weapon variety**: Three new weapons with independent ammo pools and reload timers.
+  - **R — Homing Missile** (3 ammo, 10 s reload): Homes onto nearest hostile. 80 × multiplier damage + AoE splash (radius 25). Double explosion on impact.
+  - **Q — Flares** (2 ammo, 15 s reload): Deflects all enemy bullets for 3 s. HUD bar glows green while active.
+  - **X — Napalm Bomb** (2 ammo, 8 s reload): Creates a ground burn patch (radius 55) dealing 8 × multiplier damage every 0.5 s for 5 s; patch fades as it expires.
+- **Ammo HUD extended**: Five rows — GUN / BOMB / MSLE / FLRE / NALM with colour-shift and reload countdown.
+
+---
+
 > **Prompt:** "i really like 5.7, in addition you can add ammo to spacebar machinegun and bomb. add ui at bottom center with progress bar of ammo, after ammo ends show reload timer on the right of progress bar of the ammo. also, maybe put prompt given in changes file so it tracks what instruction was given"
 
 ### Features

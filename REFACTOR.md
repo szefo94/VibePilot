@@ -108,16 +108,6 @@ Save conquered group names, total kills, and high score to `localStorage`. Show 
 
 Currently HP only decreases. Add slow passive regen (e.g. 0.01 HP/frame up to 50 % max) so prolonged cautious play is rewarded without making the player unkillable.
 
-### 5.7 Weapon variety
-
-The player has bullets and bombs. Possible additions:
-
-| Weapon | Effect |
-|---|---|
-| Missile (E key, limited) | Homing, higher single-target damage |
-| Flares (R key) | Temporary hostile-bullet deflection |
-| Napalm bomb | Ground AoE over time instead of instant |
-
 ### 5.8 Carrier launches aircraft
 
 Carrier Groups are currently static targets. They could periodically spawn 1–2 fighter jets that patrol around the carrier at low altitude, giving the carrier group much higher strategic value. Triggered after a `carrierLaunchCooldown` and capped at `maxCarrierAircraft`.

@@ -148,6 +148,9 @@ plane.add(markerArrow, groundTargetArrow, enemyArrow);
 const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchElement = document.getElementById('rate-pitch'), rateRollElement = document.getElementById('rate-roll'), rateYawElement = document.getElementById('rate-yaw');
 const gunBarEl = document.getElementById('gun-bar'), gunStatusEl = document.getElementById('gun-status');
 const bombBarEl = document.getElementById('bomb-bar'), bombStatusEl = document.getElementById('bomb-status');
+const missileBarEl = document.getElementById('missile-bar'), missileStatusEl = document.getElementById('missile-status');
+const flareBarEl = document.getElementById('flare-bar'), flareStatusEl = document.getElementById('flare-status');
+const napalmBarEl = document.getElementById('napalm-bar'), napalmStatusEl = document.getElementById('napalm-status');
 const minimap = document.getElementById('minimap'), minimapCtx = minimap.getContext('2d'), MINIMAP_SIZE = 400;
 minimap.width = MINIMAP_SIZE; minimap.height = MINIMAP_SIZE;
 const MINIMAP_HALF_R_SQ = (MINIMAP_SIZE / 2) * (MINIMAP_SIZE / 2); // §2.7 squared threshold for hypot checks
@@ -164,6 +167,11 @@ const bulletDamage = 1, bombDamage = 40, bombAoERadius = 50, bulletSpeed = 1.8, 
 // --- Ammo system (§5.7) ---
 const GUN_MAX_AMMO = 60, GUN_RELOAD_TIME = 180;   // reload ~3 s at 60 fps (dt units)
 const BOMB_MAX_AMMO = 4,  BOMB_RELOAD_TIME = 300;  // reload ~5 s at 60 fps
+const MISSILE_MAX_AMMO = 3,  MISSILE_RELOAD_TIME = 600; // reload ~10 s
+const FLARE_MAX_AMMO = 2,    FLARE_RELOAD_TIME = 900, FLARE_DURATION = 180; // effect 3 s, reload 15 s
+const NAPALM_MAX_AMMO = 2,   NAPALM_RELOAD_TIME = 480, NAPALM_TICK_INTERVAL = 30, NAPALM_DURATION = 300;
+const missileDamage = 80, missileAoERadius = 25, missileSpeed = 2.2, missileLife = 300, missileHomingStr = 0.05;
+const napalmDamage = 8, napalmRadius = 55;
 
 // ================================================================
 // --- Game State (§1.3 — grouped by concern) ---
@@ -178,8 +186,11 @@ let pitchRate = 0, rollRate = 0, yawRate = 0, speed = .1;
 let shootCooldown = 0, bombCooldown = 0;
 let gunAmmo = GUN_MAX_AMMO, gunReloadTimer = 0;
 let bombAmmo = BOMB_MAX_AMMO, bombReloadTimer = 0;
+let missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
+let flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
+let napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
 // Entities
-const bullets = [], bombs = [], enemyBullets = [], activeExplosions = []; // §4.5
+const bullets = [], bombs = [], missiles = [], napalmBombs = [], napalmPatches = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
@@ -190,6 +201,13 @@ let debugCollision = false;
 
 // --- Bomb & explosion resources ---
 const bombMaterial = new THREE.MeshStandardMaterial({ color: "#222", roughness: .7 });
+// --- Missile resources ---
+const _missileGeo = new THREE.CylinderGeometry(0.3, 0.6, 4, 6);
+const _missileMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+// --- Napalm resources ---
+const napalmBombMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: .6, emissive: 0x441100 });
+const napalmPatchGeo = new THREE.CylinderGeometry(napalmRadius, napalmRadius, 0.5, 20);
+const napalmPatchMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.65 });
 const bombRadius = 1.5, bombGeometry = new THREE.SphereGeometry(bombRadius, 10, 10);
 const bombCooldownTime = 45;
 const gravity = .008;
@@ -281,6 +299,9 @@ document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
     else if (k === 'e') { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }
+    else if (k === 'r') { if (missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; } }
+    else if (k === 'q') { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }
+    else if (k === 'x') { if (napalmAmmo > 0) { dropNapalm(); if (--napalmAmmo <= 0) napalmReloadTimer = NAPALM_RELOAD_TIME; } }
     else if (keys.hasOwnProperty(k)) keys[k] = true;
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
 });
@@ -936,6 +957,32 @@ function dropBomb() {
     b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: bombDamage * playerDamageMultiplier, aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
 }
+function fireMissile() {
+    // Find nearest hostile target to home on
+    let target = null, nearestSq = Infinity;
+    const tryTarget = (pos, alive) => {
+        const d = pos().distanceToSquared(plane.position);
+        if (d < nearestSq) { nearestSq = d; target = { pos, alive }; }
+    };
+    groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryTarget(() => u.position, () => u.userData.hp > 0); });
+    airUnits.forEach(au => { if (au.hp > 0) tryTarget(() => au.group.position, () => au.hp > 0); });
+    enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryTarget(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
+    plane.getWorldDirection(_sv1);
+    const m = new THREE.Mesh(_missileGeo, _missileMat);
+    m.position.copy(plane.position).addScaledVector(_sv1, 4);
+    m.velocity = _sv1.clone().multiplyScalar(missileSpeed);
+    m.target = target;
+    m.life = missileLife;
+    m.quaternion.setFromUnitVectors(_up3, m.velocity.clone().normalize());
+    missiles.push(m); scene.add(m);
+}
+function dropNapalm() {
+    const b = new THREE.Mesh(bombGeometry, napalmBombMaterial);
+    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
+    b.position.copy(plane.position).add(new THREE.Vector3(0, -1.5, 0));
+    b.velocity = f.clone().multiplyScalar(speed).add(new THREE.Vector3(0, -.05, 0));
+    napalmBombs.push(b); scene.add(b);
+}
 // Deduplicated enemy bullet spawning (§3.2) — used by ground turrets and air units
 const _up3 = new THREE.Vector3(0, 1, 0);
 function spawnEnemyBullet(fromPos, targetPos) {
@@ -1135,6 +1182,33 @@ function updateAmmoHUD() {
         : 'var(--hud-orange)';
     bombStatusEl.textContent = bombAmmo <= 0 ? (bombReloadTimer / TARGET_FPS).toFixed(1) + 's' : bombAmmo + '/' + BOMB_MAX_AMMO;
     bombStatusEl.style.color = bombAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
+
+    const missilePct = missileAmmo / MISSILE_MAX_AMMO * 100;
+    missileBarEl.style.width = missilePct + '%';
+    missileBarEl.style.background = missileAmmo === 0 ? 'transparent'
+        : missileAmmo === 1 ? 'var(--hud-red)'
+        : 'var(--hud-orange)';
+    missileStatusEl.textContent = missileAmmo <= 0 ? (missileReloadTimer / TARGET_FPS).toFixed(1) + 's' : missileAmmo + '/' + MISSILE_MAX_AMMO;
+    missileStatusEl.style.color = missileAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
+
+    const flarePct = flareAmmo / FLARE_MAX_AMMO * 100;
+    flareBarEl.style.width = (flareTimer > 0 ? 100 : flarePct) + '%';
+    flareBarEl.style.background = flareTimer > 0 ? 'var(--hud-primary)'
+        : flareAmmo === 0 ? 'transparent'
+        : flareAmmo === 1 ? 'var(--hud-amber)'
+        : 'var(--hud-primary)';
+    flareStatusEl.textContent = flareTimer > 0 ? flareTimer.toFixed(0) + 'f'
+        : flareAmmo <= 0 ? (flareReloadTimer / TARGET_FPS).toFixed(1) + 's' : flareAmmo + '/' + FLARE_MAX_AMMO;
+    flareStatusEl.style.color = flareAmmo <= 0 && flareTimer <= 0 ? 'var(--hud-red)'
+        : flareTimer > 0 ? 'var(--hud-primary)' : 'var(--hud-amber)';
+
+    const napalmPct = napalmAmmo / NAPALM_MAX_AMMO * 100;
+    napalmBarEl.style.width = napalmPct + '%';
+    napalmBarEl.style.background = napalmAmmo === 0 ? 'transparent'
+        : napalmAmmo === 1 ? 'var(--hud-red)'
+        : '#cc4400';
+    napalmStatusEl.textContent = napalmAmmo <= 0 ? (napalmReloadTimer / TARGET_FPS).toFixed(1) + 's' : napalmAmmo + '/' + NAPALM_MAX_AMMO;
+    napalmStatusEl.style.color = napalmAmmo <= 0 ? 'var(--hud-red)' : '#ff8844';
 }
 
 function resolveCollisions() {
@@ -1194,12 +1268,13 @@ function resolveCollisions() {
             if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) { triggerGameOver(); break; }
         }
     }
-    // Player vs Enemy Bullets
+    // Player vs Enemy Bullets (flares block damage)
     if (!isGameOver) {
         for (let i = enemyBullets.length - 1; i >= 0; i--) {
             const b = enemyBullets[i];
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
+                if (flareTimer > 0) continue; // §5.7: flares active — deflect bullet
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
                 if (planeHP <= 0) { triggerGameOver(); break; }
@@ -1336,6 +1411,117 @@ function updateProjectiles(dt) {
     if (bombCooldown > 0) bombCooldown -= dt;
     if (gunAmmo   <= 0) { gunReloadTimer  -= dt; if (gunReloadTimer  <= 0) { gunAmmo  = GUN_MAX_AMMO;  gunReloadTimer  = 0; } }
     if (bombAmmo  <= 0) { bombReloadTimer -= dt; if (bombReloadTimer <= 0) { bombAmmo = BOMB_MAX_AMMO; bombReloadTimer = 0; } }
+    if (missileAmmo <= 0) { missileReloadTimer -= dt; if (missileReloadTimer <= 0) { missileAmmo = MISSILE_MAX_AMMO; missileReloadTimer = 0; } }
+    if (flareAmmo   <= 0) { flareReloadTimer   -= dt; if (flareReloadTimer   <= 0) { flareAmmo  = FLARE_MAX_AMMO;   flareReloadTimer   = 0; } }
+    if (flareTimer   > 0) flareTimer -= dt;
+    if (napalmAmmo  <= 0) { napalmReloadTimer  -= dt; if (napalmReloadTimer  <= 0) { napalmAmmo = NAPALM_MAX_AMMO;  napalmReloadTimer  = 0; } }
+    // Missiles (§5.7)
+    for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i];
+        // Homing — steer velocity toward live target
+        if (m.target && m.target.alive()) {
+            _sv1.subVectors(m.target.pos(), m.position).normalize().multiplyScalar(missileSpeed);
+            m.velocity.lerp(_sv1, missileHomingStr * dt);
+        }
+        m.position.addScaledVector(m.velocity, dt);
+        m.life -= dt;
+        _sv2.copy(m.velocity).normalize();
+        if (_sv2.length() > 0.001) m.quaternion.setFromUnitVectors(_up3, _sv2);
+        const expired = m.life <= 0 || Math.abs(m.position.x) > MAP_BOUNDARY || Math.abs(m.position.z) > MAP_BOUNDARY;
+        const groundHit = m.position.y <= groundLevel + 3;
+        // Collision check vs ground, air, enemies
+        let hit = false;
+        for (const u of groundUnits) {
+            if (!hit && u.userData.hp > 0 && m.position.distanceToSquared(u.position) < (u.userData.collisionRadius + 2) ** 2) hit = true;
+        }
+        if (!hit) for (const au of airUnits) {
+            if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < (au.collisionRadius + 2) ** 2) { hit = true; break; }
+        }
+        if (!hit) for (const en of enemies) {
+            if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < 12 * 12)) { hit = true; break; }
+        }
+        if (hit || groundHit || expired) {
+            if (hit || groundHit) {
+                // AoE damage
+                const dmg = missileDamage * playerDamageMultiplier;
+                createExplosion(m.position); createExplosion(m.position); // double flash for missiles
+                const _mDestroy = [];
+                for (const gu of groundUnits) {
+                    if (gu.userData.hp > 0 && m.position.distanceToSquared(gu.position) < missileAoERadius * missileAoERadius) {
+                        gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
+                        if (gu.userData.hp <= 0) _mDestroy.push(gu);
+                    }
+                }
+                _mDestroy.sort(a => a.userData.type === 'airport' ? -1 : 1);
+                for (const gu of _mDestroy) {
+                    if (!groundUnits.includes(gu)) continue;
+                    if (gu.userData.type === 'airport') {
+                        const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
+                        tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+                    }
+                    createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
+                    const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
+                    if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
+                    notifyBase(gu);
+                }
+                for (let ai = airUnits.length - 1; ai >= 0; ai--) {
+                    const au = airUnits[ai];
+                    if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < missileAoERadius * missileAoERadius) {
+                        au.hp -= dmg; au.userData.hp = au.hp; updateUnitLabel(au.label, au.hp);
+                        if (au.hp <= 0) destroyAirUnit(au, ai);
+                    }
+                }
+                for (const en of enemies) {
+                    if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < missileAoERadius * missileAoERadius)) {
+                        en.parts.forEach(p => p.userData.hp -= dmg);
+                        let th = 0; en.parts.forEach(p => th += Math.max(0, p.userData.hp));
+                        updateUnitLabel(en.label, th); if (th <= 0) destroyLogicalEnemy(en.id);
+                    }
+                }
+            }
+            scene.remove(m); missiles.splice(i, 1);
+        }
+    }
+    // Napalm bombs (§5.7) — fall like regular bombs, create burn patches on landing
+    for (let i = napalmBombs.length - 1; i >= 0; i--) {
+        const b = napalmBombs[i];
+        b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
+        if (b.position.y <= groundLevel + bombRadius) {
+            createExplosion(b.position);
+            const pm = new THREE.Mesh(napalmPatchGeo, napalmPatchMat.clone());
+            pm.position.set(b.position.x, groundLevel + 0.3, b.position.z);
+            scene.add(pm);
+            napalmPatches.push({ pos: pm.position, life: NAPALM_DURATION, tick: 0, mesh: pm });
+            scene.remove(b); napalmBombs.splice(i, 1);
+        } else if (b.position.y < groundLevel - 30) { scene.remove(b); napalmBombs.splice(i, 1); }
+    }
+    // Napalm patches — tick damage over time (§5.7)
+    for (let i = napalmPatches.length - 1; i >= 0; i--) {
+        const p = napalmPatches[i];
+        p.life -= dt; p.tick -= dt;
+        p.mesh.material.opacity = 0.65 * Math.max(0, p.life / NAPALM_DURATION);
+        if (p.tick <= 0) {
+            p.tick = NAPALM_TICK_INTERVAL;
+            const dmg = napalmDamage * playerDamageMultiplier;
+            const rSq = napalmRadius * napalmRadius;
+            for (const gu of groundUnits) {
+                if (gu.userData.hp > 0 && gu.position.distanceToSquared(p.pos) < rSq) {
+                    gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
+                    if (gu.userData.hp <= 0) {
+                        if (gu.userData.type === 'airport') {
+                            const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
+                            tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+                        }
+                        createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
+                        const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
+                        if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
+                        notifyBase(gu);
+                    }
+                }
+            }
+        }
+        if (p.life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); napalmPatches.splice(i, 1); }
+    }
     // Enemy bullets
     for (let i = enemyBullets.length - 1; i >= 0; i--) {
         const b = enemyBullets[i];
