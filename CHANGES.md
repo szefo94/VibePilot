@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+> **Prompt:** "do performance paragraph from roadmap file"
+
+### Performance
+- **§2.1 – Baked ground-unit worldBoxes**: Removed per-frame `updateMatrixWorld(true)` + `applyMatrix4` for all ground units. Matrices are now computed exactly once on first visit (units are stationary), eliminating a full matrix propagation pass over every ground mesh every frame.
+- **§2.2 – O(1) alive check**: Replaced `groundUnits.includes(gu)` (O(n) linear scan) with a `gu.userData._alive` boolean flag. Flag is cleared to `false` before every splice, so the double-destroy guard in bomb/missile AoE paths is now constant-time.
+- **§2.3 – Removed `slice()` in bomb AoE**: `groundUnits.slice()` was creating a full array copy on every bomb detonation. The outer damage-collection loop only reads from `groundUnits` (splicing happens in the inner destroy loop), so the snapshot was unnecessary; replaced with a direct iteration.
+
+---
+
 > **Prompt:** "increase gun ammo capacity with every level (do not automatically reload, just increase capa, after reload it should gain full new capacity. increase bomb capacity every 5 levels, homing missiles flares and napalm every 10 lvls"
 
 ### Features

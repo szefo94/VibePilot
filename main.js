@@ -1201,18 +1201,18 @@ function updateAI(dt) {
             }
         }
     }
-    // Ground units (§2.1 — lazy-build local boxes, then applyMatrix4 each frame)
+    // Ground units (§2.1 — bake worldBoxes once at first visit; units are stationary so no per-frame update needed)
     groundUnits.forEach(u => {
-        u.updateMatrixWorld(true);
         if (!u.userData.partBoxes) {
+            u.updateMatrixWorld(true); // one-time: compute matrices before baking
             u.userData.partBoxes = [];
             u.traverse(child => {
                 if (!child.isMesh) return;
                 child.geometry.computeBoundingBox();
-                u.userData.partBoxes.push({ mesh: child, localBox: child.geometry.boundingBox.clone(), worldBox: new THREE.Box3() });
+                u.userData.partBoxes.push({ worldBox: new THREE.Box3().copy(child.geometry.boundingBox).applyMatrix4(child.matrixWorld) });
             });
+            u.userData._alive = true;
         }
-        u.userData.partBoxes.forEach(pb => pb.worldBox.copy(pb.localBox).applyMatrix4(pb.mesh.matrixWorld));
         if (u.userData.label) { u.getWorldPosition(_targetWorldPosition); u.userData.label.sprite.position.copy(_targetWorldPosition).add(_sv3.set(0, u.userData.hpOffsetY, 0)); }
         if (u.userData.turretPivot && u.userData.hp > 0) {
             u.userData.turretPivot.getWorldPosition(_wp);
@@ -1436,11 +1436,12 @@ function resolveCollisions() {
                         if (u.userData.type === 'airport') {
                             const turretIdxs = [];
                             u.children.filter(c => c.userData?.type === 'turret').forEach(t => {
-                                t.userData.hp = 0; destroyLabel(t.userData.label);
+                                t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label);
                                 const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
                             });
                             turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
                         }
+                        u.userData._alive = false;
                         createExplosion(u.position);
                         destroyLabel(u.userData.label);
                         disposeGroup(u); scene.remove(u); // disposes/removes turrets too (they're children of u)
@@ -1471,9 +1472,9 @@ function updateProjectiles(dt) {
         if (b.position.y <= groundLevel + b.userData.collisionRadius) {
             createExplosion(b.position);
             const bombAffectedBases = new Set();
-            // §4.1: snapshot prevents index corruption; collect then destroy to handle airport+turret order
+            // §4.1: collect then destroy to handle airport+turret order (no slice needed — outer loop only reads)
             const _bombDestroy = [];
-            for (const gu of groundUnits.slice()) {
+            for (const gu of groundUnits) {
                 if (gu.userData.protector && gu.userData.protector.userData.hp > 0) continue; // §4.1 protected
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     gu.userData.hp -= b.userData.damage; updateUnitLabel(gu.userData.label, gu.userData.hp);
@@ -1483,15 +1484,16 @@ function updateProjectiles(dt) {
             // §4.1: airports first — child turrets removed before the turrets themselves are iterated
             _bombDestroy.sort((a) => a.userData.type === 'airport' ? -1 : 1);
             for (const gu of _bombDestroy) {
-                if (!groundUnits.includes(gu)) continue; // already removed by airport child-cleanup
+                if (!gu.userData._alive) continue; // already removed by airport child-cleanup (§2.2)
                 if (gu.userData.type === 'airport') {
                     const turretIdxs = [];
                     gu.children.filter(c => c.userData?.type === 'turret').forEach(t => {
-                        t.userData.hp = 0; destroyLabel(t.userData.label);
+                        t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label);
                         const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
                     });
                     turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
                 }
+                gu.userData._alive = false;
                 createExplosion(gu.position); destroyLabel(gu.userData.label);
                 disposeGroup(gu); scene.remove(gu);
                 const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
@@ -1593,11 +1595,12 @@ function updateProjectiles(dt) {
                 }
                 _mDestroy.sort(a => a.userData.type === 'airport' ? -1 : 1);
                 for (const gu of _mDestroy) {
-                    if (!groundUnits.includes(gu)) continue;
+                    if (!gu.userData._alive) continue; // already removed by airport child-cleanup (§2.2)
                     if (gu.userData.type === 'airport') {
-                        const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
+                        const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
                         tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
                     }
+                    gu.userData._alive = false;
                     createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
                     const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
                     if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
@@ -1668,9 +1671,10 @@ function updateProjectiles(dt) {
                     gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
                     if (gu.userData.hp <= 0) {
                         if (gu.userData.type === 'airport') {
-                            const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
+                            const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
                             tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
                         }
+                        gu.userData._alive = false;
                         createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
                         const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
                         if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }

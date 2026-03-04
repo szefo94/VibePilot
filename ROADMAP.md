@@ -3,7 +3,7 @@
 > Based on analysis of `main.js`, `style.css`, and `Index.html`.
 > Proposals are grouped by theme and ordered roughly by impact vs. effort.
 >
-> **Completed:** §1.2, §1.3, §2.1–§2.7, §3.1–§3.6, §4.1–§4.5 — removed from this file.
+> **Completed:** §1.2, §1.3, §2.1–§2.7, §3.1–§3.6, §4.1–§4.5, ROADMAP §2.1–§2.3 — removed from this file.
 
 ---
 
@@ -27,28 +27,6 @@ Either use native ES modules (`<script type="module">`) or a simple bundler like
 
 ---
 
-## 2. Performance
-
-### 2.1 Skip `updateMatrixWorld` for stationary ground units
-
-`updateAI` calls `u.updateMatrixWorld(true)` on **every** ground unit every frame — but ground units never move after placement. Compute `worldBox` values once in the spawner (after `scene.add`), store them, and remove the per-frame `updateMatrixWorld` call entirely. This eliminates a full matrix propagation pass over all ground meshes each frame.
-
-### 2.2 `groundUnits.includes()` is O(n) in the bomb path
-
-The bomb AoE path calls `groundUnits.includes(gu)` to check if a unit is still alive after airport child-cleanup. Replace `groundUnits` lookups with a module-level `const _groundSet = new Set()` maintained in sync with the array (add on push, delete on splice). `_groundSet.has(gu)` is O(1).
-
-### 2.3 `groundUnits.slice()` allocates every bomb explosion
-
-The bomb AoE loop creates a snapshot array (`groundUnits.slice()`) on every detonation. Use a module-level scratch array cleared and filled in place:
-
-```js
-const _bombCandidates = [];
-// in bomb handler:
-_bombCandidates.length = 0;
-for (const gu of groundUnits) _bombCandidates.push(gu);
-```
-
----
 
 ## 3. Code Quality
 
