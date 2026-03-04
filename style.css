@@ -118,16 +118,23 @@ canvas {
     top: 10px;
     left: 50%;
     transform: translateX(-50%);
-    width: 38vw;
+    width: fit-content;
+    max-width: 38vw;
     display: flex;
     flex-direction: column;
     gap: 3px;
 }
+#conquered-panel:not(:has(.has-content)) {
+    display: none;
+}
 
 .cpanel-row {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 6px;
+}
+.cpanel-row.has-content {
+    display: flex;
 }
 
 .cpanel-label {
@@ -140,6 +147,7 @@ canvas {
 
 .cpanel-scroll-wrap {
     flex: 1;
+    min-width: 140px;
     overflow: hidden;
     white-space: nowrap;
 }

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+> **Prompt:** "increase gun ammo capacity with every level (do not automatically reload, just increase capa, after reload it should gain full new capacity. increase bomb capacity every 5 levels, homing missiles flares and napalm every 10 lvls"
+
+### Features
+- **Ammo capacity scaling with level**: On each level-up, ammo caps increase — no auto-reload, current ammo is unchanged; the new cap applies on next reload.
+  - GUN: +5 per level (60 → 65 → 70 → …)
+  - BOMB: +1 every 5 levels
+  - MISSILE / FLARE / NAPALM: +1 every 10 levels
+- **Conquered panel auto-hide**: Panel and individual rows are hidden until the first entry is added; panel collapses to `fit-content` width (max 38 vw) rather than a fixed 38 vw box.
+
+---
+
 > **Prompt:** "collecting green collectibles should also prompt progress, completing should be stated at row 2 below conquered bases. green collectibles should derive naming after star constellations. at row 3 there should be completed marker clusters. pick adequate naming scheme"
 
 ### Features

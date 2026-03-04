@@ -202,11 +202,11 @@ let isGameOver = false, isPaused = false;
 let pitchRate = 0, rollRate = 0, yawRate = 0, speed = .1;
 // Cooldowns
 let shootCooldown = 0, bombCooldown = 0;
-let gunAmmo = GUN_MAX_AMMO, gunReloadTimer = 0;
-let bombAmmo = BOMB_MAX_AMMO, bombReloadTimer = 0;
-let missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
-let flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
-let napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
+let gunMaxAmmo = GUN_MAX_AMMO, gunAmmo = GUN_MAX_AMMO, gunReloadTimer = 0;
+let bombMaxAmmo = BOMB_MAX_AMMO, bombAmmo = BOMB_MAX_AMMO, bombReloadTimer = 0;
+let missileMaxAmmo = MISSILE_MAX_AMMO, missileAmmo = MISSILE_MAX_AMMO, missileReloadTimer = 0;
+let flareMaxAmmo = FLARE_MAX_AMMO, flareAmmo = FLARE_MAX_AMMO, flareReloadTimer = 0, flareTimer = 0;
+let napalmMaxAmmo = NAPALM_MAX_AMMO, napalmAmmo = NAPALM_MAX_AMMO, napalmReloadTimer = 0;
 // Entities
 const bullets = [], bombs = [], missiles = [], missileTrailParticles = [], napalmBombs = [], napalmPatches = [], napalmFireParticles = [], flareParticles = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
@@ -364,6 +364,9 @@ function addXP(a) {
     while (xp >= xpToNextLevel) {
         level++; xp -= xpToNextLevel; xpToNextLevel = Math.floor(xpToNextLevel * 1.5);
         playerDamageMultiplier += Math.max(0, .25 - .01 * Math.max(0, level - 20)); // §4.3: gain shrinks by 0.01 per level above 20
+        gunMaxAmmo += 5;
+        if (level % 5  === 0) bombMaxAmmo++;
+        if (level % 10 === 0) { missileMaxAmmo++; flareMaxAmmo++; napalmMaxAmmo++; }
         levelElement.textContent = level; updateDamageUI();
     }
     xpElement.textContent = xp; xpToNextLevelElement.textContent = xpToNextLevel;
@@ -395,6 +398,7 @@ function addToConqueredRow(text, scrollId) {
     const wrap = scroll && scroll.parentElement; // cpanel-scroll-wrap
     if (!scroll || !wrap) return;
     const entry = document.createElement('span'); entry.className = 'conquered-entry'; entry.textContent = text; scroll.appendChild(entry);
+    wrap.closest('.cpanel-row').classList.add('has-content');
     requestAnimationFrame(() => {
         const overflow = scroll.scrollWidth - wrap.clientWidth;
         if (overflow > 0) {
@@ -1243,48 +1247,48 @@ function updateHUD() {
 }
 
 function updateAmmoHUD() {
-    const gunPct = gunAmmo / GUN_MAX_AMMO * 100;
+    const gunPct = gunAmmo / gunMaxAmmo * 100;
     gunBarEl.style.width = gunPct + '%';
     gunBarEl.style.background = gunAmmo === 0 ? 'transparent'
-        : gunAmmo < GUN_MAX_AMMO * 0.25 ? 'var(--hud-red)'
-        : gunAmmo < GUN_MAX_AMMO * 0.5  ? 'var(--hud-amber)'
+        : gunAmmo < gunMaxAmmo * 0.25 ? 'var(--hud-red)'
+        : gunAmmo < gunMaxAmmo * 0.5  ? 'var(--hud-amber)'
         : 'var(--hud-primary)';
-    gunStatusEl.textContent  = gunAmmo  <= 0 ? (gunReloadTimer  / TARGET_FPS).toFixed(1) + 's' : gunAmmo  + '/' + GUN_MAX_AMMO;
+    gunStatusEl.textContent  = gunAmmo  <= 0 ? (gunReloadTimer  / TARGET_FPS).toFixed(1) + 's' : gunAmmo  + '/' + gunMaxAmmo;
     gunStatusEl.style.color  = gunAmmo  <= 0 ? 'var(--hud-red)' : 'var(--hud-primary)';
 
-    const bombPct = bombAmmo / BOMB_MAX_AMMO * 100;
+    const bombPct = bombAmmo / bombMaxAmmo * 100;
     bombBarEl.style.width = bombPct + '%';
     bombBarEl.style.background = bombAmmo === 0 ? 'transparent'
         : bombAmmo === 1 ? 'var(--hud-red)'
         : 'var(--hud-orange)';
-    bombStatusEl.textContent = bombAmmo <= 0 ? (bombReloadTimer / TARGET_FPS).toFixed(1) + 's' : bombAmmo + '/' + BOMB_MAX_AMMO;
+    bombStatusEl.textContent = bombAmmo <= 0 ? (bombReloadTimer / TARGET_FPS).toFixed(1) + 's' : bombAmmo + '/' + bombMaxAmmo;
     bombStatusEl.style.color = bombAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
 
-    const missilePct = missileAmmo / MISSILE_MAX_AMMO * 100;
+    const missilePct = missileAmmo / missileMaxAmmo * 100;
     missileBarEl.style.width = missilePct + '%';
     missileBarEl.style.background = missileAmmo === 0 ? 'transparent'
         : missileAmmo === 1 ? 'var(--hud-red)'
         : 'var(--hud-orange)';
-    missileStatusEl.textContent = missileAmmo <= 0 ? (missileReloadTimer / TARGET_FPS).toFixed(1) + 's' : missileAmmo + '/' + MISSILE_MAX_AMMO;
+    missileStatusEl.textContent = missileAmmo <= 0 ? (missileReloadTimer / TARGET_FPS).toFixed(1) + 's' : missileAmmo + '/' + missileMaxAmmo;
     missileStatusEl.style.color = missileAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
 
-    const flarePct = flareAmmo / FLARE_MAX_AMMO * 100;
+    const flarePct = flareAmmo / flareMaxAmmo * 100;
     flareBarEl.style.width = (flareTimer > 0 ? 100 : flarePct) + '%';
     flareBarEl.style.background = flareTimer > 0 ? 'var(--hud-primary)'
         : flareAmmo === 0 ? 'transparent'
         : flareAmmo === 1 ? 'var(--hud-amber)'
         : 'var(--hud-primary)';
     flareStatusEl.textContent = flareTimer > 0 ? flareTimer.toFixed(0) + 'f'
-        : flareAmmo <= 0 ? (flareReloadTimer / TARGET_FPS).toFixed(1) + 's' : flareAmmo + '/' + FLARE_MAX_AMMO;
+        : flareAmmo <= 0 ? (flareReloadTimer / TARGET_FPS).toFixed(1) + 's' : flareAmmo + '/' + flareMaxAmmo;
     flareStatusEl.style.color = flareAmmo <= 0 && flareTimer <= 0 ? 'var(--hud-red)'
         : flareTimer > 0 ? 'var(--hud-primary)' : 'var(--hud-amber)';
 
-    const napalmPct = napalmAmmo / NAPALM_MAX_AMMO * 100;
+    const napalmPct = napalmAmmo / napalmMaxAmmo * 100;
     napalmBarEl.style.width = napalmPct + '%';
     napalmBarEl.style.background = napalmAmmo === 0 ? 'transparent'
         : napalmAmmo === 1 ? 'var(--hud-red)'
         : '#cc4400';
-    napalmStatusEl.textContent = napalmAmmo <= 0 ? (napalmReloadTimer / TARGET_FPS).toFixed(1) + 's' : napalmAmmo + '/' + NAPALM_MAX_AMMO;
+    napalmStatusEl.textContent = napalmAmmo <= 0 ? (napalmReloadTimer / TARGET_FPS).toFixed(1) + 's' : napalmAmmo + '/' + napalmMaxAmmo;
     napalmStatusEl.style.color = napalmAmmo <= 0 ? 'var(--hud-red)' : '#ff8844';
 }
 
@@ -1515,10 +1519,10 @@ function updateProjectiles(dt) {
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
     if (bombCooldown > 0) bombCooldown -= dt;
-    if (gunAmmo   <= 0) { gunReloadTimer  -= dt; if (gunReloadTimer  <= 0) { gunAmmo  = GUN_MAX_AMMO;  gunReloadTimer  = 0; } }
-    if (bombAmmo  <= 0) { bombReloadTimer -= dt; if (bombReloadTimer <= 0) { bombAmmo = BOMB_MAX_AMMO; bombReloadTimer = 0; } }
-    if (missileAmmo <= 0) { missileReloadTimer -= dt; if (missileReloadTimer <= 0) { missileAmmo = MISSILE_MAX_AMMO; missileReloadTimer = 0; } }
-    if (flareAmmo   <= 0) { flareReloadTimer   -= dt; if (flareReloadTimer   <= 0) { flareAmmo  = FLARE_MAX_AMMO;   flareReloadTimer   = 0; } }
+    if (gunAmmo   <= 0) { gunReloadTimer  -= dt; if (gunReloadTimer  <= 0) { gunAmmo  = gunMaxAmmo;    gunReloadTimer  = 0; } }
+    if (bombAmmo  <= 0) { bombReloadTimer -= dt; if (bombReloadTimer <= 0) { bombAmmo = bombMaxAmmo;   bombReloadTimer = 0; } }
+    if (missileAmmo <= 0) { missileReloadTimer -= dt; if (missileReloadTimer <= 0) { missileAmmo = missileMaxAmmo; missileReloadTimer = 0; } }
+    if (flareAmmo   <= 0) { flareReloadTimer   -= dt; if (flareReloadTimer   <= 0) { flareAmmo  = flareMaxAmmo;   flareReloadTimer   = 0; } }
     if (flareTimer   > 0) flareTimer -= dt;
     // Flare angel-wing particles
     for (let i = flareParticles.length - 1; i >= 0; i--) {
@@ -1529,7 +1533,7 @@ function updateProjectiles(dt) {
         fp.material.opacity = Math.max(0, fp.life / fp.maxLife);
         if (fp.life <= 0) { scene.remove(fp); fp.material.dispose(); flareParticles.splice(i, 1); }
     }
-    if (napalmAmmo  <= 0) { napalmReloadTimer  -= dt; if (napalmReloadTimer  <= 0) { napalmAmmo = NAPALM_MAX_AMMO;  napalmReloadTimer  = 0; } }
+    if (napalmAmmo  <= 0) { napalmReloadTimer  -= dt; if (napalmReloadTimer  <= 0) { napalmAmmo = napalmMaxAmmo;   napalmReloadTimer  = 0; } }
     // Missiles (§5.7)
     for (let i = missiles.length - 1; i >= 0; i--) {
         const m = missiles[i];
