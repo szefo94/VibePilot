@@ -334,6 +334,7 @@ function _gridQuery(x, z, r) {
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
 document.addEventListener('keydown', e => {
     if (isGameOver) return;
+    if (document.getElementById('splash-screen')) return;
     const k = e.key.toLowerCase();
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
     else if (k === 'e') { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }
@@ -1885,4 +1886,64 @@ function updateMinimap() {
 }
 
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);
-window.onload = () => { animate(); };
+window.onload = () => {
+    animate();
+    runSplash();
+};
+
+function runSplash() {
+    const splash   = document.getElementById('splash-screen');
+    const titleEl  = document.getElementById('splash-title');
+    const subEl    = document.getElementById('splash-subtitle');
+    const cursor   = document.getElementById('splash-cursor');
+    const TITLE    = 'Vibe Pilot';
+    const SUBTITLE = 'Objective: Crush enemies';
+    const TITLE_SPEED    = 110; // ms per character
+    const SUBTITLE_SPEED = 55;
+
+    // Move cursor to end of title text
+    function setCursor(el) { el.appendChild(cursor); }
+
+    // Helper: set element text while keeping cursor as last child
+    function setText(el, text) {
+        // Remove existing text nodes, keep cursor
+        [...el.childNodes].forEach(n => { if (n !== cursor) n.remove(); });
+        el.insertBefore(document.createTextNode(text), cursor);
+    }
+
+    // Phase 1: type TITLE
+    let i = 0;
+    setCursor(titleEl);
+    const titleTimer = setInterval(() => {
+        i++;
+        setText(titleEl, TITLE.slice(0, i));
+        if (i >= TITLE.length) {
+            clearInterval(titleTimer);
+            // Pause, then fade title out
+            setTimeout(() => {
+                titleEl.style.opacity = '0';
+                cursor.style.opacity  = '0';
+                // Phase 2: type SUBTITLE after fade
+                setTimeout(() => {
+                    cursor.style.opacity = '1';
+                    setCursor(subEl);
+                    let j = 0;
+                    const subTimer = setInterval(() => {
+                        j++;
+                        setText(subEl, SUBTITLE.slice(0, j));
+                        if (j >= SUBTITLE.length) {
+                            clearInterval(subTimer);
+                            // Pause, then fade entire splash out
+                            setTimeout(() => {
+                                cursor.style.animation = 'none';
+                                cursor.style.opacity   = '0';
+                                splash.style.opacity   = '0';
+                                setTimeout(() => splash.remove(), 1050);
+                            }, 1800);
+                        }
+                    }, SUBTITLE_SPEED);
+                }, 650);
+            }, 900);
+        }
+    }, TITLE_SPEED);
+}

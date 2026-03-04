@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+> **Prompt:** "add splash screen on respawn with some fancy aeronautic font. make it spell letters like V / Vi / Vib / … / Vibe Pilot then vibe pilot disappears and in same matter but smaller font below appears (like in old style computer terminal font) Objective: Crush enemies"
+
+### Features
+- **Splash screen**: Full-screen intro sequence on game load.
+  - `Vibe Pilot` types out letter-by-letter in **Orbitron** (bold aeronautic font, glowing green, 110 ms/char) with a blinking block cursor.
+  - After a 900 ms pause the title fades out; `Objective: Crush enemies` then types in **Share Tech Mono** (dimmer green terminal style, 55 ms/char).
+  - After 1.8 s the cursor stops and the entire splash fades over 1 s before being removed from the DOM.
+  - Keyboard input is blocked while the splash element is present, preventing accidental weapon fire.
+
+---
+
 > **Prompt:** "if missle hits player it should trigger explosion / update angular rates, make it progress bar, full when on full rotation acceleration empty when rotation is 0 / add speed/ velocity indicator min to max with progress bar" + "angular rates are positive and negative, do progress bar before letters and after so it is like <----->P<-----> etc and update rates on specific value" + "collision box info slightly overlaps coords box, fix it so it is above coords box"
 
 ### Features

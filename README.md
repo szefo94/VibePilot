@@ -7,6 +7,7 @@
 ## Table of Contents
 
 - [Controls](#controls)
+- [Splash Screen](#splash-screen)
 - [HUD](#hud)
 - [World](#world)
 - [Player](#player)
@@ -40,6 +41,21 @@
 | `B` | Toggle collision box debug view |
 | `N` | Toggle wing trails |
 | `Esc` | Pause / Resume |
+
+---
+
+## Splash Screen
+
+On game load a full-screen intro sequence plays before input is accepted:
+
+| Phase | Detail |
+|---|---|
+| Title type-out | `Vibe Pilot` spelled letter-by-letter in **Orbitron** (bold aeronautic font, glowing green) at 110 ms / char |
+| Cursor | Blinking block cursor follows the growing text |
+| Title fade | 900 ms pause → title opacity transitions to 0 over 600 ms |
+| Subtitle type-out | `Objective: Crush enemies` spelled in **Share Tech Mono** (terminal style, dimmer green) at 55 ms / char |
+| Dismiss | 1.8 s pause → cursor stops, entire overlay fades over 1 s → element removed from DOM |
+| Input guard | All keydown events are suppressed while the splash element exists |
 
 ---
 

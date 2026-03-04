@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap');
 
 :root {
     --hud-primary: #00ff88;
@@ -10,6 +10,62 @@
     --hud-border-bright: rgba(0, 255, 136, 0.7);
     --hud-glow: 0 0 8px rgba(0, 255, 136, 0.35), 0 0 20px rgba(0, 255, 136, 0.12);
     --text-glow: 0 0 5px rgba(0, 255, 136, 0.65);
+}
+
+/* ── Splash Screen ─────────────────────────────────────────────── */
+#splash-screen {
+    position: fixed;
+    inset: 0;
+    background: #060a06;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 1;
+    transition: opacity 1s ease;
+}
+
+#splash-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2rem, 7vw, 7rem);
+    font-weight: 900;
+    color: #00ff88;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 20px rgba(0, 255, 136, 0.9),
+        0 0 60px rgba(0, 255, 136, 0.4),
+        0 0 120px rgba(0, 255, 136, 0.15);
+    min-height: 1.3em;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+    white-space: nowrap;
+}
+
+#splash-subtitle {
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: clamp(0.7rem, 1.6vw, 1.4rem);
+    color: rgba(0, 255, 136, 0.65);
+    letter-spacing: 0.2em;
+    margin-top: 2.5em;
+    min-height: 1.4em;
+    white-space: nowrap;
+}
+
+#splash-cursor {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    background: #00ff88;
+    vertical-align: text-bottom;
+    animation: blink 0.75s step-end infinite;
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.8);
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
 }
 
 body {
