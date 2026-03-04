@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Pilot - Modular</title>
+    <link rel="stylesheet" href="style.css">
+</head><body>
+    <div id="player-stats" class="ui-overlay">
+        <span id="hp-display">HP: <span id="hp">100</span></span>
+        <span id="score-display">Score: <span id="score">0</span></span>
+        <span id="level-display">Level: <span id="level">1</span></span>
+        <span id="xp-display">XP: <span id="xp">0</span> / <span id="xp-to-next-level">100</span></span>
+    </div>
+
+    <div id="instructions" class="ui-overlay">
+        <strong>Controls:</strong><br>
+        - Up/Down Arrows: Pitch<br>
+        - Left/Right Arrows: Roll<br>
+        - A/D Keys: Yaw<br>
+        - W/S: Increase/Decrease Speed<br>
+        - Spacebar: Shoot (<span id="bullet-damage-value">1.00</span> Dmg)<br>
+        - E: Drop Bomb<br>
+        - F: Toggle Aiming Laser<br>
+        <strong style="color: #ffcc00;">(Watch out! Enemies shoot back!)</strong>
+    </div>
+    <div id="conquered-panel" class="ui-overlay"></div>
+    <div id="target-info" class="ui-overlay">
+        <strong>Targets:</strong><br>
+        <span style="color: #ff8800;">Airborne: <span id="enemy-distance">N/A</span></span><br>
+        <span style="color: #00ff88;">Hostile: <span id="ground-distance">N/A</span></span><br>
+        <span style="color: #ffcc00;">Marker: <span id="marker-distance">N/A</span></span>
+    </div>
+    <div id="debug-info" class="ui-overlay">
+        <strong>B: Toggle Collision Boxes</strong><br>
+        <span style="color:#00ff88;">■ Player</span><br>
+        <span style="color:#ffff00;">■ Obstacles</span><br>
+        <span style="color:#ff8800;">■ Ground Units</span><br>
+        <span style="color:#ff0000;">■ Air Enemies</span><br>
+        <strong>N: Toggle Wing Trails</strong>
+    </div>
+    <div id="map-constraints" class="ui-overlay">
+        <strong>Coords:</strong><br>
+        X: <span id="pos-x">0</span><br>
+        Y: <span id="pos-y">0</span><br>
+        Z: <span id="pos-z">0</span><br>
+        <strong>Rotation:</strong><br>
+        HDG: <span id="rot-hdg">0</span>°<br>
+        PCH: <span id="rot-pch">0</span>°<br>
+        BNK: <span id="rot-bnk">0</span>°<br>
+        <strong>Angular Rates:</strong><br>
+        Pitch: <span id="rate-pitch">+0.000</span><br>
+        Roll: &nbsp;<span id="rate-roll">+0.000</span><br>
+        Yaw: &nbsp;<span id="rate-yaw">+0.000</span>
+    </div>
+    <div id="minimap-container">
+        <canvas id="minimap"></canvas>
+    </div>
+    <div id="paused">
+        PAUSED<br>
+        <span style="font-size: 18px;">Press ESC to resume</span>
+    </div>
+    <div id="game-over">
+        GAME OVER!<br>
+        <span style="font-size: 18px;">Refresh to restart</span>
+    </div>
+
+    <!-- External library for 3D graphics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Your game logic -->
+    <script src="main.js"></script>
+</body>
+</html>
