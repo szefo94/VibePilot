@@ -31,8 +31,11 @@
 | `←` / `→` | Roll |
 | `A` / `D` | Yaw |
 | `W` / `S` | Increase / Decrease speed |
-| `Space` | Shoot |
+| `Space` | Shoot (machinegun) |
 | `E` | Drop bomb |
+| `R` | Fire homing missiles (pair) |
+| `Q` | Deploy flares |
+| `X` | Drop napalm bomb |
 | `F` | Toggle aiming laser |
 | `B` | Toggle collision box debug view |
 | `N` | Toggle wing trails |
@@ -44,18 +47,20 @@
 
 ### Panels
 
-- **Player Stats** — HP · Score · Level · XP / XP to next level
+- **Player Stats** — HP · Score · Level · XP / XP to next level · bullet damage multiplier
 - **Controls** — key bindings · current bullet damage value
 - **Target Info** — distance to nearest airborne enemy · nearest hostile ground unit · nearest marker
 - **Debug Info** — collision box legend (toggled with `B`) · wing trail toggle reminder (`N`)
-- **Coords / Nav** — current player X / Y / Z world position · heading / pitch / bank angles · live pitch / roll / yaw rates
-- **Conquered Panel** — scrolling ticker of eliminated base names
-- **Minimap** — rotating radar (bottom-left)
+- **Coords / Nav** — current player X / Y / Z world position · heading / pitch / bank angles
+  - **Angular rate bars** — dual progress bars flanking axis label (`[neg▓] P [▓pos]`): orange fills left for negative rate, green fills right for positive; numeric value shown to the right
+  - **Speed bar** — blue bar spanning min → max speed range
+- **Ammo HUD** — five rows (GUN / BOMB / MSLE / FLRE / NALM), each with a fill bar, `XX/MAX` count, and live reload countdown
+- **Conquered Panel** — three scrolling ticker rows: `BASE` (cyan) · `★ CNS` constellations (gold) · `◆ RNG` corridors (orange); panel and rows are hidden until first entry
 
 ### Transient Elements
 
 - Kill notifications (right edge, slide-out)
-- Congratulations banner (center screen, on base elimination)
+- Congratulations banner (centre screen, on base / squadron / constellation / corridor completion)
 - Paused overlay
 - Game Over overlay
 
@@ -92,10 +97,12 @@
 |---|---|
 | Body (fuselage) | `CylinderGeometry(0.45, 0.6, 4)` |
 | Nose | `ConeGeometry(0.45, 1.2)` |
-| Left wing | `BoxGeometry(6, 0.2, 1.5)` |
-| Right wing | `BoxGeometry(6, 0.2, 1.5)` |
+| Left / right wing | `BoxGeometry(6, 0.2, 1.5)` |
 | Tail fin | `BoxGeometry(0.2, 1.5, 1)` |
 | Horizontal stabiliser | `BoxGeometry(2.5, 0.15, 0.8)` |
+| Wing barrel launchers | Dark-grey cylinders at each wingtip (±5.9, −0.12, 0.55) |
+| Bomb pod | Horizontal cylinder under centre fuselage (0, −0.78, 0.2) |
+| Napalm containers | Two small angled cylinders under rear body (±0.36, −0.68, −1.4) |
 
 ### Collision
 
@@ -120,6 +127,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 - `frustumCulled = false` prevents the trail from disappearing based on heading.
 - Each frame the ring-buffer shifts forward one slot via `TypedArray.copyWithin`, inserting the current wing-tip world position at index 0.
+- Trails start hidden on spawn.
 
 ### Targeting Aids
 
@@ -156,26 +164,64 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 ## Weapons
 
-### Bullets
+### Machinegun (`Space`)
 
 | Property | Value |
 |---|---|
-| `bulletDamage` | 1 (× `playerDamageMultiplier`) |
-| `bulletSpeed` | 1.8 |
-| `bulletLife` | 150 frames |
-| `shootCooldownTime` | 4 frames |
+| Base damage | 1 × `playerDamageMultiplier` |
+| Speed | 1.8 |
+| Life | 150 frames |
+| Cooldown | 4 frames |
 | Geometry | `SphereGeometry(0.3)` |
 | Colour | `0xffa500` |
+| Starting ammo | 60 — increases **+5 per level** |
+| Reload time | ~3 s |
 
-### Bombs
+### Bombs (`E`)
 
 | Property | Value |
 |---|---|
-| `bombDamage` | 40 (× `playerDamageMultiplier`) |
-| `bombAoERadius` | 50 |
-| `bombCooldownTime` | 45 frames |
-| `gravity` | 0.008 |
+| Damage | 40 × `playerDamageMultiplier` |
+| AoE radius | 50 |
+| Cooldown | 45 frames |
+| Gravity | 0.008 /frame |
 | Geometry | `SphereGeometry(1.5)` |
+| Starting ammo | 4 — increases **+1 every 5 levels** |
+| Reload time | ~5 s |
+
+### Homing Missiles (`R`)
+
+| Property | Value |
+|---|---|
+| Damage | 80 × `playerDamageMultiplier` + AoE splash (radius 25) |
+| Launch speed | 0.5× bullet speed |
+| Top speed | 2× bullet speed (ramps up after drop phase) |
+| Drop phase | 22 frames — nose dips before homing engages |
+| Launch | Paired — two missiles from wingtip launchers |
+| Trail | Orange particles every 2.5 frames, 20-frame life |
+| Starting ammo | 3 — increases **+1 every 10 levels** |
+| Reload time | 10 s |
+
+### Flares (`Q`)
+
+| Property | Value |
+|---|---|
+| Effect | Deflects all enemy bullets for 3 s |
+| Visual | 20 gold particles in symmetric angel-wing arcs |
+| Particle life | `FLARE_DURATION` (180 frames) |
+| Spread speed | 0.05 – 0.10 units/frame |
+| Starting ammo | 2 — increases **+1 every 10 levels** |
+| Reload time | 15 s |
+
+### Napalm Bomb (`X`)
+
+| Property | Value |
+|---|---|
+| Damage | 8 × `playerDamageMultiplier` per 0.5 s, for 5 s |
+| AoE radius | 55 |
+| Visual | Rising fire-sphere particles across patch radius for full duration |
+| Starting ammo | 2 — increases **+1 every 10 levels** |
+| Reload time | 8 s |
 
 ### Explosions
 
@@ -185,6 +231,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | `explosionMaxSize` | 50 |
 | Geometry | `SphereGeometry(1)` |
 | Colour | `0xffa500` |
+| Triggers | Bomb impact · missile impact · unit destruction · enemy bullet hitting player |
 
 ---
 
@@ -209,6 +256,17 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 - Constant linear velocity across XZ plane
 - Respawns immediately on destruction
 
+### Enemy Bullets
+
+| Property | Value |
+|---|---|
+| Damage | 15 |
+| Speed | 1.2 |
+| Life | 200 frames |
+| Collision radius | 2.8 |
+| Geometry | `CylinderGeometry(0.75, 0.75, 5.5)` body + `ConeGeometry(0.75, 2)` tip |
+| Impact | Triggers explosion at hit point |
+
 ---
 
 ## Ground Units & Bases
@@ -220,21 +278,11 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | `tank` | 20 – 60 | 3 | yes | yes | Turret pivots to aim |
 | `turret` | 30 – 75 | 3 | yes | yes | Fixed base, rotating head |
 | `truck` | 5 | 2.5 | no | no | — |
-| `airport` | 150 | 1 | yes | no | Contains child turrets |
+| `airport` | 150 | 1 | yes | no | Contains child turrets; must be destroyed first to expose turrets |
 | `destroyer` | 120 – 300 | 5 | yes | yes | At water level |
 | `carrier` | 200 | 8 | no | no | At water level |
 | `hangar (arch)` | 200 | 1 | no | no | Bomb damage only |
 | `hangar (box)` | 200 | 1 | no | no | Bomb damage only |
-
-### Hostile Unit Shooting
-
-| Constant | Value |
-|---|---|
-| `hostileUnitShootingRange` | 600 |
-| `hostileUnitShootingCooldownTime` | 120 frames |
-| `enemyBulletDamage` | 5 |
-| `enemyBulletSpeed` | 0.8 |
-| `enemyBulletLife` | 200 frames |
 
 ### Base Groups
 
@@ -312,14 +360,27 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | Air unit destruction | XP value (80 – 300) |
 | Ground unit destruction | XP value (10 – 300) |
 | Base elimination bonus | 150 – 500 |
+| Constellation completed | +50 XP |
+| Corridor completed | +75 XP |
 
 ### XP & Levelling
 
-| Constant | Value |
+| Constant / Rule | Value |
 |---|---|
 | Starting `xpToNextLevel` | 100 |
-| Threshold growth per level | `× 1.5` |
-| `playerDamageMultiplier` gain | +0.25 per level |
+| Threshold growth per level | × 1.5 |
+| `playerDamageMultiplier` gain (levels 1–20) | +0.25 per level |
+| `playerDamageMultiplier` gain (levels 21+) | decreases by −0.01/level (level 21 = +0.24 … caps at 0) |
+
+### Ammo Capacity Scaling (on level-up)
+
+| Weapon | Increase |
+|---|---|
+| GUN | +5 per level |
+| BOMB | +1 every 5 levels |
+| MISSILE / FLARE / NAPALM | +1 every 10 levels |
+
+> New capacity applies on next reload — current ammo is not auto-reloaded.
 
 ---
 
@@ -333,19 +394,16 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | Stalactite / stalagmite | `ConeGeometry` | part of `numObstacles` |
 | Torus ring | `TorusGeometry` | `numHoopChains = 8` |
 
-### Collectibles
+### Collectibles — Constellation System
 
-- Count: `numCollectibleChains = 20` chains
-- `collectibleRadius = 1.5`
-- Colour: `0x00ff44`
-- Reward: 5 points on pickup
+- Count: `numCollectibleChains = 20` chains, each named after a star constellation (Orion, Cassiopeia, Perseus … Vela)
+- `collectibleRadius = 1.5`, colour: `0x00ff44`
+- Per-pickup notification: `★ Name N/total`; completing a chain awards +50 XP and adds an entry to conquered panel row 2
 
-### Markers (Hoops)
+### Markers — Corridor System
 
-- Attached to torus rings
-- `markerRadius = 5`
-- Colour: `0xFFD700`
-- Reward: 10 points on fly-through
+- Each hoop chain is named `Corridor Alpha / Beta / … / Theta`
+- Per-ring notification: `◆ Name N/total`; completing all rings awards +75 XP and adds an entry to conquered panel row 3
 
 ---
 
@@ -357,6 +415,16 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | `MINIMAP_VIEW_RANGE` | 750 units |
 | Shape | Circle (clipped) |
 | Orientation | Rotates to player heading |
+| Sweep period | 3 s |
+
+### Radar Sweep
+
+The minimap operates as a real radar:
+
+- Three concentric range rings at 33 / 66 / 100 % of the view radius.
+- A rotating sweep line completes one full revolution every 3 s; a pie-slice gradient trail fades behind it.
+- On each sweep completion all entity positions are captured into a frozen `_radarBlips[]` snapshot. Blips do not move between sweeps — they update atomically once every 3 seconds.
+- The player's own position and heading are also frozen at sweep time, so the player triangle and all relative blip positions always reflect the same snapshot moment.
 
 ### Legend
 
@@ -381,10 +449,10 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Constant | Default | Description |
 |---|---|---|
-| `MAP_BOUNDARY` | 2 000 | Half-extent of the playable square in world units. Units and the player are turned back at this edge. |
-| `groundLevel` | -50 | Y position of the ground and water planes. Also the baseline for altitude calculations. |
-| `ceilingLevel` | 150 | Y position of the ceiling plane. Player and airborne units are bounded below this. |
-| `waterLevel` | `groundLevel + 0.5` | Y position of the water surface mesh, rendered just above the ground plane. |
+| `MAP_BOUNDARY` | 2 000 | Half-extent of the playable square in world units. |
+| `groundLevel` | -50 | Y position of the ground and water planes. |
+| `ceilingLevel` | 150 | Y position of the ceiling plane. |
+| `waterLevel` | `groundLevel + 0.5` | Y position of the water surface mesh. |
 
 ### Flight
 
@@ -394,39 +462,44 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | `minSpeed` | 0.02 | Minimum forward speed; plane never fully stops. |
 | `acceleration` | 0.003 | Speed gained per frame when `W` is held. |
 | `deceleration` | 0.002 | Speed lost per frame when `S` is held. |
-| `naturalDeceleration` | 0.0005 | Passive speed bleed applied every frame with no throttle input. |
+| `naturalDeceleration` | 0.0005 | Passive speed bleed each frame with no throttle input. |
 | `maxPitchRate` | 0.025 | Maximum pitch angular velocity (rad/frame). |
 | `maxRollRate` | 0.035 | Maximum roll angular velocity (rad/frame). |
 | `maxYawRate` | 0.030 | Maximum yaw angular velocity (rad/frame). |
-| `rotAccel` | 0.00085 | Angular acceleration applied per frame while a rotation key is held. Higher = snappier turns. |
-| `rotDamping` | 0.85 | Multiplier applied to rotation rate each frame when no key is held. `0` = instant stop, `1` = no decay. |
+| `rotAccel` | 0.00085 | Angular acceleration per frame while a rotation key is held. |
+| `rotDamping` | 0.85 | Multiplier applied to rotation rate each frame with no key held. |
 
 ### Weapons
 
 | Constant | Default | Description |
 |---|---|---|
-| `bulletDamage` | 1 | Base damage per bullet before `playerDamageMultiplier` is applied. |
+| `bulletDamage` | 1 | Base bullet damage before `playerDamageMultiplier`. |
 | `bulletSpeed` | 1.8 | Bullet travel speed (units/frame). |
-| `bulletLife` | 150 | Number of frames before a bullet is removed from the scene. |
+| `bulletLife` | 150 | Frames before a bullet is removed. |
 | `shootCooldownTime` | 4 | Minimum frames between two player shots. |
-| `bombDamage` | 40 | Direct hit damage per bomb before `playerDamageMultiplier`. |
-| `bombAoERadius` | 50 | Radius of the area-of-effect damage zone on bomb explosion. |
+| `bombDamage` | 40 | Direct hit damage per bomb before multiplier. |
+| `bombAoERadius` | 50 | Radius of bomb AoE damage zone. |
 | `bombCooldownTime` | 45 | Minimum frames between two bomb drops. |
-| `gravity` | 0.008 | Downward velocity added to a bomb per frame after release. |
+| `gravity` | 0.008 | Downward velocity added to a bomb per frame. |
+| `missileDamage` | 80 | Missile direct hit damage before multiplier. |
+| `missileAoERadius` | 25 | Radius of missile AoE splash. |
+| `FLARE_DURATION` | 180 frames | How long flares deflect enemy bullets (~3 s). |
+| `napalmDamage` | 8 | Napalm damage per tick before multiplier. |
+| `napalmRadius` | 55 | Radius of napalm patch. |
 
 ### Enemies
 
 | Constant | Default | Description |
 |---|---|---|
-| `numEnemies` | 10 | Total airborne enemy fighters alive at any time. A new one spawns immediately on each kill. |
+| `numEnemies` | 10 | Total airborne enemy fighters alive at any time. |
 | `enemySpeed` | 0.05 | Constant movement speed of enemy fighters (units/frame). |
-| `enemyScale` | 2 | Uniform scale applied to all enemy fighter meshes. Also used as the part collision radius. |
-| `enemyPartHP` | 1 | HP per individual mesh part; total HP = `enemyPartHP × 4 × level`. |
-| `enemyBulletDamage` | 5 | Damage dealt to the player per hostile bullet hit. |
-| `enemyBulletSpeed` | 0.8 | Travel speed of all hostile bullets (units/frame). |
-| `enemyBulletLife` | 200 | Number of frames before a hostile bullet is removed. |
-| `hostileUnitShootingRange` | 600 | Distance (units) within which a hostile unit will open fire on the player. |
-| `hostileUnitShootingCooldownTime` | 120 | Frames between successive shots from a single hostile unit (~2 s at 60 fps). |
+| `enemyScale` | 2 | Uniform scale applied to all enemy fighter meshes. |
+| `enemyPartHP` | 1 | HP per mesh part; total HP = `enemyPartHP × 4 × level`. |
+| `enemyBulletDamage` | 15 | Damage dealt to the player per hostile bullet hit. |
+| `enemyBulletSpeed` | 1.2 | Travel speed of all hostile bullets (units/frame). |
+| `enemyBulletLife` | 200 | Frames before a hostile bullet is removed. |
+| `hostileUnitShootingRange` | 600 | Distance within which a hostile unit will open fire. |
+| `hostileUnitShootingCooldownTime` | 120 | Frames between successive shots from a single unit. |
 
 ### Spawn Counts
 
@@ -434,13 +507,13 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 |---|---|---|
 | `numAirbases` | 5 | Number of airbase complexes generated at world init. |
 | `numForwardBases` | 8 | Number of forward operating bases generated at world init. |
-| `numCarrierGroups` | 2 | Number of carrier strike groups (carrier + escorts) generated at world init. |
+| `numCarrierGroups` | 2 | Number of carrier strike groups generated at world init. |
 | `numDestroyerSquadrons` | 3 | Number of destroyer-only naval squadrons generated at world init. |
-| `numHoverWings` | 3 | Number of Hover Wing airborne squadrons (helicopters + balloons). |
-| `numStrikeWings` | 2 | Number of Strike Wing airborne squadrons (fighters + tankers + AC-130). |
-| `numObstacles` | 80 | Total obstacle objects (pillars, cones, stalactites) distributed across the map. |
-| `numCollectibleChains` | 20 | Number of collectible point chains spawned at world init. |
-| `numHoopChains` | 8 | Number of torus hoop chains with attached score markers. |
+| `numHoverWings` | 3 | Number of Hover Wing airborne squadrons. |
+| `numStrikeWings` | 2 | Number of Strike Wing airborne squadrons. |
+| `numObstacles` | 80 | Total obstacle objects distributed across the map. |
+| `numCollectibleChains` | 20 | Number of collectible constellation chains. |
+| `numHoopChains` | 8 | Number of torus hoop corridor chains. |
 
 ---
 
@@ -450,104 +523,108 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Function | Signature | Description |
 |---|---|---|
-| `randomRange` | `(min, max) → number` | Returns a uniformly distributed random float in `[min, max)`. |
-| `addXP` | `(amount) → void` | Adds XP to the player, triggers level-up loop if threshold crossed, updates all related HUD elements. |
-| `updateDamageUI` | `() → void` | Refreshes the bullet damage readout in the Controls panel to reflect the current `playerDamageMultiplier`. |
+| `randomRange` | `(min, max) → number` | Uniformly distributed random float in `[min, max)`. |
+| `addXP` | `(amount) → void` | Adds XP, triggers level-up loop if threshold crossed, scales ammo caps, updates HUD. |
+| `updateDamageUI` | `() → void` | Refreshes the bullet damage readout in the Controls panel. |
 
 ### Wing Trails
 
 | Function | Signature | Description |
 |---|---|---|
-| `createWingTrail` | `() → TrailData` | Allocates a `Float32Array` ring buffer for positions and colours, builds a `THREE.BufferGeometry` with both attributes, wraps it in a `THREE.Points` object added to the scene, and returns a `TrailData` object `{ pts, positions, colors, count }`. |
-| `updateWingTrail` | `(trail, tipLocal) → void` | Converts `tipLocal` (a local-space wing-tip offset) to world space via `plane.localToWorld`, shifts the position ring buffer back one slot with `copyWithin`, writes the new world position at index 0, recomputes the vertex colour fade for each active point, marks both buffer attributes as dirty, and updates the draw range to `trail.count`. |
+| `createWingTrail` | `() → TrailData` | Allocates a ring buffer for positions and colours, builds a `THREE.Points` object, returns `TrailData`. |
+| `updateWingTrail` | `(trail, tipLocal) → void` | Converts tip to world space, shifts ring buffer, recomputes fade colours, marks attributes dirty. |
 
 ### UI / Notifications
 
 | Function | Signature | Description |
 |---|---|---|
-| `showNotification` | `(text, isEliminated?) → void` | Spawns a kill notification div on the right edge that slides off-screen after ~8.5 s. `isEliminated` applies the red colour variant. |
-| `showCongratsBanner` | `(bmName) → void` | Displays a centred congratulations overlay when a base group is fully eliminated; auto-fades after 2.5 s. |
-| `addToConqueredPanel` | `(bmName) → void` | Appends a base name entry to the conquered ticker panel; triggers a CSS scroll animation if the content overflows. |
-| `notifyBase` | `(unit) → void` | Called whenever a unit's HP reaches zero. Decrements the owning base's alive count and, on full elimination, awards bonus XP and fires the congrats/ticker UI. |
+| `showNotification` | `(text, isEliminated?) → void` | Spawns a kill notification that slides off-screen after ~8.5 s. |
+| `showCongratsBanner` | `(bmName) → void` | Centred congratulations overlay; auto-fades after 2.5 s. |
+| `addToConqueredRow` | `(rowEl, name) → void` | Appends an entry to a conquered ticker row; shows the row and panel on first entry. |
+| `notifyBase` | `(unit) → void` | Decrements base alive count; on full elimination awards bonus XP and fires congrats/ticker UI. |
 
 ### Labels
 
 | Function | Signature | Description |
 |---|---|---|
-| `createUnitLabel` | `(name, level, initialHp, maxHp) → LabelData` | Creates a canvas-texture sprite with the unit name, level badge, and an HP bar. Returns a `LabelData` object containing the sprite, canvas, and texture for later updates. |
-| `updateUnitLabel` | `(labelData, currentHp) → void` | Redraws the HP bar on an existing label canvas and marks the texture as needing upload. |
+| `createUnitLabel` | `(name, level, initialHp, maxHp) → LabelData` | Canvas-texture sprite with name, level badge, and HP bar. |
+| `updateUnitLabel` | `(labelData, currentHp) → void` | Redraws HP bar on existing label canvas. |
 
 ### Ground Visuals
 
 | Function | Signature | Description |
 |---|---|---|
-| `createGroundUnit` | `(type) → THREE.Group` | Builds and returns the 3D mesh group for one of the named ground unit types (`tank`, `turret`, `truck`, `airport`, `destroyer`, `carrier`). Sets `userData` with HP, level, collision boxes, and shooting state. |
-| `createHangar` | `(variant?) → THREE.Group` | Returns a hangar mesh in either `'arch'` (Quonset) or `'box'` (rectangular) form. Hangars are bomb-only targets and belong to base groups. |
+| `createGroundUnit` | `(type) → THREE.Group` | Builds mesh group for a named ground unit type with full `userData`. |
+| `createHangar` | `(variant?) → THREE.Group` | Returns a hangar mesh in `'arch'` or `'box'` form. |
 
 ### Air Visuals
 
 | Function | Signature | Description |
 |---|---|---|
-| `createHelicopterVisual` | `() → THREE.Group` | Returns a two-level group: outer group receives the per-frame orbit rotation; inner group holds the fuselage, twin rotors, tail boom, and tail rotor with a fixed `−π/2` body offset so the nose faces the direction of orbit. |
-| `createBalloonVisual` | `() → THREE.Group` | Returns a group containing a large sphere envelope, hanging gondola, and connecting cable. Stationary unit — no movement applied. |
-| `createFighterVisual` | `() → THREE.Group` | Returns a marine-blue fighter group with fuselage, swept wings, vertical tail, and a cockpit half-sphere. Oriented for linear forward flight. |
-| `createTankerVisual` | `() → THREE.Group` | Returns a large light-grey transport group with a wide fuselage, broad wing span, four under-wing engines, and a T-tail. |
-| `createAC130Visual` | `() → THREE.Group` | Returns a two-level group (same inner/outer pattern as helicopter) with a boxy dark-olive fuselage, wide wings, four engines, and a rear tail assembly. |
+| `createHelicopterVisual` | `() → THREE.Group` | Fuselage, twin rotors, tail boom, tail rotor. |
+| `createBalloonVisual` | `() → THREE.Group` | Sphere envelope, gondola, and connecting cable. |
+| `createFighterVisual` | `() → THREE.Group` | Fuselage, swept wings, vertical tail, cockpit half-sphere. |
+| `createTankerVisual` | `() → THREE.Group` | Wide fuselage, broad wingspan, four under-wing engines, T-tail. |
+| `createAC130Visual` | `() → THREE.Group` | Boxy fuselage, wide wings, four engines, rear tail assembly. |
 
 ### Air Unit Lifecycle
 
 | Function | Signature | Description |
 |---|---|---|
-| `createAirUnit` | `(type, x, y, z) → AirUnit` | Calls the correct visual builder, sets position, applies `scale(3,3,3)`, creates a label sprite, initialises all stat fields (`hp`, `collisionRadius`, `xpValue`, `isHostile`, `userData`), and adds the group to the scene. Returns the full `AirUnit` object. |
-| `destroyAirUnit` | `(au, idx) → void` | Triggers an explosion at the unit's position, removes the group and label from the scene, splices the unit from `airUnits`, awards XP and score, then calls `notifyBase` to update the owning squadron. |
+| `createAirUnit` | `(type, x, y, z) → AirUnit` | Calls visual builder, sets position, creates label, initialises stats, adds to scene. |
+| `destroyAirUnit` | `(au, idx) → void` | Explosion, remove group and label, splice from `airUnits`, award XP, call `notifyBase`. |
 
 ### Spawners
 
 | Function | Signature | Description |
 |---|---|---|
-| `createIslets` | `(count) → void` | Generates `count` flat cylinder platforms at random positions within `MAP_BOUNDARY * 0.8` and records them in the `islets` array for later spawn queries. |
-| `createObstacles` | `() → void` | Populates the world with pillars (cylinders), stalactites/stalagmites (cones), and hoop chains (torus rings) up to `numObstacles`. All are added to the `obstacles` array for collision testing. |
-| `createAllUnits` | `() → void` | Master initialisation function. Calls every spawner in order: islets, obstacles, carrier groups, destroyer squadrons, airbases, forward bases, collectible chains, hoop chains, hover wings, strike wings. |
-| `spawnSingleEnemy` | `() → void` | Spawns one enemy fighter at a random position outside the safe zone. Always called again immediately when an enemy is destroyed, keeping the live count at `numEnemies`. |
-| `spawnCarrierStrikeGroup` | `(cx, cz) → void` | Places a carrier and 3–4 destroyer escorts in formation at water level, plus optional hangars on a nearby islet. Registers a named fleet `baseMarker`. |
-| `spawnDestroyerSquadron` | `(cx, cz) → void` | Places 2–3 destroyers in a loose formation at water level and registers a named squadron `baseMarker`. |
-| `spawnAirbase` | `(cx, cz, islet) → void` | Places an airport, defensive tanks and turrets, and hangars on the given islet. Registers a named airbase `baseMarker`. |
-| `spawnForwardBase` | `(cx, cz, islet) → void` | Places a mix of tanks, trucks, and hangars on an islet. Registers a named forward base `baseMarker`. |
-| `spawnHoverWing` | `(cx, cz) → void` | Spawns 2–3 helicopters (orbiting) and 1–2 balloons (stationary) centred around `(cx, cz)`. Registers a Hover Wing `baseMarker` with `bonusXp = 350`. |
-| `spawnStrikeWing` | `(cx, cz) → void` | Spawns 2–3 fighters (linear), optionally a tanker, and optionally an AC-130 (orbiting) centred around `(cx, cz)`. Registers a Strike Wing `baseMarker` with `bonusXp = 500`. |
-| `spawnCollectibleChains` | `(count) → void` | Generates `count` chains of green collectible spheres in various spatial patterns (line, circle, spiral, etc.). |
-| `spawnHoopChains` | `(count) → void` | Generates `count` chains of torus hoop obstacles, each torus carrying a golden score marker in its centre. |
-| `spawnSingleHoopWithMarker` | `() → void` | Creates one standalone torus at a random position and attaches a score marker to it. Used by `spawnHoopChains`. |
-| `addCollectibleAt` | `(x, y, z) → void` | Instantiates a single collectible sphere at the given world position and registers it in the `collectibles` array. |
+| `createIslets` | `(count) → void` | Generates flat cylinder platforms at random positions. |
+| `createObstacles` | `() → void` | Populates world with pillars, stalactites, and hoop chains. |
+| `createAllUnits` | `() → void` | Master init: calls every spawner in order. |
+| `spawnSingleEnemy` | `() → void` | Spawns one enemy fighter; called again immediately on kill. |
+| `spawnCarrierStrikeGroup` | `(cx, cz) → void` | Carrier + escorts at water level. |
+| `spawnDestroyerSquadron` | `(cx, cz) → void` | 2–3 destroyers in loose formation at water level. |
+| `spawnAirbase` | `(cx, cz, islet) → void` | Airport, tanks, turrets, and hangars on an islet. |
+| `spawnForwardBase` | `(cx, cz, islet) → void` | Tanks, trucks, and hangars on an islet. |
+| `spawnHoverWing` | `(cx, cz) → void` | 2–3 helicopters (orbiting) + 1–2 balloons (stationary). |
+| `spawnStrikeWing` | `(cx, cz) → void` | 2–3 fighters + optional tanker + optional AC-130 (orbiting). |
+| `spawnCollectibleChains` | `(count) → void` | Constellation-named chains of green collectibles. |
+| `spawnHoopChains` | `(count) → void` | Corridor-named torus hoop chains with score markers. |
+| `addCollectibleAt` | `(x, y, z) → void` | Single collectible at given world position. |
 
 ### Islet Helpers
 
 | Function | Signature | Description |
 |---|---|---|
-| `clampToIslet` | `(px, pz, islet) → {x, z}` | Returns the nearest point on the islet's disc boundary to `(px, pz)`. Used to place units on an islet surface when the raw random position falls outside. |
-| `isOnAnyIslet` | `(px, pz) → boolean` | Returns `true` if the XZ position lies within the radius of any islet. Used to distinguish land from water spawn zones. |
-| `getNearestIslet` | `(x, z) → Islet` | Iterates all islets and returns the one whose centre is closest to `(x, z)`. Used to attach hangars and assets to the nearest land mass. |
+| `clampToIslet` | `(px, pz, islet) → {x, z}` | Nearest point on islet disc to `(px, pz)`. |
+| `isOnAnyIslet` | `(px, pz) → boolean` | Whether XZ position lies within any islet radius. |
+| `getNearestIslet` | `(x, z) → Islet` | Islet whose centre is closest to `(x, z)`. |
 
 ### Collision Math
 
 | Function | Signature | Description |
 |---|---|---|
-| `pillarHitsBox` | `(px, pz, pr, box) → boolean` | Tests whether an infinite vertical cylinder (pillar) of radius `pr` centred at `(px, pz)` overlaps an axis-aligned bounding box in the XZ plane. |
-| `coneHitsSphere` | `(apex, base, baseR, center, sphereR) → boolean` | Tests whether a finite cone (apex point, base centre, base radius) intersects a sphere (centre, radius) using parametric projection along the cone axis. Used for stalactite/stalagmite collision. |
+| `pillarHitsBox` | `(px, pz, pr, box) → boolean` | Vertical cylinder vs AABB in XZ plane. |
+| `coneHitsSphere` | `(apex, base, baseR, center, sphereR) → boolean` | Finite cone vs sphere using parametric projection. |
 
 ### Actions
 
 | Function | Signature | Description |
 |---|---|---|
-| `fireBullet` | `() → void` | Spawns a bullet sphere at the plane's nose, inheriting the plane's world direction and multiplying damage by `playerDamageMultiplier`. Adds it to the `bullets` array. |
-| `dropBomb` | `() → void` | Spawns a bomb at the plane's belly with forward velocity and a downward gravity component. Adds it to the `bombs` array. On ground impact, triggers AoE damage and an explosion effect. |
-| `fireHostileBullet` | `(unit) → void` | Spawns an enemy bullet from the given unit directed towards the player's current position. Adds it to the `enemyBullets` array. |
+| `fireBullet` | `() → void` | Spawns a bullet at the plane's nose with damage multiplied by `playerDamageMultiplier`. |
+| `dropBomb` | `() → void` | Spawns a bomb with forward velocity; AoE + explosion on ground impact. |
+| `fireHomingMissiles` | `() → void` | Fires two missiles from wingtip launchers with two-phase flight (drop then home). |
+| `deployFlares` | `() → void` | Spawns angel-wing particle burst; deflects enemy bullets for `FLARE_DURATION`. |
+| `dropNapalmBomb` | `() → void` | Spawns napalm bomb; creates burn patch on ground impact with fire particles. |
+| `fireHostileBullet` | `(unit) → void` | Enemy bullet from unit position directed toward player. |
+| `createExplosion` | `(position) → void` | Spawns a growing/fading explosion sphere tracked by `updateExplosions(dt)`. |
 
 ### Game Lifecycle
 
 | Function | Signature | Description |
 |---|---|---|
-| `destroyLogicalEnemy` | `(id) → void` | Removes all mesh parts and the label for the enemy with the given UUID, splices it from `enemies`, awards 25 XP and score, then immediately calls `spawnSingleEnemy` to maintain the enemy count. |
-| `triggerGameOver` | `() → void` | Sets `isGameOver`, stops the plane, hides all unit labels, and shows the Game Over overlay with the final score. |
-| `animate` | `() → void` | The main `requestAnimationFrame` loop. Each frame: processes flight input, moves all entities, resolves all collisions, updates HUD text, toggles debug helpers, positions the camera, and calls `updateMinimap`. |
-| `updateMinimap` | `() → void` | Clears the minimap canvas, applies a heading-aligned rotation transform, then draws islets, all unit types (ground, air, enemies, collectibles, markers), base squares with labels, and the player indicator. |
+| `destroyLogicalEnemy` | `(id) → void` | Removes enemy mesh, awards XP, respawns immediately. |
+| `triggerGameOver` | `() → void` | Sets `isGameOver`, stops plane, shows Game Over overlay. |
+| `updateRadarSnapshot` | `() → void` | Captures all entity positions + player pos/heading into `_radarBlips[]` and `_radarPlayerPos`. Called once per 3 s sweep cycle. |
+| `animate` | `() → void` | Main `requestAnimationFrame` loop — physics, AI, collisions, HUD, camera, minimap. |
+| `updateMinimap` | `() → void` | Draws radar rings, sweep trail, sweep line, then all frozen blips from `_radarBlips[]`. |
