@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+> **Prompt:** "maybe this will improve performance, do radar like circles on minimap, animate scan every 3 seconds and synchronize with minimap update" + "with every sweep completed radar should update location of elements, only one update should be made to radar during that time" + "player location should also be frozen until full sweep"
+
+### Features
+- **Radar minimap**: Minimap now operates like a real radar — concentric range rings (33 / 66 / 100 % radius) and a rotating sweep line (one full revolution per 3 s) overlaid on the map.
+- **Snapshot-based blips**: All entities (enemies, air units, ground units, base markers, collectibles, markers) are captured into a frozen `_radarBlips[]` array on each sweep completion. Blip positions do not move between sweeps — they update atomically once every 3 seconds, exactly when the sweep line returns to north.
+- **Player frozen too**: The player's world position and heading are also snapshotted at sweep time. The minimap projection reference (`playerPos`, `playerAngle`) is frozen for the full sweep cycle so the player triangle and all relative blip positions update together.
+
+---
+
 > **Prompt:** "do performance paragraph from roadmap file"
 
 ### Performance

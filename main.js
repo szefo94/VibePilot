@@ -145,6 +145,11 @@ const _wp = new THREE.Vector3(); // scratch for getWorldPosition
 // --- THREE.Clock for delta-time (§3.6) ---
 const clock = new THREE.Clock();
 let _minimapTimer = 0; // seconds since last minimap redraw (§2.5)
+let _radarSweepAngle = -Math.PI / 2; // radar sweep — starts at top (north)
+let _radarCycleTimer = 3.0;          // trigger snapshot immediately on first frame
+let _radarBlips = [];                 // frozen positions updated once per sweep
+const _radarPlayerPos = new THREE.Vector3(); // frozen player world position at snapshot
+let _radarPlayerAngle = 0;           // frozen player heading at snapshot
 
 // --- Aiming & Targeting ---
 const laserMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
@@ -1760,6 +1765,14 @@ function animate() {
     updateProjectiles(dt);
     updateDebugBoxes();
     updateCamera();
+    // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end
+    _radarSweepAngle += rawDelta * (Math.PI * 2 / 3);
+    _radarCycleTimer += rawDelta;
+    if (_radarCycleTimer >= 3.0) {
+        _radarCycleTimer -= 3.0;
+        _radarSweepAngle = -Math.PI / 2; // snap back to north, keeping sweep in sync
+        updateRadarSnapshot();
+    }
     // Throttled minimap redraw — 15 fps regardless of game frame rate (§2.5)
     _minimapTimer += rawDelta;
     if (_minimapTimer >= MINIMAP_REFRESH_S) { updateMinimap(); _minimapTimer = 0; }
@@ -1769,11 +1782,53 @@ function animate() {
 // ================================================================
 // --- Minimap ---
 // ================================================================
+function updateRadarSnapshot() {
+    _radarPlayerPos.copy(plane.position);
+    plane.getWorldDirection(_sv1);
+    _radarPlayerAngle = Math.atan2(_sv1.x, _sv1.z);
+    _radarBlips = [];
+    markers.forEach(m => _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: 'yellow', shape: 'dot' }));
+    collectibles.forEach(c => _radarBlips.push({ wx: c.position.x, wz: c.position.z, color: '#00ff44', shape: 'dot' }));
+    enemies.forEach(e => { if (e.parts.length > 0) _radarBlips.push({ wx: e.parts[0].position.x, wz: e.parts[0].position.z, color: 'red', shape: 'dot' }); });
+    groundUnits.forEach(u => { if (u.userData.hp > 0) { u.getWorldPosition(_wp); _radarBlips.push({ wx: _wp.x, wz: _wp.z, color: u.userData.isHostile ? 'orange' : 'white', shape: 'dot' }); } });
+    airUnits.forEach(au => { if (au.hp > 0) _radarBlips.push({ wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
+    baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
+}
+// ================================================================
 function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
-    const playerPos = plane.position, scale = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE;
-    plane.getWorldDirection(_sv1);
-    const playerAngle = Math.atan2(_sv1.x, _sv1.z);
+    const playerPos = _radarPlayerPos, scale = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE;
+    const playerAngle = _radarPlayerAngle;
+    // --- Radar rings + sweep (drawn in screen space before world-rotated content) ---
+    const cx = MINIMAP_SIZE / 2, cy = MINIMAP_SIZE / 2, maxR = MINIMAP_SIZE / 2;
+    // Concentric range rings
+    minimapCtx.lineWidth = 1;
+    [0.33, 0.66, 1.0].forEach(f => {
+        minimapCtx.strokeStyle = `rgba(0,210,90,${f === 1.0 ? 0.25 : 0.12})`;
+        minimapCtx.beginPath(); minimapCtx.arc(cx, cy, maxR * f, 0, Math.PI * 2); minimapCtx.stroke();
+    });
+    // Sweep trail — 8 graduated slices fading behind the sweep line
+    const TRAIL_ARC = Math.PI * 0.55, STEPS = 10;
+    for (let i = 0; i < STEPS; i++) {
+        const t = i / STEPS;
+        const a0 = _radarSweepAngle - TRAIL_ARC * (1 - t);
+        const a1 = _radarSweepAngle - TRAIL_ARC * (1 - t - 1 / STEPS);
+        minimapCtx.beginPath();
+        minimapCtx.moveTo(cx, cy);
+        minimapCtx.arc(cx, cy, maxR, a0, a1);
+        minimapCtx.closePath();
+        minimapCtx.fillStyle = `rgba(0,255,90,${0.09 * t * t})`;
+        minimapCtx.fill();
+    }
+    // Sweep line
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(cx, cy);
+    minimapCtx.lineTo(cx + Math.cos(_radarSweepAngle) * maxR, cy + Math.sin(_radarSweepAngle) * maxR);
+    minimapCtx.strokeStyle = 'rgba(0,255,90,0.65)';
+    minimapCtx.lineWidth = 1.5;
+    minimapCtx.stroke();
+    minimapCtx.lineWidth = 1;
+    // ------------------------------------------------------------------
     minimapCtx.save();
     minimapCtx.translate(MINIMAP_SIZE / 2, MINIMAP_SIZE / 2);
     minimapCtx.rotate(playerAngle);
@@ -1786,32 +1841,23 @@ function updateMinimap() {
         const ip = getMinimapPoint(islet), ir = islet.radius * scale;
         const _rd = MINIMAP_SIZE / 2 + ir; if (ip.x*ip.x + ip.y*ip.y < _rd*_rd) { minimapCtx.beginPath(); minimapCtx.arc(ip.x, ip.y, ir, 0, Math.PI * 2); minimapCtx.fill(); }
     });
-    const drawDot = (wp, color) => {
-        const mp = getMinimapPoint(wp);
-        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) { minimapCtx.fillStyle = color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3); }
-    };
-    markers.forEach(m => drawDot(m.position, 'yellow'));
-    collectibles.forEach(c => drawDot(c.position, '#00ff44'));
-    enemies.forEach(e => { if (e.parts.length > 0) drawDot(e.parts[0].position, 'red'); });
-    groundUnits.forEach(u => { if (u.userData.hp > 0) { u.getWorldPosition(_wp); drawDot(_wp, u.userData.isHostile ? 'orange' : 'white'); } });
-    airUnits.forEach(au => {
-        if (au.hp <= 0) return;
-        const mp = getMinimapPoint(au.group.position);
-        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) {
-            minimapCtx.fillStyle = au.isHostile ? '#ff4444' : '#aaddff';
-            minimapCtx.beginPath(); minimapCtx.moveTo(mp.x, mp.y - 5); minimapCtx.lineTo(mp.x - 4, mp.y + 3); minimapCtx.lineTo(mp.x + 4, mp.y + 3); minimapCtx.closePath(); minimapCtx.fill();
-        }
-    });
+    // Draw blips from last radar snapshot (positions frozen until next sweep)
     const namedLabels = [];
-    baseMarkers.forEach(bm => {
-        if (bm.eliminated) return;
-        const mp = getMinimapPoint(bm.position);
-        if (mp.x*mp.x + mp.y*mp.y < MINIMAP_HALF_R_SQ) {
-            const color = bm.isHostile ? '#ff8844' : '#88ccff';
-            minimapCtx.fillStyle = color; minimapCtx.fillRect(mp.x - 3, mp.y - 3, 6, 6);
-            const sx = MINIMAP_SIZE / 2 + mp.x * Math.cos(playerAngle) - mp.y * Math.sin(playerAngle);
-            const sy = MINIMAP_SIZE / 2 + mp.x * Math.sin(playerAngle) + mp.y * Math.cos(playerAngle);
-            namedLabels.push({ sx, sy, name: `${bm.name} ${bm.alive}/${bm.total}`, color });
+    _radarBlips.forEach(b => {
+        const mp = { x: -(b.wx - playerPos.x) * scale, y: -(b.wz - playerPos.z) * scale };
+        if (mp.x*mp.x + mp.y*mp.y >= MINIMAP_HALF_R_SQ) return;
+        if (b.shape === 'triangle') {
+            minimapCtx.fillStyle = b.color;
+            minimapCtx.beginPath(); minimapCtx.moveTo(mp.x, mp.y - 5); minimapCtx.lineTo(mp.x - 4, mp.y + 3); minimapCtx.lineTo(mp.x + 4, mp.y + 3); minimapCtx.closePath(); minimapCtx.fill();
+        } else if (b.shape === 'square') {
+            minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 3, mp.y - 3, 6, 6);
+            if (b.label) {
+                const sx = MINIMAP_SIZE / 2 + mp.x * Math.cos(playerAngle) - mp.y * Math.sin(playerAngle);
+                const sy = MINIMAP_SIZE / 2 + mp.x * Math.sin(playerAngle) + mp.y * Math.cos(playerAngle);
+                namedLabels.push({ sx, sy, name: b.label, color: b.color });
+            }
+        } else {
+            minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3);
         }
     });
     minimapCtx.restore();
