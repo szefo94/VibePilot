@@ -5,6 +5,14 @@
 ### Changed
 - Wing trails now start hidden on game spawn; press **N** to toggle them on/off
 
+### Bug Fixes
+- **§4.1 – Airbase turret protection**: Airbase turrets (and control tower) are now immune to all damage while the airbase building is still standing. Destroy the airbase first to expose them.
+- **§4.1 – Airport child-turret cleanup order**: Turrets are now removed from `groundUnits` in reverse index order *before* the airport is removed, preventing index-shift corruption in both the bullet and bomb destruction paths.
+- **§4.5 – Explosion disposal race**: `createExplosion` no longer uses `setInterval`/`setTimeout`. Explosions are tracked in `activeExplosions[]` and updated frame-rate-independently inside `updateExplosions(dt)` (called at the end of `updateProjectiles`), eliminating the race between the interval callback and `material.dispose()`.
+
+### Balance
+- **§4.3 – Damage multiplier diminishing returns**: Levels 1–20 grant +0.25 damage multiplier each. From level 21 onward the gain decreases by 0.01 per level (level 21 = +0.24, level 22 = +0.23 … level 45 = +0, capped at 0 from there).
+
 ---
 
 ## [0.2.0] — 2026-03-04

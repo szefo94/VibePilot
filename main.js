@@ -172,7 +172,7 @@ let pitchRate = 0, rollRate = 0, yawRate = 0, speed = .1;
 // Cooldowns
 let shootCooldown = 0, bombCooldown = 0;
 // Entities
-const bullets = [], bombs = [], enemyBullets = [];
+const bullets = [], bombs = [], enemyBullets = [], activeExplosions = []; // §4.5
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
@@ -305,7 +305,8 @@ function addXP(a) {
     xp += a;
     while (xp >= xpToNextLevel) {
         level++; xp -= xpToNextLevel; xpToNextLevel = Math.floor(xpToNextLevel * 1.5);
-        playerDamageMultiplier += .25; levelElement.textContent = level; updateDamageUI();
+        playerDamageMultiplier += Math.max(0, .25 - .01 * Math.max(0, level - 20)); // §4.3: gain shrinks by 0.01 per level above 20
+        levelElement.textContent = level; updateDamageUI();
     }
     xpElement.textContent = xp; xpToNextLevelElement.textContent = xpToNextLevel;
 }
@@ -442,8 +443,8 @@ function createGroundUnit(type) {
             const towerCab = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 }));
             towerCab.position.set(25, 34, -25);
             u.add(runway, mainBuilding, towerBase, towerCab);
-            const t1 = createGroundUnit('turret'); t1.position.set(30, 0, 60); u.add(t1); groundUnits.push(t1);
-            const t2 = createGroundUnit('turret'); t2.position.set(-30, 0, -60); u.add(t2); groundUnits.push(t2);
+            const t1 = createGroundUnit('turret'); t1.position.set(30, 0, 60); t1.userData.protector = u; u.add(t1); groundUnits.push(t1);
+            const t2 = createGroundUnit('turret'); t2.position.set(-30, 0, -60); t2.userData.protector = u; u.add(t2); groundUnits.push(t2);
             break;
         case 'destroyer':
             n = "Destroyer"; l = ~~randomRange(3, 6); hp = 40 * l; collR = 10 * 5; hpY = 4 * 5; xp = 75 * l; hostile = true; u.position.y = waterLevel;
@@ -948,15 +949,21 @@ function fireHostileBullet(u) {
     }
     spawnEnemyBullet(_sv2, plane.position);
 }
-function createExplosion(p) {
+function createExplosion(p) { // §4.5: no setInterval/setTimeout — tracked by updateExplosions(dt)
     const e = new THREE.Mesh(explosionGeometry, explosionMaterial.clone());
     e.position.copy(p); e.scale.set(.1, .1, .1); scene.add(e);
-    let c = .1;
-    const i = setInterval(() => {
-        c *= 1.15; e.scale.set(c, c, c); e.material.opacity *= .96;
-        if (c > explosionMaxSize || e.material.opacity < .01) { clearInterval(i); scene.remove(e); e.material.dispose(); }
-    }, 16);
-    setTimeout(() => { if (e.parent) { clearInterval(i); scene.remove(e); e.material.dispose(); } }, explosionDuration * 1.5);
+    activeExplosions.push({ mesh: e, scale: .1 });
+}
+function updateExplosions(dt) { // §4.5: frame-rate independent, no disposal race
+    for (let i = activeExplosions.length - 1; i >= 0; i--) {
+        const ex = activeExplosions[i];
+        ex.scale *= Math.pow(1.15, dt);
+        ex.mesh.scale.setScalar(ex.scale);
+        ex.mesh.material.opacity *= Math.pow(0.96, dt);
+        if (ex.scale > explosionMaxSize || ex.mesh.material.opacity < .01) {
+            scene.remove(ex.mesh); ex.mesh.material.dispose(); activeExplosions.splice(i, 1);
+        }
+    }
 }
 function destroyLogicalEnemy(id) {
     const i = enemies.findIndex(e => e.id === id);
@@ -1208,24 +1215,26 @@ function resolveCollisions() {
                 // Ground unit
                 const u = obj;
                 if (u.userData.bombOnly || u.userData.hp <= 0) continue;
+                if (u.userData.protector && u.userData.protector.userData.hp > 0) continue; // §4.1: immune while protector lives
                 if (b.position.distanceToSquared(u.position) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
                     if (u.userData.hp <= 0) {
+                        // §4.1: remove child turrets first (reverse index order), then the airport
+                        if (u.userData.type === 'airport') {
+                            const turretIdxs = [];
+                            u.children.filter(c => c.userData?.type === 'turret').forEach(t => {
+                                t.userData.hp = 0; destroyLabel(t.userData.label);
+                                const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
+                            });
+                            turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+                        }
                         createExplosion(u.position);
                         destroyLabel(u.userData.label);
-                        disposeGroup(u); scene.remove(u);
+                        disposeGroup(u); scene.remove(u); // disposes/removes turrets too (they're children of u)
                         const uidx = groundUnits.indexOf(u); if (uidx > -1) groundUnits.splice(uidx, 1);
                         if (!isGameOver) { score += u.userData.xpValue; scoreElement.textContent = score; addXP(u.userData.xpValue); }
                         notifyBase(u);
-                        if (u.userData.type === 'airport') {
-                            u.children.filter(child => child.userData && child.userData.type === 'turret').forEach(turret => {
-                                turret.userData.hp = 0;
-                                destroyLabel(turret.userData.label);
-                                const ti = groundUnits.findIndex(gu => gu.userData.id === turret.userData.id);
-                                if (ti > -1) groundUnits.splice(ti, 1);
-                            });
-                        }
                     }
                 }
             }
@@ -1250,23 +1259,32 @@ function updateProjectiles(dt) {
         if (b.position.y <= groundLevel + b.userData.collisionRadius) {
             createExplosion(b.position);
             const bombAffectedBases = new Set();
-            for (let gj = groundUnits.length - 1; gj >= 0; gj--) {
-                const gu = groundUnits[gj];
+            // §4.1: snapshot prevents index corruption; collect then destroy to handle airport+turret order
+            const _bombDestroy = [];
+            for (const gu of groundUnits.slice()) {
+                if (gu.userData.protector && gu.userData.protector.userData.hp > 0) continue; // §4.1 protected
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     gu.userData.hp -= b.userData.damage; updateUnitLabel(gu.userData.label, gu.userData.hp);
-                    if (gu.userData.hp <= 0) {
-                        createExplosion(gu.position); destroyLabel(gu.userData.label);
-                        disposeGroup(gu); groundUnits.splice(gj, 1); scene.remove(gu);
-                        if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
-                        if (gu.userData.baseId) bombAffectedBases.add(gu.userData.baseId);
-                        if (gu.userData.type === 'airport') {
-                            gu.children.filter(c => c.userData && c.userData.type === 'turret').forEach(t => {
-                                t.userData.hp = 0; destroyLabel(t.userData.label);
-                                const ti = groundUnits.findIndex(g => g.userData.id === t.userData.id); if (ti > -1) groundUnits.splice(ti, 1);
-                            });
-                        }
-                    }
+                    if (gu.userData.hp <= 0) _bombDestroy.push(gu);
                 }
+            }
+            // §4.1: airports first — child turrets removed before the turrets themselves are iterated
+            _bombDestroy.sort((a) => a.userData.type === 'airport' ? -1 : 1);
+            for (const gu of _bombDestroy) {
+                if (!groundUnits.includes(gu)) continue; // already removed by airport child-cleanup
+                if (gu.userData.type === 'airport') {
+                    const turretIdxs = [];
+                    gu.children.filter(c => c.userData?.type === 'turret').forEach(t => {
+                        t.userData.hp = 0; destroyLabel(t.userData.label);
+                        const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
+                    });
+                    turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+                }
+                createExplosion(gu.position); destroyLabel(gu.userData.label);
+                disposeGroup(gu); scene.remove(gu);
+                const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
+                if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
+                if (gu.userData.baseId) bombAffectedBases.add(gu.userData.baseId);
             }
             bombAffectedBases.forEach(id => notifyBase({ userData: { baseId: id, hp: 0 } }));
             for (let ai = airUnits.length - 1; ai >= 0; ai--) {
@@ -1297,6 +1315,7 @@ function updateProjectiles(dt) {
             scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
         }
     }
+    updateExplosions(dt); // §4.5
 }
 
 function updateDebugBoxes() {
