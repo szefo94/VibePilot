@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+> **Prompt:** "do 2.2 2.3 2.4 2.5 3.1 3.2 3.3 3.4" (roadmap items)
+
+### Refactor
+- **`notifyBase(baseId)`** (§2.2): Unified call signature — all paths now pass the base ID string directly. Removed synthetic `{ userData: { baseId } }` wrapper objects from bomb, missile, napalm, and air-unit paths.
+- **`killGroundUnit(gu)`** (§2.3): Single function handles the full ground-unit destruction sequence (explosion, label removal, geometry disposal, array splice, XP award, base notification) for all four damage paths (bullet, bomb, missile, napalm). Eliminated ~60 lines of inline duplication. Napalm path also fixed — previously mutated `groundUnits` during `for...of` iteration; now collects kills first, then destroys.
+- **`airport.userData.dependents[]`** (§2.5): Populated at spawn time with child turret references. Turret cleanup in `killGroundUnit` iterates `dependents` instead of `u.children.filter(c => c.userData?.type === 'turret')` — no more type-string filtering in destruction paths. Sort key for deferred-kill arrays updated to `dependents.length` check.
+- **`updateAmmoBar()`** (§2.4): Shared helper renders a weapon ammo bar (width, background colour, status text, status colour). `updateAmmoHUD()` reduced from ~45 lines to ~15; each weapon passes its pre-computed colours.
+
+### Performance
+- **HUD nearest-enemy cache** (§3.1): Nested `enemies.forEach(en => en.parts.forEach(...))` in `updateHUD()` throttled to every 6 frames (~10 fps). Reduces ~40 `distanceToSquared` calls per frame to ~7 on average with no perceptible lag in the target arrow.
+- **Weapon-fire vector pool** (§3.2): Pre-allocated `_wv1`, `_bombOffset`, `_bombDroop`, `_missileLTip`, `_missileRTip` scratch vectors. Eliminates `new THREE.Vector3()` per bomb/napalm drop and per missile wing-tip calculation; reuses existing `_up3` in flare deploy.
+- **Explosion material pool** (§3.3): 12-slot `MeshBasicMaterial` pool replaces `explosionMaterial.clone()` per explosion. Materials are reset to `opacity 0.8` and returned to the pool instead of being disposed.
+- **Static minimap rings cache** (§3.4): Three concentric range rings rendered once to an offscreen `OffscreenCanvas` at startup. `updateMinimap()` composites via a single `drawImage()` call instead of redrawing three arc paths every 66 ms.
+
+---
+
 > **Prompt:** "add splash screen on respawn with some fancy aeronautic font. make it spell letters like V / Vi / Vib / … / Vibe Pilot then vibe pilot disappears and in same matter but smaller font below appears (like in old style computer terminal font) Objective: Crush enemies"
 
 ### Features
