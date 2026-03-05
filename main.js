@@ -141,6 +141,12 @@ const _sv3 = new THREE.Vector3();
 const _camOffset = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
 const _wp = new THREE.Vector3(); // scratch for getWorldPosition
+// --- Weapon-fire scratch vectors — reused per-shot to avoid per-shot allocations (§3.2) ---
+const _wv1 = new THREE.Vector3();
+const _bombOffset  = new THREE.Vector3(0, -1.5,   0);   // bomb/napalm drop offset (const — never mutated)
+const _bombDroop   = new THREE.Vector3(0, -0.05,  0);   // bomb/napalm droop (const — never mutated)
+const _missileLTip = new THREE.Vector3(-5.9, -0.12, 0.55); // left wing-tip local coords
+const _missileRTip = new THREE.Vector3( 5.9, -0.12, 0.55); // right wing-tip local coords
 
 // --- THREE.Clock for delta-time (§3.6) ---
 const clock = new THREE.Clock();
@@ -176,6 +182,12 @@ const napalmBarEl = document.getElementById('napalm-bar'), napalmStatusEl = docu
 const minimap = document.getElementById('minimap'), minimapCtx = minimap.getContext('2d'), MINIMAP_SIZE = 400;
 minimap.width = MINIMAP_SIZE; minimap.height = MINIMAP_SIZE;
 const MINIMAP_HALF_R_SQ = (MINIMAP_SIZE / 2) * (MINIMAP_SIZE / 2); // §2.7 squared threshold for hypot checks
+// --- Static minimap rings — rendered once onto offscreen canvas, composited each frame (§3.4) ---
+const _ringsCanvas = document.createElement('canvas');
+_ringsCanvas.width = MINIMAP_SIZE; _ringsCanvas.height = MINIMAP_SIZE;
+{ const rc = _ringsCanvas.getContext('2d'), cx = MINIMAP_SIZE / 2, maxR = MINIMAP_SIZE / 2;
+  rc.lineWidth = 1;
+  [0.33, 0.66, 1.0].forEach(f => { rc.strokeStyle = `rgba(0,210,90,${f === 1.0 ? 0.25 : 0.12})`; rc.beginPath(); rc.arc(cx, cx, maxR * f, 0, Math.PI * 2); rc.stroke(); }); }
 
 // ================================================================
 // --- Flight Config (easy-edit tuning knobs) ---
@@ -223,6 +235,8 @@ const baseMarkers = [], basesById = {};
 // Debug
 const debugHelpers = [];
 let debugCollision = false;
+// HUD nearest-enemy cache — recomputed every 6 frames (~10 fps at 60 fps) (§3.1)
+let _hudEnemyFrame = 0, _hudNearestEnemy = null, _hudNearestEnemyDist = Infinity;
 // Unused variable removed: isLaserVisible
 
 // --- Bomb & explosion resources ---
@@ -246,8 +260,10 @@ const bombRadius = 1.5, bombGeometry = new THREE.SphereGeometry(bombRadius, 10, 
 const bombCooldownTime = 45;
 const gravity = .008;
 const explosionGeometry = new THREE.SphereGeometry(1, 16, 16);
-const explosionMaterial = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: .8 });
 const explosionDuration = 400, explosionMaxSize = 50;
+// --- Explosion material pool (§3.3) — eliminates material.clone() per explosion ---
+const _expMatPool = [];
+for (let _i = 0; _i < 12; _i++) _expMatPool.push(new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8 }));
 // --- Marker / collectible resources ---
 const markerRadius = 5, markerGeometry = new THREE.SphereGeometry(markerRadius, 16, 16);
 const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xccad00 });
@@ -419,9 +435,9 @@ function addToConqueredRow(text, scrollId) {
     });
 }
 function addToConqueredPanel(bmName) { addToConqueredRow(`✓ ${bmName}`, 'row1-scroll'); }
-function notifyBase(u) {
-    if (!u.userData.baseId) return;
-    const bm = basesById[u.userData.baseId];
+function notifyBase(baseId) { // (§2.2) unified signature — pass baseId string directly
+    if (!baseId) return;
+    const bm = basesById[baseId];
     if (!bm || bm.eliminated) return;
     bm.alive = bm.units.filter(x => x.userData.hp > 0).length;
     if (bm.alive === 0) {
@@ -527,7 +543,9 @@ function createGroundUnit(type) {
             u.children[1].position.y = 1.75; u.children[2].position.set(5, 3.5, -2); u.scale.set(8, 8, 8); break;
     }
     const label = createUnitLabel(n, l, hp, hp); scene.add(label.sprite);
-    u.userData = { type, hp, maxHp: hp, collisionRadius: collR, label, hpOffsetY: hpY, isHostile: hostile, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef };
+    u.userData = { type, hp, maxHp: hp, collisionRadius: collR, label, hpOffsetY: hpY, isHostile: hostile, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, dependents: [] };
+    // Populate dependents for units with protected children (§2.5)
+    for (const child of u.children) { if (child.userData?.type === 'turret') u.userData.dependents.push(child); }
     return u;
 }
 function createHangar(variant = 'box') {
@@ -761,7 +779,27 @@ function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
     destroyLabel(au.label);
     airUnits.splice(idx, 1);
     if (!isGameOver) { score += au.xpValue; scoreElement.textContent = score; addXP(au.xpValue); }
-    notifyBase({ userData: au.userData });
+    notifyBase(au.userData.baseId);
+}
+// (§2.3) Centralised ground-unit death — used by bullet, bomb, missile, and napalm paths
+function killGroundUnit(gu) {
+    if (!gu.userData._alive) return; // double-kill guard
+    gu.userData._alive = false;
+    // Remove dependents first (e.g. airport child turrets) before removing parent (§2.5)
+    if (gu.userData.dependents?.length) {
+        const depIdxs = [];
+        for (const dep of gu.userData.dependents) {
+            dep.userData.hp = 0; dep.userData._alive = false; destroyLabel(dep.userData.label);
+            const ti = groundUnits.indexOf(dep); if (ti > -1) depIdxs.push(ti);
+        }
+        depIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+    }
+    createExplosion(gu.position);
+    destroyLabel(gu.userData.label);
+    disposeGroup(gu); scene.remove(gu);
+    const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
+    if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
+    notifyBase(gu.userData.baseId);
 }
 
 // ================================================================
@@ -1004,9 +1042,9 @@ function fireBullet() {
 }
 function dropBomb() {
     const b = new THREE.Mesh(bombGeometry, bombMaterial);
-    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
-    b.position.copy(plane.position).add(new THREE.Vector3(0, -1.5, 0));
-    b.velocity = f.clone().multiplyScalar(speed).add(new THREE.Vector3(0, -.05, 0));
+    _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // forward direction
+    b.position.copy(plane.position).add(_bombOffset);
+    b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop); // velocity persists on bullet; clone needed
     b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: bombDamage * playerDamageMultiplier, aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
 }
@@ -1021,9 +1059,9 @@ function fireMissile() {
     airUnits.forEach(au => { if (au.hp > 0) tryTarget(() => au.group.position, () => au.hp > 0); });
     enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryTarget(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
     plane.getWorldDirection(_sv1); // forward
-    // World positions of wing-tip barrels
-    const lTip = new THREE.Vector3(-5.9, -0.12, 0.55).applyMatrix4(plane.matrixWorld);
-    const rTip = new THREE.Vector3( 5.9, -0.12, 0.55).applyMatrix4(plane.matrixWorld);
+    // World positions of wing-tip barrels — reuse pre-allocated vectors (§3.2)
+    _wv1.copy(_missileLTip).applyMatrix4(plane.matrixWorld); // lTip
+    _sv3.copy(_missileRTip).applyMatrix4(plane.matrixWorld); // rTip
     const spawnOne = (origin) => {
         const m = new THREE.Mesh(_missileGeo, _missileMat);
         m.position.copy(origin);
@@ -1039,20 +1077,20 @@ function fireMissile() {
         m.quaternion.setFromUnitVectors(_up3, _sv2);
         missiles.push(m); scene.add(m);
     };
-    spawnOne(lTip);
-    spawnOne(rTip);
+    spawnOne(_wv1); // lTip
+    spawnOne(_sv3); // rTip
 }
 function dropNapalm() {
     const b = new THREE.Mesh(bombGeometry, napalmBombMaterial);
-    const f = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
-    b.position.copy(plane.position).add(new THREE.Vector3(0, -1.5, 0));
-    b.velocity = f.clone().multiplyScalar(speed).add(new THREE.Vector3(0, -.05, 0));
+    _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
+    b.position.copy(plane.position).add(_bombOffset);
+    b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop);
     napalmBombs.push(b); scene.add(b);
 }
 function deployFlareEffect() {
     // Angel-wings pattern: two arcs of bright particles spreading left and right
     plane.getWorldDirection(_sv1); // forward
-    _sv2.crossVectors(new THREE.Vector3(0, 1, 0), _sv1).normalize(); // right
+    _sv2.crossVectors(_up3, _sv1).normalize(); // right — reuse _up3 (§3.2)
     const COUNT = 10; // particles per wing
     for (let wing = -1; wing <= 1; wing += 2) { // -1 = left, +1 = right
         for (let j = 0; j < COUNT; j++) {
@@ -1094,7 +1132,9 @@ function fireHostileBullet(u) {
     spawnEnemyBullet(_sv2, plane.position);
 }
 function createExplosion(p) { // §4.5: no setInterval/setTimeout — tracked by updateExplosions(dt)
-    const e = new THREE.Mesh(explosionGeometry, explosionMaterial.clone());
+    const mat = _expMatPool.pop() || new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8 });
+    mat.opacity = 0.8; // reset in case recycled
+    const e = new THREE.Mesh(explosionGeometry, mat);
     e.position.copy(p); e.scale.set(.1, .1, .1); scene.add(e);
     activeExplosions.push({ mesh: e, scale: .1 });
 }
@@ -1105,7 +1145,10 @@ function updateExplosions(dt) { // §4.5: frame-rate independent, no disposal ra
         ex.mesh.scale.setScalar(ex.scale);
         ex.mesh.material.opacity *= Math.pow(0.96, dt);
         if (ex.scale > explosionMaxSize || ex.mesh.material.opacity < .01) {
-            scene.remove(ex.mesh); ex.mesh.material.dispose(); activeExplosions.splice(i, 1);
+            scene.remove(ex.mesh);
+            ex.mesh.material.opacity = 0.8; // reset before returning to pool
+            _expMatPool.push(ex.mesh.material); // return to pool instead of dispose
+            activeExplosions.splice(i, 1);
         }
     }
 }
@@ -1237,10 +1280,17 @@ function updateAI(dt) {
 }
 
 function updateHUD() {
-    let m = null, g = null, e = null, md = Infinity, gd = Infinity, ed = Infinity;
+    let m = null, g = null, md = Infinity, gd = Infinity;
     markers.forEach(mk => { const d = plane.position.distanceToSquared(mk.position); if (d < md) { md = d; m = mk; } });
     groundUnits.forEach(u => { if (u.userData.isHostile && u.userData.hp > 0) { const d = plane.position.distanceToSquared(u.position); if (d < gd) { gd = d; g = u; } } });
-    enemies.forEach(en => en.parts.forEach(p => { const d = plane.position.distanceToSquared(p.position); if (d < ed) { ed = d; e = p; } }));
+    // Nearest enemy — recomputed every 6 frames (§3.1: 40 distance checks/frame → ~7 on average)
+    if (++_hudEnemyFrame >= 6) {
+        _hudEnemyFrame = 0;
+        let ed = Infinity, e = null;
+        enemies.forEach(en => en.parts.forEach(p => { const d = plane.position.distanceToSquared(p.position); if (d < ed) { ed = d; e = p; } }));
+        _hudNearestEnemy = e; _hudNearestEnemyDist = ed;
+    }
+    const e = _hudNearestEnemy, ed = _hudNearestEnemyDist;
     if (m) { markerArrow.visible = true; markerArrow.lookAt(m.position); markerDistanceElement.textContent = `${Math.round(Math.sqrt(md))}m`; } else { markerArrow.visible = false; markerDistanceElement.textContent = 'N/A'; }
     if (g) { groundTargetArrow.visible = true; groundTargetArrow.lookAt(g.position); groundDistanceElement.textContent = `${Math.round(Math.sqrt(gd))}m`; } else { groundTargetArrow.visible = false; groundDistanceElement.textContent = 'N/A'; }
     if (e) { enemyArrow.visible = true; enemyArrow.lookAt(e.position); enemyArrow.material.color.copy(e.material.color); enemyDistanceElement.textContent = `${Math.round(Math.sqrt(ed))}m`; } else { enemyArrow.visible = false; enemyDistanceElement.textContent = 'N/A'; }
@@ -1265,50 +1315,37 @@ function updateHUD() {
     updateAmmoHUD();
 }
 
+// (§2.4) Shared ammo-bar renderer — pre-computed barColor and statusColor passed in per weapon
+function updateAmmoBar(barEl, statusEl, ammo, maxAmmo, reloadTimer, barColor, statusColor) {
+    barEl.style.width = (ammo / maxAmmo * 100) + '%';
+    barEl.style.background = ammo === 0 ? 'transparent' : barColor;
+    statusEl.textContent = ammo <= 0 ? (reloadTimer / TARGET_FPS).toFixed(1) + 's' : ammo + '/' + maxAmmo;
+    statusEl.style.color = ammo <= 0 ? 'var(--hud-red)' : statusColor;
+}
 function updateAmmoHUD() {
-    const gunPct = gunAmmo / gunMaxAmmo * 100;
-    gunBarEl.style.width = gunPct + '%';
-    gunBarEl.style.background = gunAmmo === 0 ? 'transparent'
-        : gunAmmo < gunMaxAmmo * 0.25 ? 'var(--hud-red)'
-        : gunAmmo < gunMaxAmmo * 0.5  ? 'var(--hud-amber)'
-        : 'var(--hud-primary)';
-    gunStatusEl.textContent  = gunAmmo  <= 0 ? (gunReloadTimer  / TARGET_FPS).toFixed(1) + 's' : gunAmmo  + '/' + gunMaxAmmo;
-    gunStatusEl.style.color  = gunAmmo  <= 0 ? 'var(--hud-red)' : 'var(--hud-primary)';
+    // Gun: three-threshold colour
+    const gunColor = gunAmmo < gunMaxAmmo * 0.25 ? 'var(--hud-red)' : gunAmmo < gunMaxAmmo * 0.5 ? 'var(--hud-amber)' : 'var(--hud-primary)';
+    updateAmmoBar(gunBarEl, gunStatusEl, gunAmmo, gunMaxAmmo, gunReloadTimer, gunColor, 'var(--hud-primary)');
 
-    const bombPct = bombAmmo / bombMaxAmmo * 100;
-    bombBarEl.style.width = bombPct + '%';
-    bombBarEl.style.background = bombAmmo === 0 ? 'transparent'
-        : bombAmmo === 1 ? 'var(--hud-red)'
-        : 'var(--hud-orange)';
-    bombStatusEl.textContent = bombAmmo <= 0 ? (bombReloadTimer / TARGET_FPS).toFixed(1) + 's' : bombAmmo + '/' + bombMaxAmmo;
-    bombStatusEl.style.color = bombAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
+    updateAmmoBar(bombBarEl, bombStatusEl, bombAmmo, bombMaxAmmo, bombReloadTimer,
+        bombAmmo === 1 ? 'var(--hud-red)' : 'var(--hud-orange)', 'var(--hud-orange)');
 
-    const missilePct = missileAmmo / missileMaxAmmo * 100;
-    missileBarEl.style.width = missilePct + '%';
-    missileBarEl.style.background = missileAmmo === 0 ? 'transparent'
-        : missileAmmo === 1 ? 'var(--hud-red)'
-        : 'var(--hud-orange)';
-    missileStatusEl.textContent = missileAmmo <= 0 ? (missileReloadTimer / TARGET_FPS).toFixed(1) + 's' : missileAmmo + '/' + missileMaxAmmo;
-    missileStatusEl.style.color = missileAmmo <= 0 ? 'var(--hud-red)' : 'var(--hud-orange)';
+    updateAmmoBar(missileBarEl, missileStatusEl, missileAmmo, missileMaxAmmo, missileReloadTimer,
+        missileAmmo === 1 ? 'var(--hud-red)' : 'var(--hud-orange)', 'var(--hud-orange)');
 
-    const flarePct = flareAmmo / flareMaxAmmo * 100;
-    flareBarEl.style.width = (flareTimer > 0 ? 100 : flarePct) + '%';
-    flareBarEl.style.background = flareTimer > 0 ? 'var(--hud-primary)'
-        : flareAmmo === 0 ? 'transparent'
-        : flareAmmo === 1 ? 'var(--hud-amber)'
-        : 'var(--hud-primary)';
-    flareStatusEl.textContent = flareTimer > 0 ? flareTimer.toFixed(0) + 'f'
-        : flareAmmo <= 0 ? (flareReloadTimer / TARGET_FPS).toFixed(1) + 's' : flareAmmo + '/' + flareMaxAmmo;
-    flareStatusEl.style.color = flareAmmo <= 0 && flareTimer <= 0 ? 'var(--hud-red)'
-        : flareTimer > 0 ? 'var(--hud-primary)' : 'var(--hud-amber)';
+    // Flare: has active-deployed state in addition to normal ammo state
+    if (flareTimer > 0) {
+        flareBarEl.style.width = '100%';
+        flareBarEl.style.background = 'var(--hud-primary)';
+        flareStatusEl.textContent = flareTimer.toFixed(0) + 'f';
+        flareStatusEl.style.color = 'var(--hud-primary)';
+    } else {
+        updateAmmoBar(flareBarEl, flareStatusEl, flareAmmo, flareMaxAmmo, flareReloadTimer,
+            flareAmmo === 1 ? 'var(--hud-amber)' : 'var(--hud-primary)', 'var(--hud-amber)');
+    }
 
-    const napalmPct = napalmAmmo / napalmMaxAmmo * 100;
-    napalmBarEl.style.width = napalmPct + '%';
-    napalmBarEl.style.background = napalmAmmo === 0 ? 'transparent'
-        : napalmAmmo === 1 ? 'var(--hud-red)'
-        : '#cc4400';
-    napalmStatusEl.textContent = napalmAmmo <= 0 ? (napalmReloadTimer / TARGET_FPS).toFixed(1) + 's' : napalmAmmo + '/' + napalmMaxAmmo;
-    napalmStatusEl.style.color = napalmAmmo <= 0 ? 'var(--hud-red)' : '#ff8844';
+    updateAmmoBar(napalmBarEl, napalmStatusEl, napalmAmmo, napalmMaxAmmo, napalmReloadTimer,
+        napalmAmmo === 1 ? 'var(--hud-red)' : '#cc4400', '#ff8844');
 }
 
 function resolveCollisions() {
@@ -1451,24 +1488,7 @@ function resolveCollisions() {
                 if (b.position.distanceToSquared(u.position) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
-                    if (u.userData.hp <= 0) {
-                        // §4.1: remove child turrets first (reverse index order), then the airport
-                        if (u.userData.type === 'airport') {
-                            const turretIdxs = [];
-                            u.children.filter(c => c.userData?.type === 'turret').forEach(t => {
-                                t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label);
-                                const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
-                            });
-                            turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
-                        }
-                        u.userData._alive = false;
-                        createExplosion(u.position);
-                        destroyLabel(u.userData.label);
-                        disposeGroup(u); scene.remove(u); // disposes/removes turrets too (they're children of u)
-                        const uidx = groundUnits.indexOf(u); if (uidx > -1) groundUnits.splice(uidx, 1);
-                        if (!isGameOver) { score += u.userData.xpValue; scoreElement.textContent = score; addXP(u.userData.xpValue); }
-                        notifyBase(u);
-                    }
+                    if (u.userData.hp <= 0) killGroundUnit(u); // (§2.3)
                 }
             }
         }
@@ -1491,7 +1511,6 @@ function updateProjectiles(dt) {
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
         if (b.position.y <= groundLevel + b.userData.collisionRadius) {
             createExplosion(b.position);
-            const bombAffectedBases = new Set();
             // §4.1: collect then destroy to handle airport+turret order (no slice needed — outer loop only reads)
             const _bombDestroy = [];
             for (const gu of groundUnits) {
@@ -1501,32 +1520,15 @@ function updateProjectiles(dt) {
                     if (gu.userData.hp <= 0) _bombDestroy.push(gu);
                 }
             }
-            // §4.1: airports first — child turrets removed before the turrets themselves are iterated
-            _bombDestroy.sort((a) => a.userData.type === 'airport' ? -1 : 1);
-            for (const gu of _bombDestroy) {
-                if (!gu.userData._alive) continue; // already removed by airport child-cleanup (§2.2)
-                if (gu.userData.type === 'airport') {
-                    const turretIdxs = [];
-                    gu.children.filter(c => c.userData?.type === 'turret').forEach(t => {
-                        t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label);
-                        const ti = groundUnits.indexOf(t); if (ti > -1) turretIdxs.push(ti);
-                    });
-                    turretIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
-                }
-                gu.userData._alive = false;
-                createExplosion(gu.position); destroyLabel(gu.userData.label);
-                disposeGroup(gu); scene.remove(gu);
-                const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
-                if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
-                if (gu.userData.baseId) bombAffectedBases.add(gu.userData.baseId);
-            }
-            bombAffectedBases.forEach(id => notifyBase({ userData: { baseId: id, hp: 0 } }));
+            // Units-with-dependents (airports) first so child turrets are cleaned up before they're iterated (§2.3/§2.5)
+            _bombDestroy.sort(a => a.userData.dependents?.length ? -1 : 1);
+            for (const gu of _bombDestroy) killGroundUnit(gu); // killGroundUnit guards _alive internally (§2.3)
             for (let ai = airUnits.length - 1; ai >= 0; ai--) {
                 const au = airUnits[ai];
                 if (au.hp > 0 && au.group.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
-                    if (au.hp <= 0) { if (au.baseId) bombAffectedBases.add(au.baseId); destroyAirUnit(au, ai); }
+                    if (au.hp <= 0) destroyAirUnit(au, ai); // destroyAirUnit calls notifyBase internally
                 }
             }
             for (let ei = enemies.length - 1; ei >= 0; ei--) {
@@ -1613,19 +1615,8 @@ function updateProjectiles(dt) {
                         if (gu.userData.hp <= 0) _mDestroy.push(gu);
                     }
                 }
-                _mDestroy.sort(a => a.userData.type === 'airport' ? -1 : 1);
-                for (const gu of _mDestroy) {
-                    if (!gu.userData._alive) continue; // already removed by airport child-cleanup (§2.2)
-                    if (gu.userData.type === 'airport') {
-                        const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
-                        tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
-                    }
-                    gu.userData._alive = false;
-                    createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
-                    const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
-                    if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
-                    notifyBase(gu);
-                }
+                _mDestroy.sort(a => a.userData.dependents?.length ? -1 : 1);
+                for (const gu of _mDestroy) killGroundUnit(gu); // (§2.3)
                 for (let ai = airUnits.length - 1; ai >= 0; ai--) {
                     const au = airUnits[ai];
                     if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < missileAoERadius * missileAoERadius) {
@@ -1686,22 +1677,15 @@ function updateProjectiles(dt) {
             p.tick = NAPALM_TICK_INTERVAL;
             const dmg = napalmDamage * playerDamageMultiplier;
             const rSq = napalmRadius * napalmRadius;
+            const _napDestroy = [];
             for (const gu of groundUnits) {
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(p.pos) < rSq) {
                     gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
-                    if (gu.userData.hp <= 0) {
-                        if (gu.userData.type === 'airport') {
-                            const tIs = []; gu.children.filter(c => c.userData?.type === 'turret').forEach(t => { t.userData.hp = 0; t.userData._alive = false; destroyLabel(t.userData.label); const ti = groundUnits.indexOf(t); if (ti > -1) tIs.push(ti); });
-                            tIs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
-                        }
-                        gu.userData._alive = false;
-                        createExplosion(gu.position); destroyLabel(gu.userData.label); disposeGroup(gu); scene.remove(gu);
-                        const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
-                        if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
-                        notifyBase(gu);
-                    }
+                    if (gu.userData.hp <= 0) _napDestroy.push(gu);
                 }
             }
+            _napDestroy.sort(a => a.userData.dependents?.length ? -1 : 1);
+            for (const gu of _napDestroy) killGroundUnit(gu); // (§2.3)
         }
         if (p.life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); napalmPatches.splice(i, 1); }
     }
@@ -1812,16 +1796,11 @@ function updateRadarSnapshot() {
 // ================================================================
 function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    // Composite pre-drawn static rings (§3.4)
+    minimapCtx.drawImage(_ringsCanvas, 0, 0);
     const playerPos = _radarPlayerPos, scale = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE;
     const playerAngle = _radarPlayerAngle;
-    // --- Radar rings + sweep (drawn in screen space before world-rotated content) ---
     const cx = MINIMAP_SIZE / 2, cy = MINIMAP_SIZE / 2, maxR = MINIMAP_SIZE / 2;
-    // Concentric range rings
-    minimapCtx.lineWidth = 1;
-    [0.33, 0.66, 1.0].forEach(f => {
-        minimapCtx.strokeStyle = `rgba(0,210,90,${f === 1.0 ? 0.25 : 0.12})`;
-        minimapCtx.beginPath(); minimapCtx.arc(cx, cy, maxR * f, 0, Math.PI * 2); minimapCtx.stroke();
-    });
     // Sweep trail — 8 graduated slices fading behind the sweep line
     const TRAIL_ARC = Math.PI * 0.55, STEPS = 10;
     for (let i = 0; i < STEPS; i++) {
