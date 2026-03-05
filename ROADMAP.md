@@ -25,6 +25,75 @@ The entire game lives in one ~1950-line file. Suggested split:
 
 Either use native ES modules (`<script type="module">`) or a simple bundler like esbuild.
 
+### 1.3 Full file inventory for the module split
+
+Based on the current ~1950-line `main.js`, a complete refactor would produce **18 files** across 4 directories:
+
+```
+src/
+├── constants.js          (~80 lines)  All named constants, TARGET_FPS, MAP_BOUNDARY,
+│                                      ammo caps, damage values, minimap sizes, etc.
+├── state.js              (~60 lines)  All mutable game-state variables (score, level,
+│                                      groundUnits[], enemies[], airUnits[], pools, etc.)
+├── utils.js              (~40 lines)  Pure helpers: randomRange(), clamp(), lerp(),
+│                                      disposeGroup(), destroyLabel()
+├── grid.js               (~40 lines)  Spatial hash grid (_GRID_CELL), addToGrid(),
+│                                      removeFromGrid(), queryGrid()
+│
+├── visuals/
+│   ├── ground.js         (~120 lines) createGroundUnit(), createHangar() — all
+│   │                                  Three.js geometry for ground units
+│   ├── air.js            (~150 lines) createHelicopterVisual(), createBalloonVisual(),
+│   │                                  createFighterVisual(), createTankerVisual(),
+│   │                                  createAC130Visual()
+│   ├── player.js         (~80 lines)  createPlayerPlane(), wing-trail setup,
+│   │                                  napalm/bomb/launcher attachment meshes
+│   └── fx.js             (~80 lines)  createExplosion(), updateExplosions(),
+│                                      _expMatPool, napalm fire particles,
+│                                      flare angel-wing effect, missile trail
+│
+├── spawners/
+│   ├── ground.js         (~200 lines) spawnAirbase(), spawnForwardBase(),
+│   │                                  spawnDestroyerSquadron(), spawnCarrierGroup(),
+│   │                                  finaliseBase(), createAllUnits()
+│   ├── air.js            (~120 lines) createAirUnit(), spawnHoverWing(),
+│   │                                  spawnStrikeWing(), spawnSingleEnemy()
+│   └── obstacles.js      (~80 lines)  spawnChain(), CHAIN_PATTERNS, spawnPillars(),
+│                                      spawnStalactites(), spawnTorusRings()
+│
+├── weapons.js            (~160 lines) fireBullet(), dropBomb(), fireMissile(),
+│                                      dropNapalm(), deployFlareEffect(),
+│                                      spawnEnemyBullet() — all weapon fire functions
+│
+├── collision.js          (~120 lines) pillarHitsBox(), coneHitsSphere(),
+│                                      resolveCollisions() — full per-frame
+│                                      collision resolution pass
+│
+├── ai.js                 (~100 lines) updateAI() — enemy movement, shooting,
+│                                      orbit logic, air unit straight-flight
+│
+├── physics.js            (~80 lines)  updatePhysics() — player flight model,
+│                                      speed/pitch/roll/yaw, position integration
+│
+├── hud/
+│   ├── minimap.js        (~120 lines) updateMinimap(), _ringsCanvas pre-bake,
+│   │                                  radar sweep, snapshot blips, player triangle
+│   ├── notifications.js  (~80 lines)  showNotification(), showLevelUp(),
+│   │                                  conquered panel rows (base/constellation/corridor)
+│   └── ammo.js           (~60 lines)  updateAmmoHUD(), updateAmmoBar() helper,
+│                                      angular rate bars, speed bar
+│
+└── main.js               (~120 lines) Scene setup, camera, fog, lights, renderer,
+                                       animate() loop — imports all above modules
+```
+
+**Total: 18 files, ~1750 lines** (slightly less than the monolith — duplication surfaces during the split).
+
+**Requires a local server** to use native ES module imports (`<script type="module">`). Options:
+- `npx serve .` (zero config, one command)
+- VS Code Live Server extension
+- Bundler (esbuild/Vite) — produces a single output file that runs from `file://`
+
 ### 1.2 Unit and weapon type constants
 
 Unit types (`'airport'`, `'tank'`, `'turret'`) and weapon types (`'bullet'`, `'missile'`) are bare strings scattered across hundreds of comparisons. One typo silently breaks a feature.
