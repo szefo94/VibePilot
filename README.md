@@ -43,22 +43,24 @@
 | `M` | Toggle memory debug panel |
 | `Esc` | Pause / Resume |
 
-### Xbox Controller
+### Gamepad (Xbox / PS5 DualSense)
 
-| Input | Action |
-|---|---|
-| Left stick X | Yaw |
-| Left stick Y | Throttle (up = accelerate, down = brake) |
-| Right stick X | Roll |
-| Right stick Y | Pitch |
-| RT | Shoot (hold) |
-| A | Drop bomb (alt) |
-| B | Drop bomb |
-| X | Fire missiles |
-| Y | Deploy flares |
-| LB | Drop napalm |
-| RB | Toggle aiming laser |
-| Start | Pause / Resume · Reload on game over |
+Both controllers use the browser standard gamepad mapping — button indices are identical. PS5 equivalent names shown in parentheses.
+
+| Input | PS5 equivalent | Action |
+|---|---|---|
+| Left stick X | Left stick X | Yaw |
+| Left stick Y | Left stick Y | Throttle (up = accelerate, down = brake) |
+| Right stick X | Right stick X | Roll |
+| Right stick Y | Right stick Y | Pitch |
+| RT | R2 | Shoot (hold) |
+| A | Cross ✕ | Drop bomb (alt) |
+| B | Circle ○ | Drop bomb |
+| X | Square □ | Fire missiles |
+| Y | Triangle △ | Deploy flares |
+| LB | L1 | Drop napalm |
+| RB | R1 | Toggle aiming laser |
+| Start | Options | Pause / Resume · Reload on game over |
 
 Gamepad is polled every frame via the browser Gamepad API. Stick deflection is analog — partial stick input scales acceleration proportionally. Keyboard and controller work simultaneously.
 
