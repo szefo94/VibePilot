@@ -1038,12 +1038,11 @@ function spawnHoopChains(count) {
         const before = markers.length;
         spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 50, ceilingLevel - 50), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), HOOP_CFG, (x, y, z) => addHoop(x, y, z, id));
         const total = markers.length - before;
-        // Chain axis line — world-space dashed line from first to last hoop centre
+        // Chain axis line — dashed polyline through every hoop centre in order
         let axisLine = null;
         if (total >= 2) {
-            const p1 = markers[before].position.clone();
-            const p2 = markers[markers.length - 1].position.clone();
-            const ageo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const pts = markers.slice(before).map(mk => mk.position.clone());
+            const ageo = new THREE.BufferGeometry().setFromPoints(pts);
             axisLine = new THREE.Line(ageo, new THREE.LineDashedMaterial({ color: 0xff8800, dashSize: 10, gapSize: 7, opacity: 0.35, transparent: true }));
             axisLine.computeLineDistances();
             scene.add(axisLine);
