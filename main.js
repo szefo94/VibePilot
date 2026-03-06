@@ -1012,11 +1012,20 @@ function spawnCollectibleChains(count) {
         constellations[id] = { name, total, remaining: total, completed: false };
     }
 }
+// Dashed axis line through the hole of a torus — parented so it inherits rotation
+const _hoopAxisMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 3, gapSize: 3, opacity: 0.45, transparent: true });
+function _addHoopAxis(torusMesh, r) {
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -r * 1.3), new THREE.Vector3(0, 0, r * 1.3)]);
+    const line = new THREE.Line(geo, _hoopAxisMat);
+    line.computeLineDistances();
+    torusMesh.add(line);
+}
 function spawnHoopChains(count) {
     const addHoop = (x, y, z, corridorId) => {
         const r = randomRange(15, 30);
         const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
         m.position.set(x, y, z); m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
+        _addHoopAxis(m, r);
         const mk = new THREE.Mesh(markerGeometry, markerMaterial); mk.position.copy(m.position);
         mk.userData = { type: 'marker', collisionRadius: markerRadius, hoopMesh: m, corridorId: corridorId || null };
         m.updateMatrixWorld(true);
@@ -1101,6 +1110,7 @@ function spawnSingleHoopWithMarker() {
     const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
     m.position.set(x, randomRange(groundLevel + r + 15, ceilingLevel - r - 15), z);
     m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
+    _addHoopAxis(m, r);
     const mk = new THREE.Mesh(markerGeometry, markerMaterial); mk.position.copy(m.position);
     mk.userData = { type: 'marker', collisionRadius: markerRadius, hoopMesh: m };
     m.updateMatrixWorld(true);
