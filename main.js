@@ -2237,6 +2237,22 @@ window.onload = () => {
     runSplash();
 };
 
+function _playKeyClick() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.04), ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 8);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.18, 0);
+        gain.gain.exponentialRampToValueAtTime(0.001, 0.04);
+        src.connect(gain); gain.connect(ctx.destination);
+        src.start(); src.onended = () => ctx.close();
+    } catch(e) {}
+}
+
 function runSplash() {
     const splash   = document.getElementById('splash-screen');
     const titleEl  = document.getElementById('splash-title');
@@ -2257,40 +2273,61 @@ function runSplash() {
         el.insertBefore(document.createTextNode(text), cursor);
     }
 
-    // Phase 1: type TITLE
-    let i = 0;
-    setCursor(titleEl);
-    const titleTimer = setInterval(() => {
-        i++;
-        setText(titleEl, TITLE.slice(0, i));
-        if (i >= TITLE.length) {
-            clearInterval(titleTimer);
-            // Pause, then fade title out
-            setTimeout(() => {
-                titleEl.style.opacity = '0';
-                cursor.style.opacity  = '0';
-                // Phase 2: type SUBTITLE after fade
+    // Show "press any key" prompt — user gesture needed to unlock AudioContext
+    const prompt = document.createElement('div');
+    prompt.id = 'splash-prompt';
+    prompt.textContent = '— press any key —';
+    splash.appendChild(prompt);
+
+    function startTypeOut() {
+        prompt.remove();
+
+        // Phase 1: type TITLE
+        let i = 0;
+        setCursor(titleEl);
+        const titleTimer = setInterval(() => {
+            i++;
+            setText(titleEl, TITLE.slice(0, i));
+            _playKeyClick();
+            if (i >= TITLE.length) {
+                clearInterval(titleTimer);
+                // Pause, then fade title out
                 setTimeout(() => {
-                    cursor.style.opacity = '1';
-                    setCursor(subEl);
-                    let j = 0;
-                    const subTimer = setInterval(() => {
-                        j++;
-                        setText(subEl, SUBTITLE.slice(0, j));
-                        if (j >= SUBTITLE.length) {
-                            clearInterval(subTimer);
-                            // Pause, then fade entire splash out
-                            setTimeout(() => {
-                                cursor.style.animation = 'none';
-                                cursor.style.opacity   = '0';
-                                splash.style.opacity   = '0';
-                                speed = maxSpeed * 0.5;
-                                setTimeout(() => splash.remove(), 1050);
-                            }, 1800);
-                        }
-                    }, SUBTITLE_SPEED);
-                }, 650);
-            }, 900);
-        }
-    }, TITLE_SPEED);
+                    titleEl.style.opacity = '0';
+                    cursor.style.opacity  = '0';
+                    // Phase 2: type SUBTITLE after fade
+                    setTimeout(() => {
+                        cursor.style.opacity = '1';
+                        setCursor(subEl);
+                        let j = 0;
+                        const subTimer = setInterval(() => {
+                            j++;
+                            setText(subEl, SUBTITLE.slice(0, j));
+                            _playKeyClick();
+                            if (j >= SUBTITLE.length) {
+                                clearInterval(subTimer);
+                                // Pause, then fade entire splash out
+                                setTimeout(() => {
+                                    cursor.style.animation = 'none';
+                                    cursor.style.opacity   = '0';
+                                    splash.style.opacity   = '0';
+                                    speed = maxSpeed * 0.5;
+                                    setTimeout(() => splash.remove(), 1050);
+                                }, 1800);
+                            }
+                        }, SUBTITLE_SPEED);
+                    }, 650);
+                }, 900);
+            }
+        }, TITLE_SPEED);
+    }
+
+    function onFirstInput(e) {
+        if (['Shift','Control','Alt','Meta'].includes(e.key)) return;
+        document.removeEventListener('keydown', onFirstInput);
+        document.removeEventListener('pointerdown', onFirstInput);
+        startTypeOut();
+    }
+    document.addEventListener('keydown', onFirstInput);
+    document.addEventListener('pointerdown', onFirstInput);
 }
