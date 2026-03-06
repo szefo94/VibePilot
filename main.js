@@ -398,31 +398,40 @@ document.addEventListener('keydown', e => {
 // --- Gamepad (Xbox controller) support ---
 const GP_DEADZONE = 0.15;
 // Continuous analog state read each frame
-const _gpAxes = { pitch: 0, roll: 0, yaw: 0, rt: 0, lt: 0, shoot: false };
+// Left stick: X = yaw, Y = throttle  |  Right stick: X = roll, Y = pitch  |  RT = shoot
+const _gpAxes = { pitch: 0, roll: 0, yaw: 0, throttleUp: 0, throttleDown: 0, shoot: false };
 // Previous button states for one-shot edge detection
 const _gpPrev = [];
 function pollGamepad() {
     const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-    if (!gp) { _gpAxes.pitch = _gpAxes.roll = _gpAxes.yaw = _gpAxes.rt = _gpAxes.lt = 0; _gpAxes.shoot = false; return; }
+    if (!gp) { _gpAxes.pitch = _gpAxes.roll = _gpAxes.yaw = _gpAxes.throttleUp = _gpAxes.throttleDown = 0; _gpAxes.shoot = false; return; }
     const dz = v => Math.abs(v) > GP_DEADZONE ? v : 0;
-    // Left stick: X = roll, Y = pitch; right stick: X = yaw
-    _gpAxes.roll  =  dz(gp.axes[0]); // lx right = roll right
-    _gpAxes.pitch =  dz(gp.axes[1]); // ly down  = pitch down
-    _gpAxes.yaw   = -dz(gp.axes[2]); // rx right = yaw right (negate to match keys.d direction)
-    // Triggers (value 0-1); fall back to button.pressed for browsers that expose them as buttons
-    _gpAxes.rt = gp.buttons[7]?.value ?? 0; // RT  → throttle up
-    _gpAxes.lt = gp.buttons[6]?.value ?? 0; // LT  → throttle down
-    // A button (0) → shoot (continuous while held)
-    _gpAxes.shoot = !!gp.buttons[0]?.pressed;
+    // Left stick X = yaw; left stick Y = throttle (up = accelerate, down = brake)
+    _gpAxes.yaw         = -dz(gp.axes[0]); // lx right = yaw right (negate to match keys.d)
+    const ly             =  dz(gp.axes[1]);
+    _gpAxes.throttleUp   = ly < 0 ? -ly : 0; // stick up  → accelerate
+    _gpAxes.throttleDown = ly > 0 ?  ly : 0; // stick down → decelerate
+    // Right stick X = roll, Y = pitch
+    _gpAxes.roll  =  dz(gp.axes[2]); // rx right = roll right
+    _gpAxes.pitch =  dz(gp.axes[3]); // ry down  = pitch down
+    // RT (button 7) → shoot (continuous while held)
+    _gpAxes.shoot = (gp.buttons[7]?.value ?? 0) > 0.1;
     // One-shot actions — fire only on button press (not while held)
-    if (!isGameOver && !isPaused && !document.getElementById('splash-screen')) {
-        const p = b => !!gp.buttons[b]?.pressed;
-        if (p(1) && !_gpPrev[1]) { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }       // B → bomb
-        if (p(2) && !_gpPrev[2]) { if (missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; } }                                                // X → missile
-        if (p(3) && !_gpPrev[3]) { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; deployFlareEffect(); if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }                     // Y → flares
-        if (p(4) && !_gpPrev[4]) { if (napalmAmmo > 0) { dropNapalm(); if (--napalmAmmo <= 0) napalmReloadTimer = NAPALM_RELOAD_TIME; } }                                                    // LB → napalm
-        if (p(5) && !_gpPrev[5]) { aimingLaser.visible = !aimingLaser.visible; }                                                                                                              // RB → laser toggle
-        if (p(9) && !_gpPrev[9]) { isPaused = !isPaused; pausedElement.style.display = isPaused ? 'block' : 'none'; if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; } } // Start → pause
+    const p = b => !!gp.buttons[b]?.pressed;
+    if (!document.getElementById('splash-screen')) {
+        // Start → pause/unpause during play, reload on game over
+        if (p(9) && !_gpPrev[9]) {
+            if (isGameOver) { location.reload(); }
+            else { isPaused = !isPaused; pausedElement.style.display = isPaused ? 'block' : 'none'; if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; } }
+        }
+        if (!isGameOver && !isPaused) {
+            if (p(1) && !_gpPrev[1]) { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }    // B → bomb
+            if (p(2) && !_gpPrev[2]) { if (missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; } }                                             // X → missile
+            if (p(3) && !_gpPrev[3]) { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; deployFlareEffect(); if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }                  // Y → flares
+            if (p(4) && !_gpPrev[4]) { if (napalmAmmo > 0) { dropNapalm(); if (--napalmAmmo <= 0) napalmReloadTimer = NAPALM_RELOAD_TIME; } }                                                  // LB → napalm
+            if (p(5) && !_gpPrev[5]) { aimingLaser.visible = !aimingLaser.visible; }                                                                                                           // RB → laser
+            if (p(0) && !_gpPrev[0]) { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }    // A → bomb (alt)
+        }
     }
     // Save button states for next frame edge detection
     for (let i = 0; i < gp.buttons.length; i++) _gpPrev[i] = !!gp.buttons[i]?.pressed;
@@ -1440,9 +1449,9 @@ hpElement.textContent = planeHP; updateDamageUI(); createAllUnits();
 // --- Sub-System Functions (§1.2) ---
 // ================================================================
 function updatePhysics(dt) {
-    // Speed control — keyboard OR gamepad triggers
-    if (keys.w || _gpAxes.rt > 0.05) speed = Math.min(maxSpeed, speed + acceleration * dt * Math.max(1, _gpAxes.rt));
-    else if (keys.s || _gpAxes.lt > 0.05) speed = Math.max(minSpeed, speed - deceleration * dt * Math.max(1, _gpAxes.lt));
+    // Speed control — keyboard OR gamepad left stick Y
+    if (keys.w || _gpAxes.throttleUp > 0) speed = Math.min(maxSpeed, speed + acceleration * dt * Math.max(1, _gpAxes.throttleUp));
+    else if (keys.s || _gpAxes.throttleDown > 0) speed = Math.max(minSpeed, speed - deceleration * dt * Math.max(1, _gpAxes.throttleDown));
     else speed = Math.max(minSpeed, speed - naturalDeceleration * dt);
     // Rotation rates — combine keyboard (binary ±1) and gamepad analog axes; clamp sum to ±1
     const pitchIn = Math.max(-1, Math.min(1, (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0) + _gpAxes.pitch));
