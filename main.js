@@ -2093,14 +2093,15 @@ function animate() {
         updateAI(dt);
         resolveCollisions();
         updateHUD();
+        updateProjectiles(dt);
+        updateEffects(dt); // ideas 1-6, 10
     } else if (isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';
         posXElement.textContent = '-'; posYElement.textContent = '-'; posZElement.textContent = '-';
         rotHdgElement.textContent = '-'; rotPchElement.textContent = '-'; rotBnkElement.textContent = '-';
+        updateEffects(dt); // debris physics still runs on game over
     }
-    updateProjectiles(dt);
-    updateEffects(dt); // ideas 1-6, 10
     updateDebugBoxes();
     updateCamera();
     // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end
