@@ -2104,13 +2104,15 @@ function animate() {
     }
     updateDebugBoxes();
     updateCamera();
-    // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end
-    _radarSweepAngle += rawDelta * (Math.PI * 2 / 3);
-    _radarCycleTimer += rawDelta;
-    if (_radarCycleTimer >= 3.0) {
-        _radarCycleTimer -= 3.0;
-        _radarSweepAngle = -Math.PI / 2; // snap back to north, keeping sweep in sync
-        updateRadarSnapshot();
+    // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end (pauses when game is paused)
+    if (!isPaused && !isGameOver) {
+        _radarSweepAngle += rawDelta * (Math.PI * 2 / 3);
+        _radarCycleTimer += rawDelta;
+        if (_radarCycleTimer >= 3.0) {
+            _radarCycleTimer -= 3.0;
+            _radarSweepAngle = -Math.PI / 2; // snap back to north, keeping sweep in sync
+            updateRadarSnapshot();
+        }
     }
     // Throttled minimap redraw — 15 fps regardless of game frame rate (§2.5)
     _minimapTimer += rawDelta;
