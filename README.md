@@ -43,6 +43,25 @@
 | `M` | Toggle memory debug panel |
 | `Esc` | Pause / Resume |
 
+### Xbox Controller
+
+| Input | Action |
+|---|---|
+| Left stick X | Roll |
+| Left stick Y | Pitch |
+| Right stick X | Yaw |
+| RT | Throttle up |
+| LT | Throttle down |
+| A | Shoot (hold) |
+| B | Drop bomb |
+| X | Fire missiles |
+| Y | Deploy flares |
+| LB | Drop napalm |
+| RB | Toggle aiming laser |
+| Start | Pause / Resume |
+
+Gamepad is polled every frame via the browser Gamepad API. Stick deflection is analog — partial stick input scales acceleration proportionally. Keyboard and controller work simultaneously.
+
 ---
 
 ## Splash Screen

@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-> **Prompts (this session):** "look at ideas.txt try to implement 1-10" / "hitting ground enemies should also have hit markers / collecting yellow spheres should also have collect animation / hitting collectible with plane wing should also collect them, as of entire player plane should be able to collect them" / "add tubes to collectors panel, tubes shouldnt overlap" / "every damage dealt should appear hit marker" / "some of yellow boxes are hard to collect" / "add tubes to minimap" / "player speed should be set to half of the capacity after splash screen" / "tube radius should be at least wingspan"
+> **Prompts (this session):** "look at ideas.txt try to implement 1-10" / "hitting ground enemies should also have hit markers / collecting yellow spheres should also have collect animation / hitting collectible with plane wing should also collect them, as of entire player plane should be able to collect them" / "add tubes to collectors panel, tubes shouldnt overlap" / "every damage dealt should appear hit marker" / "some of yellow boxes are hard to collect" / "add tubes to minimap" / "player speed should be set to half of the capacity after splash screen" / "tube radius should be at least wingspan" / "add xbox controller support"
 
 ### Features
 - **Collectible burst animation** (idea 1): Picking up a green collectible or yellow marker now spawns 8 expanding burst particles that fly outward and fade over 35 frames.
@@ -15,6 +15,14 @@
 - **Memory debug panel** (idea 10): Press `M` to toggle a panel showing JS heap usage and live entity counts, updated every 120 frames.
 - **Tubes on minimap**: Active tubes shown as cyan rings (`○`) in the radar snapshot; disappear on completion.
 - **Splash-screen speed ramp**: Speed is set to `maxSpeed × 0.5` the moment the splash fades out so the plane appears already in motion.
+- **Xbox controller support**: Full gamepad input via the browser Gamepad API (`navigator.getGamepads()`). Polled every frame in `pollGamepad()`.
+  - Left stick X/Y → roll / pitch (analog — stick deflection scales acceleration)
+  - Right stick X → yaw (analog)
+  - RT → throttle up · LT → throttle down (trigger value scales acceleration)
+  - A → shoot (continuous while held)
+  - B → bomb · X → missiles · Y → flares · LB → napalm (one-shot, edge-detected)
+  - RB → toggle aiming laser · Start → pause/resume
+  - Keyboard and gamepad work simultaneously; axes sum and are clamped to ±1
 
 ### Bug Fixes
 - **Full-wingspan pickup box**: Collectible pickup now uses a `THREE.Box3` union of all six plane part boxes (`_planePickupBox`), giving the full 12-unit wingspan as the collection zone instead of a small nose-only sphere.
