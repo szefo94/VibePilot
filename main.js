@@ -1038,7 +1038,17 @@ function spawnHoopChains(count) {
         const before = markers.length;
         spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 50, ceilingLevel - 50), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), HOOP_CFG, (x, y, z) => addHoop(x, y, z, id));
         const total = markers.length - before;
-        corridors[id] = { name, total, remaining: total, completed: false };
+        // Chain axis line — world-space dashed line from first to last hoop centre
+        let axisLine = null;
+        if (total >= 2) {
+            const p1 = markers[before].position.clone();
+            const p2 = markers[markers.length - 1].position.clone();
+            const ageo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            axisLine = new THREE.Line(ageo, new THREE.LineDashedMaterial({ color: 0xff8800, dashSize: 10, gapSize: 7, opacity: 0.35, transparent: true }));
+            axisLine.computeLineDistances();
+            scene.add(axisLine);
+        }
+        corridors[id] = { name, total, remaining: total, completed: false, axisLine };
     }
 }
 // ================================================================
@@ -1665,6 +1675,7 @@ function resolveCollisions() {
                 const done = cor.remaining <= 0;
                 if (done) {
                     cor.completed = true;
+                    if (cor.axisLine) { scene.remove(cor.axisLine); cor.axisLine.geometry.dispose(); cor.axisLine.material.dispose(); cor.axisLine = null; }
                     showNotification(`◆ ${cor.name} — ALL RINGS  +75 XP`, true);
                     if (!isGameOver) addXP(75);
                     addToConqueredRow(`◆ ${cor.name}`, 'row3-scroll');
