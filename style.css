@@ -298,6 +298,11 @@ canvas {
     text-shadow: 0 0 5px rgba(255, 136, 0, 0.6);
 }
 
+#row4-scroll .conquered-entry {
+    color: #00ccff;
+    text-shadow: 0 0 5px rgba(0, 204, 255, 0.6);
+}
+
 @keyframes entry-in {
     from { opacity: 0; transform: translateY(-10px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -469,6 +474,76 @@ canvas {
 }
 
 .congrats-banner.fade-out {
+    opacity: 0;
+    transition: opacity 0.7s ease-in;
+}
+
+/* ── Hit-confirm crosshair (idea 4) ───────────────────────────── */
+#hit-marker {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 40px; height: 40px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 500;
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+}
+
+.hit-line {
+    position: absolute;
+    background: #ff3333;
+    box-shadow: 0 0 4px rgba(255, 50, 50, 0.8);
+}
+
+.hit-line.hit-top    { width: 2px; height: 10px; top: 2px;  left: 50%; transform: translateX(-50%); }
+.hit-line.hit-bottom { width: 2px; height: 10px; bottom: 2px; left: 50%; transform: translateX(-50%); }
+.hit-line.hit-left   { height: 2px; width: 10px; left: 2px;  top: 50%; transform: translateY(-50%); }
+.hit-line.hit-right  { height: 2px; width: 10px; right: 2px; top: 50%; transform: translateY(-50%); }
+
+/* ── Memory / entity debug (idea 10) ─────────────────────────── */
+#memory-debug {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    line-height: 1.6;
+    min-width: 130px;
+    display: none;
+}
+#memory-debug.active { display: block; }
+
+/* ── Tube ribbon reward (ideas 7-9) ──────────────────────────── */
+.tube-ribbon {
+    position: fixed;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.85);
+    background-color: rgba(0, 12, 20, 0.95);
+    color: #00ccff;
+    padding: 22px 48px;
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 24px;
+    font-weight: bold;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: center;
+    z-index: 1100;
+    pointer-events: none;
+    border: 1px solid rgba(0, 204, 255, 0.4);
+    border-top: 3px solid rgba(0, 204, 255, 0.85);
+    box-shadow: 0 0 20px rgba(0, 204, 255, 0.35), 0 0 50px rgba(0, 204, 255, 0.12);
+    text-shadow: 0 0 10px rgba(0, 204, 255, 0.9);
+    opacity: 0;
+    transition: transform 0.35s ease-out, opacity 0.35s ease-out;
+    white-space: nowrap;
+}
+.tube-ribbon.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+.tube-ribbon.fade-out {
     opacity: 0;
     transition: opacity 0.7s ease-in;
 }

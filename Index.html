@@ -36,6 +36,7 @@
         <div class="cpanel-row"><span class="cpanel-label">BASE</span><div class="cpanel-scroll-wrap"><div id="row1-scroll" class="cpanel-scroll"></div></div></div>
         <div class="cpanel-row"><span class="cpanel-label">★ CNS</span><div class="cpanel-scroll-wrap"><div id="row2-scroll" class="cpanel-scroll"></div></div></div>
         <div class="cpanel-row"><span class="cpanel-label">◆ RNG</span><div class="cpanel-scroll-wrap"><div id="row3-scroll" class="cpanel-scroll"></div></div></div>
+        <div class="cpanel-row"><span class="cpanel-label">⚡ TUB</span><div class="cpanel-scroll-wrap"><div id="row4-scroll" class="cpanel-scroll"></div></div></div>
     </div>
     <div id="target-info" class="ui-overlay">
         <strong>Targets:</strong><br>
@@ -50,7 +51,8 @@
         <span style="color:#ffff00;">■ Obstacles</span><br>
         <span style="color:#ff8800;">■ Ground Units</span><br>
         <span style="color:#ff0000;">■ Air Enemies</span><br>
-        <strong>N: Toggle Wing Trails</strong>
+        <strong>N: Toggle Wing Trails</strong><br>
+        <strong>M: Toggle Mem Debug</strong>
     </div>
     <div id="map-constraints" class="ui-overlay">
         <strong>Coords:</strong><br>
@@ -107,6 +109,17 @@
         GAME OVER!<br>
         <span style="font-size: 18px;">Refresh to restart</span>
     </div>
+
+    <!-- Hit-confirm crosshair (CoD style, idea 4) -->
+    <div id="hit-marker">
+        <div class="hit-line hit-top"></div>
+        <div class="hit-line hit-right"></div>
+        <div class="hit-line hit-bottom"></div>
+        <div class="hit-line hit-left"></div>
+    </div>
+
+    <!-- Memory / entity debug panel (idea 10) -->
+    <div id="memory-debug" class="ui-overlay"></div>
 
     <!-- External library for 3D graphics -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

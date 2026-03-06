@@ -40,6 +40,7 @@
 | `F` | Toggle aiming laser |
 | `B` | Toggle collision box debug view |
 | `N` | Toggle wing trails |
+| `M` | Toggle memory debug panel |
 | `Esc` | Pause / Resume |
 
 ---
@@ -56,6 +57,7 @@ On game load a full-screen intro sequence plays before input is accepted:
 | Subtitle type-out | `Objective: Crush enemies` spelled in **Share Tech Mono** (terminal style, dimmer green) at 55 ms / char |
 | Dismiss | 1.8 s pause → cursor stops, entire overlay fades over 1 s → element removed from DOM |
 | Input guard | All keydown events are suppressed while the splash element exists |
+| Speed on dismiss | Speed set to `maxSpeed × 0.5` as the splash fades — plane appears already in motion |
 
 ---
 
@@ -71,12 +73,14 @@ On game load a full-screen intro sequence plays before input is accepted:
   - **Angular rate bars** — dual progress bars flanking axis label (`[neg▓] P [▓pos]`): orange fills left for negative rate, green fills right for positive; numeric value shown to the right
   - **Speed bar** — blue bar spanning min → max speed range
 - **Ammo HUD** — five rows (GUN / BOMB / MSLE / FLRE / NALM), each with a fill bar, `XX/MAX` count, and live reload countdown
-- **Conquered Panel** — three scrolling ticker rows: `BASE` (cyan) · `★ CNS` constellations (gold) · `◆ RNG` corridors (orange); panel and rows are hidden until first entry
+- **Conquered Panel** — four scrolling ticker rows: `BASE` (cyan) · `★ CNS` constellations (gold) · `◆ RNG` corridors (orange) · `⚡ TUB` tubes (cyan); panel and rows are hidden until first entry
 
 ### Transient Elements
 
 - Kill notifications (right edge, slide-out)
-- Congratulations banner (centre screen, on base / squadron / constellation / corridor completion)
+- Congratulations banner (centre screen, on base / squadron / constellation / corridor / tube completion)
+- Tube ribbon banner (on tube completion)
+- Hit-confirm crosshair (CoD-style, flashes on every damage dealt)
 - Paused overlay
 - Game Over overlay
 
@@ -124,7 +128,8 @@ On game load a full-screen intro sequence plays before input is accepted:
 
 | Type | Radius / Method |
 |---|---|
-| Markers & collectibles | Sphere — `planeMarkerCollisionRadius = 2.0` |
+| Markers | `Box3` union of all parts expanded by `markerRadius = 5` — full wingspan |
+| Collectibles & tube orbs | `Box3` union of all parts expanded by `collectibleRadius = 1.5` |
 | Enemy bullets | Sphere — `planeSphereRadius = 2.5` |
 | Structural (world, units) | 6× `Box3` (one per component), updated per frame |
 
@@ -378,6 +383,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | Base elimination bonus | 150 – 500 |
 | Constellation completed | +50 XP |
 | Corridor completed | +75 XP |
+| Tube completed | +200 XP |
 
 ### XP & Levelling
 
@@ -421,6 +427,16 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 - Each hoop chain is named `Corridor Alpha / Beta / … / Theta`
 - Per-ring notification: `◆ Name N/total`; completing all rings awards +75 XP and adds an entry to conquered panel row 3
 
+### Tubes — Challenge System
+
+- Count: `numTubes = 5` mathematical hollow tunnels placed across the map
+- Path types: helix · sine S-curve · corkscrew dive (random per tube)
+- Named: `Tube Alpha / Beta / Gamma / Delta / Epsilon / …`
+- Tube radius: at least 12 units (full player wingspan); capped to avoid self-intersection
+- 11 cyan orbs placed at even intervals along each tube's curve
+- Fly inside and collect all orbs: awards `TUBE_XP = 200` XP, fires a ribbon banner, adds `⚡ Name` to conquered panel row 4
+- One-time only: on completion the tube wireframe and all remaining orbs are removed
+
 ---
 
 ## Minimap
@@ -455,6 +471,7 @@ The minimap operates as a real radar:
 | Triangle ▲ | Light blue | Non-hostile air unit |
 | Square ■ | Cyan | Active base |
 | Label `name N/T` | — | Base name with alive/total count |
+| Ring ○ | Cyan | Active tube challenge |
 | Triangle ▲ | White (centre) | Player |
 
 ---
@@ -530,6 +547,7 @@ The minimap operates as a real radar:
 | `numObstacles` | 80 | Total obstacle objects distributed across the map. |
 | `numCollectibleChains` | 20 | Number of collectible constellation chains. |
 | `numHoopChains` | 8 | Number of torus hoop corridor chains. |
+| `numTubes` | 5 | Number of mathematical tube challenge courses. |
 
 ---
 
@@ -606,6 +624,8 @@ The minimap operates as a real radar:
 | `spawnStrikeWing` | `(cx, cz) → void` | 2–3 fighters + optional tanker + optional AC-130 (orbiting). |
 | `spawnCollectibleChains` | `(count) → void` | Constellation-named chains of green collectibles. |
 | `spawnHoopChains` | `(count) → void` | Corridor-named torus hoop chains with score markers. |
+| `spawnTube` | `(cx, cy, cz) → void` | Mathematical tube challenge (helix / S-curve / corkscrew) with 11 cyan orbs. |
+| `computeSafeTubeRadius` | `(curve, maxRadius) → number` | Samples 40 points on the curve, finds minimum non-adjacent pairwise distance; returns the largest safe tube radius that prevents self-intersection. |
 | `addCollectibleAt` | `(x, y, z) → void` | Single collectible at given world position. |
 
 ### Islet Helpers
@@ -640,7 +660,10 @@ The minimap operates as a real radar:
 | Function | Signature | Description |
 |---|---|---|
 | `destroyLogicalEnemy` | `(id) → void` | Removes enemy mesh, awards XP, respawns immediately. |
-| `triggerGameOver` | `() → void` | Sets `isGameOver`, stops plane, shows Game Over overlay. |
+| `triggerGameOver` | `() → void` | Sets `isGameOver`, stops plane, hides player mesh, spawns debris pieces, shows Game Over overlay. |
+| `spawnPlaneDebris` | `() → void` | Spawns 6 box debris pieces with random velocities and angular velocities, falling under gravity. |
+| `updateEffects` | `(dt) → void` | Central effects tick: burst particles, dying blink animations, debris physics, player damage blink, hit marker, memory debug update. |
+| `showTubeRibbon` | `(name) → void` | Creates a cyan ribbon banner on tube completion; auto-fades like the congrats banner. |
 | `updateRadarSnapshot` | `() → void` | Captures all entity positions + player pos/heading into `_radarBlips[]` and `_radarPlayerPos`. Called once per 3 s sweep cycle. |
 | `animate` | `() → void` | Main `requestAnimationFrame` loop — physics, AI, collisions, HUD, camera, minimap. |
 | `updateMinimap` | `() → void` | Draws radar rings, sweep trail, sweep line, then all frozen blips from `_radarBlips[]`. |

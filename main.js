@@ -86,6 +86,7 @@ const napPodGeo = new THREE.CylinderGeometry(0.17, 0.2, 1.4, 6); napPodGeo.rotat
 const napPodL = new THREE.Mesh(napPodGeo, attachMat); napPodL.position.set(-0.36, -0.68, -1.4);
 const napPodR = new THREE.Mesh(napPodGeo, attachMat); napPodR.position.set( 0.36, -0.68, -1.4);
 plane.add(leftBarrel, rightBarrel, bombPod, napPodL, napPodR);
+const _planeMaterials = [bodyMaterial, tailMaterial, attachMat]; // for player blink-on-damage (idea 3)
 plane.position.set(0, groundLevel + 20, 0);
 scene.add(plane);
 const planePartBoxes = corePlaneComponents.map(() => new THREE.Box3());
@@ -174,6 +175,8 @@ const scoreElement = document.getElementById('score'), hpElement = document.getE
     rateRollPos  = document.getElementById('rate-roll-pos'),  rateRollNeg  = document.getElementById('rate-roll-neg'),  rateRollVal  = document.getElementById('rate-roll-val'),
     rateYawPos   = document.getElementById('rate-yaw-pos'),   rateYawNeg   = document.getElementById('rate-yaw-neg'),   rateYawVal   = document.getElementById('rate-yaw-val'),
     speedBarEl   = document.getElementById('speed-bar');
+const hitMarkerEl = document.getElementById('hit-marker');
+const memDebugEl  = document.getElementById('memory-debug');
 const gunBarEl = document.getElementById('gun-bar'), gunStatusEl = document.getElementById('gun-status');
 const bombBarEl = document.getElementById('bomb-bar'), bombStatusEl = document.getElementById('bomb-status');
 const missileBarEl = document.getElementById('missile-bar'), missileStatusEl = document.getElementById('missile-status');
@@ -237,6 +240,21 @@ const debugHelpers = [];
 let debugCollision = false;
 // HUD nearest-enemy cache — recomputed every 6 frames (~10 fps at 60 fps) (§3.1)
 let _hudEnemyFrame = 0, _hudNearestEnemy = null, _hudNearestEnemyDist = Infinity;
+// --- Visual effects (ideas 1-6) ---
+const collectibleBursts = []; // green burst particles on collectible pickup (idea 1)
+const _dyingMarkers   = []; // torus rings blink-out after marker pickup (idea 2)
+const _dyingGround    = []; // ground units blink before final dispose (idea 5)
+const _dyingAirUnits  = []; // air units blink before final dispose (idea 5)
+const _dyingEnemies   = []; // enemy fighter parts blink before dispose (idea 5)
+const _planeDebris    = []; // debris pieces after player destruction (idea 6)
+// --- Tube challenges (ideas 7-9) ---
+const tubes = [];
+const TUBE_XP = 200;
+// --- Hit-marker / blink timers ---
+let _hitMarkerTimer = 0;    // frames remaining for hit-confirm crosshair (idea 4)
+let _playerBlinkTimer = 0;  // frames remaining for plane red-blink on damage (idea 3)
+// --- Memory debug refresh ---
+let _memDebugTimer = 0;
 // Unused variable removed: isLaserVisible
 
 // --- Bomb & explosion resources ---
@@ -368,6 +386,7 @@ document.addEventListener('keyup', e => {
 });
 document.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'b') debugCollision = !debugCollision;
+    if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); _memDebugTimer = 0; }
     if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
     if (e.key === 'Escape' && !isGameOver) {
         isPaused = !isPaused;
@@ -774,12 +793,12 @@ function createAirUnit(type, x, y, z) {
 }
 function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
     createExplosion(au.group.position);
-    disposeGroup(au.group);
-    scene.remove(au.group);
+    // Don't dispose immediately — blink animation (idea 5)
     destroyLabel(au.label);
     airUnits.splice(idx, 1);
     if (!isGameOver) { score += au.xpValue; scoreElement.textContent = score; addXP(au.xpValue); }
     notifyBase(au.userData.baseId);
+    _dyingAirUnits.push({ group: au.group, timer: 50 });
 }
 // (§2.3) Centralised ground-unit death — used by bullet, bomb, missile, and napalm paths
 function killGroundUnit(gu) {
@@ -791,15 +810,17 @@ function killGroundUnit(gu) {
         for (const dep of gu.userData.dependents) {
             dep.userData.hp = 0; dep.userData._alive = false; destroyLabel(dep.userData.label);
             const ti = groundUnits.indexOf(dep); if (ti > -1) depIdxs.push(ti);
+            _dyingGround.push({ mesh: dep, timer: 50 }); // blink-out (idea 5)
         }
         depIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
     }
     createExplosion(gu.position);
     destroyLabel(gu.userData.label);
-    disposeGroup(gu); scene.remove(gu);
+    // Don't dispose immediately — blink animation (idea 5); dispose happens in updateEffects
     const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
     if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
     notifyBase(gu.userData.baseId);
+    _dyingGround.push({ mesh: gu, timer: 50 });
 }
 
 // ================================================================
@@ -872,6 +893,13 @@ function createAllUnits() {
     for (let i = 0; i < numForwardBases; i++) { let p; do { p = getSpawnPointOnIslet(); } while (p.x * p.x + p.z * p.z < sz2); spawnForwardBase(p.x, p.z, p.islet); }
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
+    // Idea 7-9: spawn mathematical tube challenges
+    for (let _ti = 0; _ti < 4; _ti++) {
+        const _tx = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75);
+        const _tz = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75);
+        const _ty = randomRange(groundLevel + 55, ceilingLevel - 55);
+        spawnTube(_tx, _ty, _tz);
+    }
     for (let i = 0; i < numHoverWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x += 500; p.z += 500; } spawnHoverWing(p.x, p.z); }
     for (let i = 0; i < numStrikeWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x -= 500; p.z -= 500; } spawnStrikeWing(p.x, p.z); }
 }
@@ -961,6 +989,69 @@ function spawnHoopChains(count) {
         const total = markers.length - before;
         corridors[id] = { name, total, remaining: total, completed: false };
     }
+}
+// ================================================================
+// --- Tube Challenges (ideas 7-9) ---
+// ================================================================
+// Sample the curve at N points and return half the minimum pairwise distance
+// between non-adjacent samples — gives the largest tube radius that won't self-intersect.
+function computeSafeTubeRadius(curve, maxRadius, samples = 40, skipWindow = 4) {
+    const pts = [];
+    for (let i = 0; i < samples; i++) pts.push(curve.getPoint(i / (samples - 1)));
+    let minDist = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+        for (let j = i + skipWindow; j < pts.length; j++) {
+            const d = pts[i].distanceTo(pts[j]);
+            if (d < minDist) minDist = d;
+        }
+    }
+    return Math.min(maxRadius, minDist * 0.5 - 1); // leave 1-unit gap
+}
+// Tubes are mathematical hollow tunnels; fly inside and collect all orbs for big XP
+function spawnTube(cx, cy, cz) {
+    const labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
+    const name = `Tube ${labels[tubes.length % labels.length]}`;
+    const patType = ~~(Math.random() * 3);
+    const pts = [];
+    if (patType === 0) { // Helix
+        const turns = randomRange(2, 3.5), r = randomRange(55, 90), h = randomRange(40, 75);
+        for (let k = 0; k <= 22; k++) {
+            const t = k / 22;
+            pts.push(new THREE.Vector3(cx + Math.cos(t * Math.PI * 2 * turns) * r, cy + (t - 0.5) * h, cz + Math.sin(t * Math.PI * 2 * turns) * r));
+        }
+    } else if (patType === 1) { // Sine S-curve
+        const amp = randomRange(30, 55), len = randomRange(260, 420);
+        for (let k = 0; k <= 22; k++) {
+            const t = k / 22;
+            pts.push(new THREE.Vector3(cx + (t - 0.5) * len, cy + Math.sin(t * Math.PI * 4) * amp * 0.5, cz + Math.sin(t * Math.PI * 2) * amp));
+        }
+    } else { // Corkscrew dive
+        const r = randomRange(45, 75);
+        for (let k = 0; k <= 22; k++) {
+            const t = k / 22;
+            const ang = t * Math.PI * 3;
+            pts.push(new THREE.Vector3(cx + Math.cos(ang) * r * (1 - t * 0.3), cy + Math.sin(ang * 0.7) * 18, cz + Math.sin(ang) * r * (1 - t * 0.3)));
+        }
+    }
+    // Clamp Y into valid airspace
+    pts.forEach(p => { p.y = Math.max(groundLevel + 30, Math.min(ceilingLevel - 30, p.y)); });
+    const curve = new THREE.CatmullRomCurve3(pts);
+    // Compute largest non-self-intersecting radius from actual curve geometry
+    const tubeRadius = Math.max(12, computeSafeTubeRadius(curve, 20));
+    const tubeGeo = new THREE.TubeGeometry(curve, 48, tubeRadius, 8, false);
+    const tubeMesh = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: 0x00ccff, wireframe: true, transparent: true, opacity: 0.35 }));
+    scene.add(tubeMesh);
+    // Place collectibles at even intervals along the curve
+    const numTC = 10, tubeCols = [];
+    for (let k = 0; k <= numTC; k++) {
+        const pos = curve.getPoint(k / numTC).clone();
+        pos.y = Math.max(groundLevel + 5, Math.min(ceilingLevel - 5, pos.y));
+        const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshBasicMaterial({ color: 0x00ccff }));
+        tcm.position.copy(pos);
+        scene.add(tcm);
+        tubeCols.push(tcm);
+    }
+    tubes.push({ mesh: tubeMesh, geo: tubeGeo, name, collectibles: tubeCols, completed: false, cx, cz });
 }
 function spawnSingleHoopWithMarker() {
     const x = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
@@ -1152,16 +1243,116 @@ function updateExplosions(dt) { // §4.5: frame-rate independent, no disposal ra
         }
     }
 }
+// ================================================================
+// --- Visual Effects Subsystem (ideas 1-6, 10) ---
+// ================================================================
+// Idea 7-9 tube ribbon banner
+function showTubeRibbon(name) {
+    const el = document.createElement('div');
+    el.className = 'tube-ribbon';
+    el.innerHTML = `&#9889; ${name} &mdash; COMPLETE &#9889;<br><span style="font-size:16px">+${TUBE_XP} XP &mdash; STRENGTH ENHANCED</span>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('visible')));
+    setTimeout(() => { el.classList.remove('visible'); el.classList.add('fade-out'); setTimeout(() => el.remove(), 800); }, 3500);
+}
+function updateEffects(dt) {
+    // ── Idea 1: Collectible burst particles ──────────────────────
+    for (let i = collectibleBursts.length - 1; i >= 0; i--) {
+        const b = collectibleBursts[i];
+        b.mesh.position.addScaledVector(b.velocity, dt);
+        b.life -= dt;
+        b.mesh.material.opacity = Math.max(0, b.life / b.maxLife);
+        b.mesh.scale.setScalar(1 + (1 - b.life / b.maxLife) * 2.5);
+        if (b.life <= 0) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); collectibleBursts.splice(i, 1); }
+    }
+    // ── Idea 2: Dying markers (torus blink-out over 3 s) ─────────
+    for (let i = _dyingMarkers.length - 1; i >= 0; i--) {
+        const d = _dyingMarkers[i];
+        d.timer -= dt;
+        const bp = Math.max(2, Math.round(d.timer * 0.22));
+        d.mesh.visible = (Math.floor(d.timer) % (bp * 2)) < bp;
+        if (d.timer <= 0) { d.mesh.geometry.dispose(); scene.remove(d.mesh); _dyingMarkers.splice(i, 1); }
+    }
+    // ── Idea 5: Dying ground units (blink then dispose) ──────────
+    for (let i = _dyingGround.length - 1; i >= 0; i--) {
+        const d = _dyingGround[i];
+        d.timer -= dt;
+        const bp = Math.max(2, Math.round(d.timer * 0.22));
+        d.mesh.visible = (Math.floor(d.timer) % (bp * 2)) < bp;
+        if (d.timer <= 0) { disposeGroup(d.mesh); scene.remove(d.mesh); _dyingGround.splice(i, 1); }
+    }
+    // ── Idea 5: Dying air units ───────────────────────────────────
+    for (let i = _dyingAirUnits.length - 1; i >= 0; i--) {
+        const d = _dyingAirUnits[i];
+        d.timer -= dt;
+        const bp = Math.max(2, Math.round(d.timer * 0.22));
+        d.group.visible = (Math.floor(d.timer) % (bp * 2)) < bp;
+        if (d.timer <= 0) { disposeGroup(d.group); scene.remove(d.group); _dyingAirUnits.splice(i, 1); }
+    }
+    // ── Idea 5: Dying enemy fighter parts ────────────────────────
+    for (let i = _dyingEnemies.length - 1; i >= 0; i--) {
+        const d = _dyingEnemies[i];
+        d.timer -= dt;
+        const bp = Math.max(2, Math.round(d.timer * 0.22));
+        const vis = (Math.floor(d.timer) % (bp * 2)) < bp;
+        d.parts.forEach(p => p.visible = vis);
+        if (d.timer <= 0) { d.parts.forEach(p => { p.geometry.dispose(); scene.remove(p); }); if (d.mat) d.mat.dispose(); _dyingEnemies.splice(i, 1); }
+    }
+    // ── Idea 6: Plane debris physics ─────────────────────────────
+    for (let i = _planeDebris.length - 1; i >= 0; i--) {
+        const d = _planeDebris[i];
+        d.velocity.y -= gravity * dt * 0.45;
+        d.mesh.position.addScaledVector(d.velocity, dt);
+        d.mesh.rotation.x += d.angVel.x * dt;
+        d.mesh.rotation.y += d.angVel.y * dt;
+        d.mesh.rotation.z += d.angVel.z * dt;
+        d.life -= dt;
+        if (d.mesh.position.y < groundLevel + 1 || d.life <= 0) {
+            scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.dispose(); _planeDebris.splice(i, 1);
+        }
+    }
+    // ── Idea 3: Player blink-on-damage ───────────────────────────
+    if (_playerBlinkTimer > 0) {
+        _playerBlinkTimer = Math.max(0, _playerBlinkTimer - dt);
+        const isRed = Math.floor(_playerBlinkTimer / 3) % 2 === 0;
+        _planeMaterials.forEach(m => m.emissive.setHex(isRed ? 0xff1100 : 0x000000));
+        if (_playerBlinkTimer <= 0) _planeMaterials.forEach(m => m.emissive.setHex(0x000000));
+    }
+    // ── Idea 4: Hit-confirm crosshair ────────────────────────────
+    if (_hitMarkerTimer > 0) {
+        _hitMarkerTimer = Math.max(0, _hitMarkerTimer - dt);
+        hitMarkerEl.style.opacity = _hitMarkerTimer > 0 ? '1' : '0';
+    }
+    // ── Idea 10: Memory / entity debug panel ─────────────────────
+    _memDebugTimer = Math.max(0, _memDebugTimer - dt);
+    if (_memDebugTimer <= 0 && memDebugEl.classList.contains('active')) {
+        _memDebugTimer = 120;
+        let html = '<strong>MEM</strong><br>';
+        if (performance.memory) {
+            html += `${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)}` +
+                    `/${(performance.memory.totalJSHeapSize / 1048576).toFixed(0)} MB<br>`;
+        }
+        const counts = [
+            ['ground', groundUnits.length], ['bullet', bullets.length],
+            ['eBullet', enemyBullets.length], ['expl', activeExplosions.length],
+            ['air', airUnits.length], ['enemies', enemies.length],
+            ['collect', collectibles.length], ['markers', markers.length],
+            ['missiles', missiles.length], ['napFire', napalmFireParticles.length],
+            ['tubes', tubes.reduce((s, t) => s + t.collectibles.length, 0)],
+        ].sort((a, b) => b[1] - a[1]).filter(c => c[1] > 0);
+        html += counts.map(([n, v]) => `${n}: ${v}`).join('<br>');
+        memDebugEl.innerHTML = html;
+    }
+}
 function destroyLogicalEnemy(id) {
     const i = enemies.findIndex(e => e.id === id);
     if (i > -1) {
         const e = enemies[i];
-        const mat = e.parts.length > 0 ? e.parts[0].material : null;
-        e.parts.forEach(p => { p.geometry.dispose(); scene.remove(p); });
-        if (mat) mat.dispose();
         destroyLabel(e.label);
         enemies.splice(i, 1);
         if (!isGameOver) { score += 25; scoreElement.textContent = score; addXP(25); }
+        // Defer geometry disposal — blink animation (idea 5)
+        _dyingEnemies.push({ parts: e.parts, mat: e.parts.length > 0 ? e.parts[0].material : null, timer: 50 });
         spawnSingleEnemy();
     }
 }
@@ -1171,6 +1362,40 @@ function triggerGameOver() {
     gameOverElement.style.display = 'block';
     enemies.forEach(e => { if (e.label) e.label.sprite.visible = false; });
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });
+    spawnPlaneDebris(); // idea 6
+}
+// Idea 6: shatter plane into tumbling debris pieces
+function spawnPlaneDebris() {
+    plane.visible = false;
+    const fwd   = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
+    const up    = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quaternion);
+    const colors = [0xffffff, 0xffffff, 0x001f5a, 0xffffff, 0x333344, 0xffffff];
+    for (let _i = 0; _i < 6; _i++) {
+        const geo = new THREE.BoxGeometry(randomRange(1.5, 4.5), randomRange(0.15, 0.6), randomRange(1, 4.5));
+        const mat = new THREE.MeshStandardMaterial({ color: colors[_i] });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.copy(plane.position)
+            .addScaledVector(right, randomRange(-4.5, 4.5))
+            .addScaledVector(fwd,   randomRange(-2, 3))
+            .addScaledVector(up,    randomRange(-0.5, 2));
+        m.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        scene.add(m);
+        _planeDebris.push({
+            mesh: m,
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.45 + fwd.x * speed * 0.4,
+                0.08 + Math.random() * 0.28,
+                (Math.random() - 0.5) * 0.45 + fwd.z * speed * 0.4
+            ),
+            angVel: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.13,
+                (Math.random() - 0.5) * 0.13,
+                (Math.random() - 0.5) * 0.13
+            ),
+            life: 150 + ~~(Math.random() * 90)
+        });
+    }
 }
 
 // ================================================================
@@ -1348,17 +1573,34 @@ function updateAmmoHUD() {
         napalmAmmo === 1 ? 'var(--hud-red)' : '#cc4400', '#ff8844');
 }
 
+// Scratch Box3 for plane pickup AABB (covers full wingspan, recomputed each resolveCollisions call)
+const _planePickupBox = new THREE.Box3();
+const _planeMarkerBox = new THREE.Box3();
 function resolveCollisions() {
-    // Player vs Markers — sphere check (§4.2: dispose torus geometry on pickup)
+    // Build plane AABB (union of all part boxes) expanded by collectible radius — covers full wingspan
+    _planePickupBox.makeEmpty();
+    planePartBoxes.forEach(pb => _planePickupBox.union(pb));
+    _planeMarkerBox.copy(_planePickupBox).expandByScalar(markerRadius);
+    _planePickupBox.expandByScalar(collectibleRadius);
+
+    // Player vs Markers — full-plane AABB pickup (expanded by markerRadius for generous hitbox)
     for (let i = markers.length - 1; i >= 0; i--) {
         const m = markers[i];
-        if (plane.position.distanceToSquared(m.position) < (planeMarkerCollisionRadius + m.userData.collisionRadius) ** 2) {
-            scene.remove(m);
+        if (_planeMarkerBox.containsPoint(m.position)) {
+            // Yellow burst particles on marker pickup (idea 1 equivalent)
+            const _mPos = m.position.clone();
+            for (let _b = 0; _b < 8; _b++) {
+                const _a = (_b / 8) * Math.PI * 2;
+                const _bm = new THREE.Mesh(new THREE.SphereGeometry(0.5, 4, 3), new THREE.MeshBasicMaterial({ color: 0xFFD700, transparent: true }));
+                _bm.position.copy(_mPos); scene.add(_bm);
+                collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.18, 0.12 + Math.random() * 0.1, Math.sin(_a) * 0.18), life: 35, maxLife: 35 });
+            }
+            scene.remove(m); // yellow sphere disappears immediately (idea 2)
             markers.splice(i, 1);
             if (m.userData.hoopMesh) {
-                m.userData.hoopMesh.geometry.dispose(); // (§4.2)
-                scene.remove(m.userData.hoopMesh);
+                // Remove from collision but leave in scene for blink-out animation (idea 2)
                 obstacles.splice(obstacles.indexOf(m.userData.hoopMesh), 1);
+                _dyingMarkers.push({ mesh: m.userData.hoopMesh, timer: 3 * TARGET_FPS });
             }
             score += 10; scoreElement.textContent = score; addXP(15);
             const cid = m.userData.corridorId;
@@ -1378,11 +1620,21 @@ function resolveCollisions() {
             spawnSingleHoopWithMarker();
         }
     }
-    // Player vs Collectibles
+    // Player vs Collectibles — full-plane AABB pickup (idea 3 fix)
     for (let i = collectibles.length - 1; i >= 0; i--) {
-        if (plane.position.distanceToSquared(collectibles[i].position) < (planeMarkerCollisionRadius + collectibleRadius) ** 2) {
-            const sid = collectibles[i].userData.constellationId;
-            scene.remove(collectibles[i]); collectibles.splice(i, 1);
+        const _col = collectibles[i];
+        if (_planePickupBox.containsPoint(_col.position)) {
+            const sid = _col.userData.constellationId;
+            // Idea 1: burst particles at pickup position
+            const _bPos = _col.position.clone();
+            scene.remove(_col); collectibles.splice(i, 1);
+            for (let _b = 0; _b < 8; _b++) {
+                const _a = (_b / 8) * Math.PI * 2;
+                const _bm = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 3), new THREE.MeshBasicMaterial({ color: 0x00ff44, transparent: true }));
+                _bm.position.copy(_bPos);
+                scene.add(_bm);
+                collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.16, 0.1 + Math.random() * 0.1, Math.sin(_a) * 0.16), life: 30, maxLife: 30 });
+            }
             score += 5; scoreElement.textContent = score; addXP(8);
             if (sid && constellations[sid] && !constellations[sid].completed) {
                 const con = constellations[sid];
@@ -1395,6 +1647,35 @@ function resolveCollisions() {
                     addToConqueredRow(`★ ${con.name}`, 'row2-scroll');
                 } else {
                     showNotification(`★ ${con.name}  ${collected}/${con.total}`);
+                }
+            }
+        }
+    }
+    // Player vs Tube collectibles (ideas 7-9)
+    for (const tube of tubes) {
+        if (tube.completed) continue;
+        for (let i = tube.collectibles.length - 1; i >= 0; i--) {
+            const tc = tube.collectibles[i];
+            if (_planePickupBox.containsPoint(tc.position)) {
+                const _bPos = tc.position.clone();
+                scene.remove(tc); tc.geometry.dispose(); tc.material.dispose();
+                tube.collectibles.splice(i, 1);
+                // Cyan burst for tube collectibles
+                for (let _b = 0; _b < 6; _b++) {
+                    const _a = (_b / 6) * Math.PI * 2;
+                    const _bm = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 3), new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true }));
+                    _bm.position.copy(_bPos); scene.add(_bm);
+                    collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.2, 0.15, Math.sin(_a) * 0.2), life: 25, maxLife: 25 });
+                }
+                score += 5; scoreElement.textContent = score; addXP(10);
+                _hitMarkerTimer = 9;
+                if (tube.collectibles.length === 0) {
+                    tube.completed = true;
+                    scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
+                    if (!isGameOver) { addXP(TUBE_XP); score += TUBE_XP; scoreElement.textContent = score; }
+                    showNotification(`⚡ ${tube.name} COMPLETE  +${TUBE_XP} XP`, true);
+                    showTubeRibbon(tube.name);
+                    addToConqueredRow(`⚡ ${tube.name}`, 'row4-scroll');
                 }
             }
         }
@@ -1444,6 +1725,7 @@ function resolveCollisions() {
                 if (flareTimer > 0) continue; // §5.7: flares active — deflect bullet
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
+                _playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
                 if (planeHP <= 0) { triggerGameOver(); break; }
             }
         }
@@ -1462,6 +1744,7 @@ function resolveCollisions() {
                 let totalHp = 0; e.parts.forEach(p => totalHp += p.userData.hp);
                 updateUnitLabel(e.label, totalHp);
                 if (totalHp <= 0) destroyLogicalEnemy(e.id);
+                _hitMarkerTimer = 9; // idea 4
                 break;
             }
         }
@@ -1479,6 +1762,7 @@ function resolveCollisions() {
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
                     if (au.hp <= 0) destroyAirUnit(au);
+                    _hitMarkerTimer = 9; // idea 4
                 }
             } else {
                 // Ground unit
@@ -1489,6 +1773,7 @@ function resolveCollisions() {
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
                     if (u.userData.hp <= 0) killGroundUnit(u); // (§2.3)
+                    _hitMarkerTimer = 9; // idea 4
                 }
             }
         }
@@ -1517,6 +1802,7 @@ function updateProjectiles(dt) {
                 if (gu.userData.protector && gu.userData.protector.userData.hp > 0) continue; // §4.1 protected
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     gu.userData.hp -= b.userData.damage; updateUnitLabel(gu.userData.label, gu.userData.hp);
+                    _hitMarkerTimer = 9;
                     if (gu.userData.hp <= 0) _bombDestroy.push(gu);
                 }
             }
@@ -1528,6 +1814,7 @@ function updateProjectiles(dt) {
                 if (au.hp > 0 && au.group.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
+                    _hitMarkerTimer = 9;
                     if (au.hp <= 0) destroyAirUnit(au, ai); // destroyAirUnit calls notifyBase internally
                 }
             }
@@ -1536,6 +1823,7 @@ function updateProjectiles(dt) {
                 if (ae.parts.some(p => p.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius)) {
                     ae.parts.forEach(p => { p.userData.hp -= b.userData.damage; });
                     let th = 0; ae.parts.forEach(p => th += Math.max(0, p.userData.hp));
+                    _hitMarkerTimer = 9;
                     updateUnitLabel(ae.label, th); if (th <= 0) destroyLogicalEnemy(ae.id);
                 }
             }
@@ -1612,6 +1900,7 @@ function updateProjectiles(dt) {
                 for (const gu of groundUnits) {
                     if (gu.userData.hp > 0 && m.position.distanceToSquared(gu.position) < missileAoERadius * missileAoERadius) {
                         gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
+                        _hitMarkerTimer = 9;
                         if (gu.userData.hp <= 0) _mDestroy.push(gu);
                     }
                 }
@@ -1621,6 +1910,7 @@ function updateProjectiles(dt) {
                     const au = airUnits[ai];
                     if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < missileAoERadius * missileAoERadius) {
                         au.hp -= dmg; au.userData.hp = au.hp; updateUnitLabel(au.label, au.hp);
+                        _hitMarkerTimer = 9;
                         if (au.hp <= 0) destroyAirUnit(au, ai);
                     }
                 }
@@ -1628,6 +1918,7 @@ function updateProjectiles(dt) {
                     if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < missileAoERadius * missileAoERadius)) {
                         en.parts.forEach(p => p.userData.hp -= dmg);
                         let th = 0; en.parts.forEach(p => th += Math.max(0, p.userData.hp));
+                        _hitMarkerTimer = 9;
                         updateUnitLabel(en.label, th); if (th <= 0) destroyLogicalEnemy(en.id);
                     }
                 }
@@ -1681,6 +1972,7 @@ function updateProjectiles(dt) {
             for (const gu of groundUnits) {
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(p.pos) < rSq) {
                     gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
+                    _hitMarkerTimer = 9;
                     if (gu.userData.hp <= 0) _napDestroy.push(gu);
                 }
             }
@@ -1762,6 +2054,7 @@ function animate() {
         rotHdgElement.textContent = '-'; rotPchElement.textContent = '-'; rotBnkElement.textContent = '-';
     }
     updateProjectiles(dt);
+    updateEffects(dt); // ideas 1-6, 10
     updateDebugBoxes();
     updateCamera();
     // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end
@@ -1792,6 +2085,7 @@ function updateRadarSnapshot() {
     groundUnits.forEach(u => { if (u.userData.hp > 0) { u.getWorldPosition(_wp); _radarBlips.push({ wx: _wp.x, wz: _wp.z, color: u.userData.isHostile ? 'orange' : 'white', shape: 'dot' }); } });
     airUnits.forEach(au => { if (au.hp > 0) _radarBlips.push({ wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
     baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
+    tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: '#00ccff', shape: 'ring' }); });
 }
 // ================================================================
 function updateMinimap() {
@@ -1850,6 +2144,10 @@ function updateMinimap() {
                 const sy = MINIMAP_SIZE / 2 + mp.x * Math.sin(playerAngle) + mp.y * Math.cos(playerAngle);
                 namedLabels.push({ sx, sy, name: b.label, color: b.color });
             }
+        } else if (b.shape === 'ring') {
+            minimapCtx.strokeStyle = b.color; minimapCtx.lineWidth = 1.5;
+            minimapCtx.beginPath(); minimapCtx.arc(mp.x, mp.y, 6, 0, Math.PI * 2); minimapCtx.stroke();
+            minimapCtx.lineWidth = 1;
         } else {
             minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3);
         }
@@ -1917,6 +2215,7 @@ function runSplash() {
                                 cursor.style.animation = 'none';
                                 cursor.style.opacity   = '0';
                                 splash.style.opacity   = '0';
+                                speed = maxSpeed * 0.5;
                                 setTimeout(() => splash.remove(), 1050);
                             }, 1800);
                         }

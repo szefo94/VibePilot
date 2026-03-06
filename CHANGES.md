@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+> **Prompts (this session):** "look at ideas.txt try to implement 1-10" / "hitting ground enemies should also have hit markers / collecting yellow spheres should also have collect animation / hitting collectible with plane wing should also collect them, as of entire player plane should be able to collect them" / "add tubes to collectors panel, tubes shouldnt overlap" / "every damage dealt should appear hit marker" / "some of yellow boxes are hard to collect" / "add tubes to minimap" / "player speed should be set to half of the capacity after splash screen" / "tube radius should be at least wingspan"
+
+### Features
+- **Collectible burst animation** (idea 1): Picking up a green collectible or yellow marker now spawns 8 expanding burst particles that fly outward and fade over 35 frames.
+- **Marker ring blink-out** (idea 2): When a yellow marker is collected the torus hoop does not instantly vanish — it blinks with increasing frequency over 3 seconds before disappearing.
+- **Player blink on damage** (idea 3): Player plane emissive flashes red (`0xff1100`) for 45 frames after taking a bullet hit.
+- **CoD-style hit marker** (idea 4): A crosshair overlay (`#hit-marker`) flashes for 9 frames on every damage event — bullets, bombs, missiles, napalm ticks.
+- **Enemy blink before destroy** (idea 5): Ground units, air units, and enemy fighters are removed from their live arrays immediately on death (collision inactive) but remain in scene for 50 frames, blinking before `scene.remove` / geometry dispose.
+- **Plane falls to pieces on death** (idea 6): On game-over the player mesh is hidden and 6 box debris pieces spawn with random velocities and angular velocities, falling under gravity.
+- **Tube challenge system** (ideas 7–9): Mathematical hollow tunnels (helix, sine S-curve, corkscrew) placed across the map. Fly inside and collect all 11 cyan orbs for +200 XP. Completing a tube fires a ribbon banner and adds an entry to the `⚡ TUB` conquered panel row. Each tube is one-time only — it and all remaining orbs disappear on completion.
+- **Memory debug panel** (idea 10): Press `M` to toggle a panel showing JS heap usage and live entity counts, updated every 120 frames.
+- **Tubes on minimap**: Active tubes shown as cyan rings (`○`) in the radar snapshot; disappear on completion.
+- **Splash-screen speed ramp**: Speed is set to `maxSpeed × 0.5` the moment the splash fades out so the plane appears already in motion.
+
+### Bug Fixes
+- **Full-wingspan pickup box**: Collectible pickup now uses a `THREE.Box3` union of all six plane part boxes (`_planePickupBox`), giving the full 12-unit wingspan as the collection zone instead of a small nose-only sphere.
+- **Marker pickup range**: Yellow markers now use a separate `_planeMarkerBox` expanded by `markerRadius = 5`, matching the visual sphere size. Previously only `collectibleRadius = 1.5` was applied, making markers hard to collect.
+- **Tube minimap position**: Tubes store their spawn `cx, cz` and use those for the radar blip; previously used `mesh.position` which is always `(0,0,0)` since geometry is built in world space.
+- **Tube minimum radius**: Raised from 6 to 12 units (full player wingspan) so the plane can always fly through without clipping.
+- **Hit marker on any damage**: `_hitMarkerTimer` is now set inside every individual damage block (not just on kill), covering bomb, missile, and napalm paths.
+
+---
+
 > **Prompt:** "do 2.2 2.3 2.4 2.5 3.1 3.2 3.3 3.4" (roadmap items)
 
 ### Refactor
