@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+> **Prompts:** "is sound available without adding any files? if yes add mechanical/normal keyboard noises when letters appear on splash" / "it does not happen on page refresh" / "play same sound as in splash when any damage is dealt to enemies / play different sound when damage is dealt to a player" / "bomb missile and napalm should play sound as well / also play sound when bomb missile and napalm are hitting enemies, like when hit markers appear"
+
+### Features
+- **Splash keyboard click sounds**: Each character typed during the splash intro plays a synthesized mechanical key-click via Web Audio API (short noise burst with steep exponential decay). No external files required.
+- **"Press any key" splash prompt**: Splash now waits for the first keydown/click before starting the type-out animation. This satisfies the browser autoplay policy (AudioContext requires a user gesture) and also serves as a natural game-start prompt. The prompt is styled in the same terminal font, blinking.
+- **Enemy damage sound**: `_playKeyClick()` fires on every enemy hit-marker event — bullet hits (air fighters, air units, ground units) and AoE detonations (bomb, missile, napalm). AoE uses a per-detonation flag so multiple units in the same explosion produce one sound, not a stack.
+- **Player damage sound**: `_playPlayerHit()` — a distinct low sine sweep (130 → 35 Hz) with a layered noise transient — fires alongside the existing screen-flash and blink effect when an enemy bullet hits the player.
+- **Weapon fire sounds** (all via Web Audio API, no files):
+  - **Bomb drop** — descending sine whistle (600 → 180 Hz, 380 ms), classic falling-bomb sound.
+  - **Missile launch** — rising noise burst filtered through a high-pass (> 1.2 kHz), sharp whoosh.
+  - **Napalm drop** — heavy sawtooth thud sweep (90 → 30 Hz, 320 ms), low rumbling drop.
+
+---
+
 > **Prompts (this session):** "look at ideas.txt try to implement 1-10" / "hitting ground enemies should also have hit markers / collecting yellow spheres should also have collect animation / hitting collectible with plane wing should also collect them, as of entire player plane should be able to collect them" / "add tubes to collectors panel, tubes shouldnt overlap" / "every damage dealt should appear hit marker" / "some of yellow boxes are hard to collect" / "add tubes to minimap" / "player speed should be set to half of the capacity after splash screen" / "tube radius should be at least wingspan" / "add xbox controller support"
 
 ### Features

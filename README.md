@@ -8,6 +8,7 @@
 
 - [Controls](#controls)
 - [Splash Screen](#splash-screen)
+- [Sound](#sound)
 - [HUD](#hud)
 - [World](#world)
 - [Player](#player)
@@ -68,10 +69,11 @@ Gamepad is polled every frame via the browser Gamepad API. Stick deflection is a
 
 ## Splash Screen
 
-On game load a full-screen intro sequence plays before input is accepted:
+On game load a full-screen intro sequence plays. A blinking `— press any key —` prompt appears first; the first keydown or click starts the animation (this also satisfies the browser AudioContext autoplay policy so sounds work immediately).
 
 | Phase | Detail |
 |---|---|
+| Prompt | Blinking `— press any key —` in terminal font; waits indefinitely for first input |
 | Title type-out | `Vibe Pilot` spelled letter-by-letter in **Orbitron** (bold aeronautic font, glowing green) at 110 ms / char |
 | Cursor | Blinking block cursor follows the growing text |
 | Title fade | 900 ms pause → title opacity transitions to 0 over 600 ms |
@@ -79,6 +81,22 @@ On game load a full-screen intro sequence plays before input is accepted:
 | Dismiss | 1.8 s pause → cursor stops, entire overlay fades over 1 s → element removed from DOM |
 | Input guard | All keydown events are suppressed while the splash element exists |
 | Speed on dismiss | Speed set to `maxSpeed × 0.5` as the splash fades — plane appears already in motion |
+
+---
+
+## Sound
+
+All sounds are synthesized via the **Web Audio API** — no external files or libraries are required. Sounds only play after the first user gesture (handled by the splash "press any key" prompt).
+
+| Event | Sound | Synthesis |
+|---|---|---|
+| Splash character typed | Mechanical key-click | Short white-noise burst, steep exponential decay (40 ms) |
+| Enemy hit / hit marker | Key-click | Same noise burst as splash click |
+| Player takes damage | Heavy thud | Sine sweep 130 → 35 Hz + noise transient, 220 ms |
+| Bomb dropped | Falling whistle | Sine sweep 600 → 180 Hz, 380 ms |
+| Missiles launched | Sharp whoosh | Rising noise burst, high-pass filtered > 1.2 kHz, 140 ms |
+| Napalm dropped | Low rumble | Sawtooth sweep 90 → 30 Hz, 320 ms |
+| Bomb / missile / napalm hits enemy | Key-click | Fires once per detonation when ≥ 1 unit is in AoE range |
 
 ---
 
