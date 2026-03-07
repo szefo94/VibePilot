@@ -1199,6 +1199,7 @@ function dropBomb() {
     b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop); // velocity persists on bullet; clone needed
     b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: bombDamage * playerDamageMultiplier, aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
+    _playBombDrop();
 }
 function fireMissile() {
     // Find nearest hostile target to home on
@@ -1231,6 +1232,7 @@ function fireMissile() {
     };
     spawnOne(_wv1); // lTip
     spawnOne(_sv3); // rTip
+    _playMissileLaunch();
 }
 function dropNapalm() {
     const b = new THREE.Mesh(bombGeometry, napalmBombMaterial);
@@ -1238,6 +1240,7 @@ function dropNapalm() {
     b.position.copy(plane.position).add(_bombOffset);
     b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop);
     napalmBombs.push(b); scene.add(b);
+    _playNapalmDrop();
 }
 function deployFlareEffect() {
     // Angel-wings pattern: two arcs of bright particles spreading left and right
@@ -1791,6 +1794,7 @@ function resolveCollisions() {
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
                 _playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
+                _playPlayerHit();
                 if (planeHP <= 0) { triggerGameOver(); break; }
             }
         }
@@ -1810,6 +1814,7 @@ function resolveCollisions() {
                 updateUnitLabel(e.label, totalHp);
                 if (totalHp <= 0) destroyLogicalEnemy(e.id);
                 _hitMarkerTimer = 9; // idea 4
+                _playKeyClick();
                 break;
             }
         }
@@ -1828,6 +1833,7 @@ function resolveCollisions() {
                     updateUnitLabel(au.label, au.hp);
                     if (au.hp <= 0) destroyAirUnit(au);
                     _hitMarkerTimer = 9; // idea 4
+                    _playKeyClick();
                 }
             } else {
                 // Ground unit
@@ -1839,6 +1845,7 @@ function resolveCollisions() {
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
                     if (u.userData.hp <= 0) killGroundUnit(u); // (§2.3)
                     _hitMarkerTimer = 9; // idea 4
+                    _playKeyClick();
                 }
             }
         }
@@ -1863,11 +1870,12 @@ function updateProjectiles(dt) {
             createExplosion(b.position);
             // §4.1: collect then destroy to handle airport+turret order (no slice needed — outer loop only reads)
             const _bombDestroy = [];
+            let _bombAoeHit = false;
             for (const gu of groundUnits) {
                 if (gu.userData.protector && gu.userData.protector.userData.hp > 0) continue; // §4.1 protected
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     gu.userData.hp -= b.userData.damage; updateUnitLabel(gu.userData.label, gu.userData.hp);
-                    _hitMarkerTimer = 9;
+                    _hitMarkerTimer = 9; _bombAoeHit = true;
                     if (gu.userData.hp <= 0) _bombDestroy.push(gu);
                 }
             }
@@ -1879,7 +1887,7 @@ function updateProjectiles(dt) {
                 if (au.hp > 0 && au.group.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
-                    _hitMarkerTimer = 9;
+                    _hitMarkerTimer = 9; _bombAoeHit = true;
                     if (au.hp <= 0) destroyAirUnit(au, ai); // destroyAirUnit calls notifyBase internally
                 }
             }
@@ -1888,10 +1896,11 @@ function updateProjectiles(dt) {
                 if (ae.parts.some(p => p.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius)) {
                     ae.parts.forEach(p => { p.userData.hp -= b.userData.damage; });
                     let th = 0; ae.parts.forEach(p => th += Math.max(0, p.userData.hp));
-                    _hitMarkerTimer = 9;
+                    _hitMarkerTimer = 9; _bombAoeHit = true;
                     updateUnitLabel(ae.label, th); if (th <= 0) destroyLogicalEnemy(ae.id);
                 }
             }
+            if (_bombAoeHit) _playKeyClick();
             scene.remove(b); bombs.splice(i, 1);
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
@@ -1962,10 +1971,11 @@ function updateProjectiles(dt) {
                 const dmg = missileDamage * playerDamageMultiplier;
                 createExplosion(m.position); createExplosion(m.position); // double flash for missiles
                 const _mDestroy = [];
+                let _missileAoeHit = false;
                 for (const gu of groundUnits) {
                     if (gu.userData.hp > 0 && m.position.distanceToSquared(gu.position) < missileAoERadius * missileAoERadius) {
                         gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
-                        _hitMarkerTimer = 9;
+                        _hitMarkerTimer = 9; _missileAoeHit = true;
                         if (gu.userData.hp <= 0) _mDestroy.push(gu);
                     }
                 }
@@ -1975,7 +1985,7 @@ function updateProjectiles(dt) {
                     const au = airUnits[ai];
                     if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < missileAoERadius * missileAoERadius) {
                         au.hp -= dmg; au.userData.hp = au.hp; updateUnitLabel(au.label, au.hp);
-                        _hitMarkerTimer = 9;
+                        _hitMarkerTimer = 9; _missileAoeHit = true;
                         if (au.hp <= 0) destroyAirUnit(au, ai);
                     }
                 }
@@ -1983,10 +1993,11 @@ function updateProjectiles(dt) {
                     if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < missileAoERadius * missileAoERadius)) {
                         en.parts.forEach(p => p.userData.hp -= dmg);
                         let th = 0; en.parts.forEach(p => th += Math.max(0, p.userData.hp));
-                        _hitMarkerTimer = 9;
+                        _hitMarkerTimer = 9; _missileAoeHit = true;
                         updateUnitLabel(en.label, th); if (th <= 0) destroyLogicalEnemy(en.id);
                     }
                 }
+                if (_missileAoeHit) _playKeyClick();
             }
             scene.remove(m); missiles.splice(i, 1);
         }
@@ -2034,15 +2045,17 @@ function updateProjectiles(dt) {
             const dmg = napalmDamage * playerDamageMultiplier;
             const rSq = napalmRadius * napalmRadius;
             const _napDestroy = [];
+            let _napAoeHit = false;
             for (const gu of groundUnits) {
                 if (gu.userData.hp > 0 && gu.position.distanceToSquared(p.pos) < rSq) {
                     gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
-                    _hitMarkerTimer = 9;
+                    _hitMarkerTimer = 9; _napAoeHit = true;
                     if (gu.userData.hp <= 0) _napDestroy.push(gu);
                 }
             }
             _napDestroy.sort(a => a.userData.dependents?.length ? -1 : 1);
             for (const gu of _napDestroy) killGroundUnit(gu); // (§2.3)
+            if (_napAoeHit) _playKeyClick();
         }
         if (p.life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); napalmPatches.splice(i, 1); }
     }
@@ -2250,6 +2263,89 @@ function _playKeyClick() {
         gain.gain.exponentialRampToValueAtTime(0.001, 0.04);
         src.connect(gain); gain.connect(ctx.destination);
         src.start(); src.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+function _playBombDrop() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        // Falling whistle — descending sine
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, t);
+        osc.frequency.exponentialRampToValueAtTime(180, t + 0.35);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.38); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+function _playMissileLaunch() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        // Sharp whoosh — rising noise burst
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (i / data.length);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        // High-pass to make it crisp
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass'; hp.frequency.value = 1200;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.5, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
+        src.start(t); src.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+function _playNapalmDrop() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        // Heavy thud + low rumble
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(90, t);
+        osc.frequency.exponentialRampToValueAtTime(30, t + 0.28);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.35, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.32); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+function _playPlayerHit() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        // Low thud — sine sweep downward
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(130, t);
+        osc.frequency.exponentialRampToValueAtTime(35, t + 0.18);
+        const oscGain = ctx.createGain();
+        oscGain.gain.setValueAtTime(0.5, t);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        osc.connect(oscGain); oscGain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.22);
+        // Short noise transient layered on top
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 4);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.35, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        src.connect(noiseGain); noiseGain.connect(ctx.destination);
+        src.start(t); src.onended = () => ctx.close();
     } catch(e) {}
 }
 
