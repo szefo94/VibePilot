@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+> **Prompts:** "would it take much of an space of code and memory to change how islets are generated? fractal shapes, then approximation" / "do A (midpoint displacement) and B (Koch snowflake) and allow to switch on constant setup. default A"
+
+### Features
+- **Fractal islet generation**: Islets are now shaped by a procedural fractal algorithm instead of flat circles. Two modes selectable via `ISLET_MODE` constant:
+  - **`'A'` — Midpoint displacement** (default): Starts with 8 circle points, recursively bisects each edge and displaces the midpoint radially with halving amplitude. Produces organic, natural-looking coastlines.
+  - **`'B'` — Koch snowflake**: Starts with an equilateral triangle, subdivides each edge into a bump (4 segments per iteration). Produces a geometric, crystalline shape.
+- **`ISLET_ITERATIONS`** — controls polygon resolution (A: 3–4 → 64–128 pts; B: 2–3 → 48–192 pts).
+- **`ISLET_ROUGHNESS`** — (mode A only) radial displacement scale; 0.2 = subtle, 0.5 = very jagged.
+- **`ShapeGeometry` mesh**: Islet meshes are now built from the fractal polygon via `THREE.ShapeGeometry` + `THREE.Shape`, rotated flat. Replaces `CylinderGeometry`.
+- **Polygon-accurate collision**: `isOnAnyIslet` uses a broad-phase circle check then `_pointInPolygon` (ray-casting). `clampToIslet` finds the nearest polygon edge point via `_nearestOnPolygon`. Both functions respect the real islet shape.
+- **Minimap polygon outline**: Minimap draws the actual fractal polygon instead of a circle arc, matching the 3D shape.
+
+---
+
 > **Prompts:** "is sound available without adding any files? if yes add mechanical/normal keyboard noises when letters appear on splash" / "it does not happen on page refresh" / "play same sound as in splash when any damage is dealt to enemies / play different sound when damage is dealt to a player" / "bomb missile and napalm should play sound as well / also play sound when bomb missile and napalm are hitting enemies, like when hit markers appear"
 
 ### Features

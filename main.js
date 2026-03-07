@@ -45,17 +45,102 @@ water.rotation.x = -Math.PI / 2; water.position.y = waterLevel; scene.add(water)
 const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), caveWallMaterial);
 ceiling.rotation.x = Math.PI / 2; ceiling.position.y = ceilingLevel; scene.add(ceiling);
 // --- Islets ---
+// ISLET_MODE: 'A' = midpoint displacement (organic), 'B' = Koch snowflake (geometric)
+const ISLET_MODE          = 'A';
+const ISLET_ITERATIONS    = 4;    // A: 4 → 128 pts | B: 3 → 192 pts
+const ISLET_ROUGHNESS     = 0.35; // A only — radial displacement scale (0.2 = subtle, 0.5 = jagged)
+
 const islets = [];
 const isletMaterial = new THREE.MeshStandardMaterial({ color: 0x556B2F });
+
+// Generate fractal polygon in world space, centred at (cx, cz) with given radius.
+// Returns array of { x, z } world-space points forming a closed polygon.
+function _generateIsletPolygon(cx, cz, radius) {
+    if (ISLET_MODE === 'B') {
+        // --- Koch snowflake ---
+        let pts = [];
+        for (let i = 0; i < 3; i++) {
+            const a = (i / 3) * Math.PI * 2 - Math.PI / 6;
+            pts.push({ x: cx + Math.cos(a) * radius, z: cz + Math.sin(a) * radius });
+        }
+        for (let iter = 0; iter < ISLET_ITERATIONS; iter++) {
+            const next = [];
+            for (let i = 0; i < pts.length; i++) {
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                const p1 = { x: a.x + (b.x - a.x) / 3,       z: a.z + (b.z - a.z) / 3 };
+                const p2 = { x: a.x + (b.x - a.x) * 2 / 3,   z: a.z + (b.z - a.z) * 2 / 3 };
+                const dx = p2.x - p1.x, dz = p2.z - p1.z;
+                const peak = { x: p1.x + dx * 0.5 - dz * 0.866, z: p1.z + dz * 0.5 + dx * 0.866 };
+                next.push(a, p1, peak, p2);
+            }
+            pts = next;
+        }
+        return pts;
+    } else {
+        // --- Midpoint displacement (default A) ---
+        let pts = [];
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            pts.push({ x: cx + Math.cos(a) * radius, z: cz + Math.sin(a) * radius });
+        }
+        let disp = radius * ISLET_ROUGHNESS;
+        for (let iter = 0; iter < ISLET_ITERATIONS; iter++) {
+            const next = [];
+            for (let i = 0; i < pts.length; i++) {
+                const a = pts[i], b = pts[(i + 1) % pts.length];
+                next.push(a);
+                const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+                const nx = mx - cx, nz = mz - cz;
+                const len = Math.sqrt(nx * nx + nz * nz) || 1;
+                const d = (Math.random() * 2 - 1) * disp;
+                next.push({ x: mx + (nx / len) * d, z: mz + (nz / len) * d });
+            }
+            pts = next;
+            disp *= 0.5;
+        }
+        return pts;
+    }
+}
+
+function _pointInPolygon(px, pz, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, zi = poly[i].z, xj = poly[j].x, zj = poly[j].z;
+        if ((zi > pz) !== (zj > pz) && px < (xj - xi) * (pz - zi) / (zj - zi) + xi) inside = !inside;
+    }
+    return inside;
+}
+
+function _nearestOnPolygon(px, pz, poly) {
+    let bx = poly[0].x, bz = poly[0].z, bd = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const dx = b.x - a.x, dz = b.z - a.z, lenSq = dx * dx + dz * dz;
+        const t = lenSq > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / lenSq)) : 0;
+        const cx = a.x + t * dx, cz = a.z + t * dz, d = (px - cx) ** 2 + (pz - cz) ** 2;
+        if (d < bd) { bd = d; bx = cx; bz = cz; }
+    }
+    return { x: bx, z: bz };
+}
+
 function createIslets(count) {
     for (let i = 0; i < count; i++) {
         const radius = randomRange(200, 500);
         const x = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
         const z = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
-        islets.push({ x, z, radius });
-        const isletMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 2, 32), isletMaterial);
-        isletMesh.position.set(x, groundLevel + 1, z);
-        scene.add(isletMesh);
+        const polygon = _generateIsletPolygon(x, z, radius);
+        islets.push({ x, z, radius, polygon });
+
+        // Build ShapeGeometry from polygon (Shape is in XY plane → rotate to XZ)
+        const shape = new THREE.Shape();
+        shape.moveTo(polygon[0].x - x, polygon[0].z - z);
+        for (let k = 1; k < polygon.length; k++) shape.lineTo(polygon[k].x - x, polygon[k].z - z);
+        shape.closePath();
+        const geo = new THREE.ShapeGeometry(shape);
+        const mesh = new THREE.Mesh(geo, isletMaterial);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(x, groundLevel + 1, z);
+        scene.add(mesh);
     }
 }
 // --- Player Plane ---
@@ -635,12 +720,12 @@ function createHangar(variant = 'box') {
 
 // --- Spawn helpers ---
 function clampToIslet(px, pz, islet) {
-    const dx = px - islet.x, dz = pz - islet.z, dist = Math.sqrt(dx * dx + dz * dz);
-    if (dist <= islet.radius * 0.9) return { x: px, z: pz };
-    const s = islet.radius * 0.9 / dist;
-    return { x: islet.x + dx * s, z: islet.z + dz * s };
+    if (_pointInPolygon(px, pz, islet.polygon)) return { x: px, z: pz };
+    return _nearestOnPolygon(px, pz, islet.polygon);
 }
-function isOnAnyIslet(px, pz) { return islets.some(i => (px - i.x) ** 2 + (pz - i.z) ** 2 < i.radius * i.radius); }
+function isOnAnyIslet(px, pz) {
+    return islets.some(i => (px - i.x) ** 2 + (pz - i.z) ** 2 < i.radius * i.radius && _pointInPolygon(px, pz, i.polygon));
+}
 function getNearestIslet(x, z) {
     let best = null, bestDist = Infinity;
     for (const isl of islets) { const d = (x - isl.x) ** 2 + (z - isl.z) ** 2; if (d < bestDist) { bestDist = d; best = isl; } }
@@ -2208,8 +2293,15 @@ function updateMinimap() {
     minimapCtx.fillText('N', 0, -compassRadius); minimapCtx.fillText('S', 0, compassRadius); minimapCtx.fillText('E', compassRadius, 0); minimapCtx.fillText('W', -compassRadius, 0);
     minimapCtx.fillStyle = 'rgba(85,107,47,0.7)';
     islets.forEach(islet => {
-        const ip = getMinimapPoint(islet), ir = islet.radius * scale;
-        const _rd = MINIMAP_SIZE / 2 + ir; if (ip.x*ip.x + ip.y*ip.y < _rd*_rd) { minimapCtx.beginPath(); minimapCtx.arc(ip.x, ip.y, ir, 0, Math.PI * 2); minimapCtx.fill(); }
+        const ic = getMinimapPoint(islet), ir = islet.radius * scale;
+        const _rd = MINIMAP_SIZE / 2 + ir;
+        if (ic.x * ic.x + ic.y * ic.y >= _rd * _rd) return;
+        minimapCtx.beginPath();
+        islet.polygon.forEach((pt, k) => {
+            const mp = getMinimapPoint(pt);
+            k === 0 ? minimapCtx.moveTo(mp.x, mp.y) : minimapCtx.lineTo(mp.x, mp.y);
+        });
+        minimapCtx.closePath(); minimapCtx.fill();
     });
     // Draw blips from last radar snapshot (positions frozen until next sweep)
     const namedLabels = [];

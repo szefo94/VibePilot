@@ -141,10 +141,26 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 - Ground plane
 - Water plane
 - Ceiling plane
-- Islets — raised cylinder platforms scattered across the map
+- Islets — raised fractal-shaped platforms scattered across the map
   - Count: configurable (`numIslets`)
-  - Radius range: 200 – 500 units
+  - Radius range: 200 – 500 units (bounding circle)
   - Positioned within `MAP_BOUNDARY * 0.8`
+
+### Islet Generation
+
+Islet shapes are generated procedurally at world init via a fractal polygon algorithm. The mode is set by the `ISLET_MODE` constant at the top of `main.js`.
+
+| Constant | Default | Description |
+|---|---|---|
+| `ISLET_MODE` | `'A'` | `'A'` = midpoint displacement (organic) · `'B'` = Koch snowflake (geometric) |
+| `ISLET_ITERATIONS` | `3` | Subdivision iterations — higher = more detail and more polygon points |
+| `ISLET_ROUGHNESS` | `0.40` | Mode A only — radial displacement amplitude (0.2 subtle → 0.5 jagged) |
+
+**Mode A — Midpoint displacement**: Starts with 8 equally-spaced points on a circle. Each iteration bisects every edge and displaces the midpoint radially by a random amount (amplitude halves each iteration). 3 iterations → 64 points per islet.
+
+**Mode B — Koch snowflake**: Starts with an equilateral triangle inscribed in the bounding circle. Each iteration replaces every edge with a 4-segment bump. 3 iterations → 192 points per islet.
+
+Collision functions (`isOnAnyIslet`, `clampToIslet`) use the real polygon via ray-casting point-in-polygon and nearest-edge clamping. The minimap draws the actual polygon outline.
 
 ---
 
