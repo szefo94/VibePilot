@@ -401,7 +401,7 @@ const numAirbases = 5, numForwardBases = 8, numCarrierGroups = 2, numDestroyerSq
 const enemyBulletSpeed = 1.2, enemyBulletLife = 200, enemyBulletDamage = 15;
 const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 240;
 // Enemy aim: 0 = no prediction / full random spread, 1 = perfect predictive aim
-const ENEMY_AIM_ACCURACY = 0.70; // default 70% = 30% cone inaccuracy
+const ENEMY_AIM_ACCURACY = 0.95; // default 70% = 30% cone inaccuracy //single constant to tune. 1.0 = perfect lead shot, 0.0 = fully random scatter
 const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
 // --- Obstacle resources ---
