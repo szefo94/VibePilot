@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+> **Prompts:** "but sound is played even when enemies are not in range" / "enemies shoot constantly, make it so enemies shoot only when player gets in range"
+
+### Fixes
+- **Enemy shot sound range-gated**: `_playEnemyShot()` now only fires when the shooting unit is within 300 units of the player (half the 600-unit shooting range). Enemies beyond that still fire bullets silently — no more ambient shooting noise from distant units.
+- **Reduced fire rate**: `hostileUnitShootingCooldownTime` raised from 120 to 240 frames (~4 s per unit at 60 fps), halving the per-unit fire rate and reducing the combined noise from multiple nearby turrets.
+- **Air unit cooldown staggered**: Hostile air units now start with a random cooldown offset (0–4 s, same pattern as ground units) instead of all firing simultaneously on the first update frame.
+
+---
+
 > **Prompts:** "would it take much of an space of code and memory to change how islets are generated? fractal shapes, then approximation" / "do A (midpoint displacement) and B (Koch snowflake) and allow to switch on constant setup. default A"
 
 ### Features

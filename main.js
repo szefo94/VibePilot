@@ -34,7 +34,7 @@ const MINIMAP_REFRESH_S    = 1 / 15; // minimap refresh rate in seconds (§2.5)
 // Bullets
 const ENEMY_BULLET_POOL_SIZE = 60;   // pre-allocated enemy bullet meshes (§2.4)
 // Spawn
-const START_SAFE_ZONE      = 300;    // exclusion radius around player spawn
+const GRACE_PERIOD = 5.0;            // seconds of invincibility after game start
 
 // --- Environment ---
 const caveWallMaterial = new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.9 });
@@ -338,6 +338,7 @@ const TUBE_XP = 200;
 // --- Hit-marker / blink timers ---
 let _hitMarkerTimer = 0;    // frames remaining for hit-confirm crosshair (idea 4)
 let _playerBlinkTimer = 0;  // frames remaining for plane red-blink on damage (idea 3)
+let _graceTimer = GRACE_PERIOD; // seconds of spawn invincibility remaining
 // --- Memory debug refresh ---
 let _memDebugTimer = 0;
 // Unused variable removed: isLaserVisible
@@ -398,7 +399,9 @@ const enemyPartHP = 1, numEnemies = 10, enemySpeed = .05, enemyScale = 2;
 const defaultEnemyHpOffsetY = 5 * enemyScale;
 const numAirbases = 5, numForwardBases = 8, numCarrierGroups = 2, numDestroyerSquadrons = 3;
 const enemyBulletSpeed = 1.2, enemyBulletLife = 200, enemyBulletDamage = 15;
-const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 120;
+const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 240;
+// Enemy aim: 0 = no prediction / full random spread, 1 = perfect predictive aim
+const ENEMY_AIM_ACCURACY = 0.70; // default 70% = 30% cone inaccuracy
 const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 const numHoverWings = 3, numStrikeWings = 2;
 // --- Obstacle resources ---
@@ -915,7 +918,7 @@ function createAirUnit(type, x, y, z) {
     }
     visual.position.set(x, y, z); visual.scale.set(3, 3, 3); scene.add(visual);
     const label = createUnitLabel(name, level, hp, hp); scene.add(label.sprite);
-    const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: collR, xpValue: xp, isHostile: hostile, baseId: null, label, shootCooldown: 0, userData: { hp, baseId: null } };
+    const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: collR, xpValue: xp, isHostile: hostile, baseId: null, label, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, userData: { hp, baseId: null } };
     return au;
 }
 function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
@@ -1011,9 +1014,9 @@ function createAllUnits() {
     const getSafeZ2 = r2 => { let p; do { p = { x: randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z: randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9) }; } while (p.x * p.x + p.z * p.z < r2); return p; };
     const getSpawnPointOnIslet = () => { const isl = islets[~~(Math.random() * islets.length)], a = Math.random() * Math.PI * 2, d = Math.random() * isl.radius * .9; return { x: isl.x + Math.cos(a) * d, z: isl.z + Math.sin(a) * d, islet: isl }; };
     const getSpawnPointInWater = () => { let p; do { p = getSafeZ2(0); } while (isOnAnyIslet(p.x, p.z)); return p; };
-    const sz2 = START_SAFE_ZONE * START_SAFE_ZONE;
-    const sz2_150 = (START_SAFE_ZONE + 150) * (START_SAFE_ZONE + 150);
-    const sz2_100 = (START_SAFE_ZONE + 100) * (START_SAFE_ZONE + 100);
+    const sz2 = 300 * 300;
+    const sz2_150 = 450 * 450;
+    const sz2_100 = 400 * 400;
     for (let i = 0; i < numCarrierGroups; i++) { let p; do { p = getSpawnPointInWater(); } while (p.x * p.x + p.z * p.z < sz2_150); spawnCarrierStrikeGroup(p.x, p.z); }
     for (let i = 0; i < numDestroyerSquadrons; i++) { let p; do { p = getSpawnPointInWater(); } while (p.x * p.x + p.z * p.z < sz2); spawnDestroyerSquadron(p.x, p.z); }
     for (let i = 0; i < numAirbases; i++) { let p; do { p = getSpawnPointOnIslet(); } while (p.x * p.x + p.z * p.z < sz2_100); spawnAirbase(p.x, p.z, p.islet); }
@@ -1043,7 +1046,7 @@ function spawnSingleEnemy() {
     l.parts[1].position.x = -2.5; l.parts[2].position.x = 2.5; l.parts[3].position.set(0, .5, -1.3);
     totalHp = Math.min(enemyPartHP * 4 * lvl, 5 * lvl);
     let sX, sZ, sY = randomRange(groundLevel + 20 + l.hpOffsetY, ceilingLevel - l.hpOffsetY);
-    do { sX = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9); sZ = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9); } while (sX * sX + sZ * sZ < START_SAFE_ZONE * START_SAFE_ZONE);
+    sX = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9); sZ = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
     const cP = new THREE.Vector3(sX, sY, sZ);
     let cH = 0;
     l.parts.forEach(p => {
@@ -1355,13 +1358,28 @@ function deployFlareEffect() {
 const _up3 = new THREE.Vector3(0, 1, 0);
 function spawnEnemyBullet(fromPos, targetPos) {
     const b = _enemyBulletPool.pop() || _createEnemyBulletMesh();
-    _sv1.subVectors(targetPos, fromPos).normalize();
-    b.quaternion.setFromUnitVectors(_up3, _sv1);
+    // Save from position first — fromPos may alias a scratch vector used below
     b.position.copy(fromPos);
+    // Predictive aim: lead the target by estimated bullet travel time, scaled by accuracy
+    const dist = Math.sqrt(fromPos.distanceToSquared(targetPos));
+    const travelTime = dist / enemyBulletSpeed;
+    _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion)
+        .multiplyScalar(speed * travelTime * ENEMY_AIM_ACCURACY)
+        .add(targetPos);
+    // Random cone spread — wider when accuracy is lower
+    const spread = dist * (1 - ENEMY_AIM_ACCURACY) * 0.4;
+    _sv1.x += (Math.random() * 2 - 1) * spread;
+    _sv1.y += (Math.random() * 2 - 1) * spread * 0.5;
+    _sv1.z += (Math.random() * 2 - 1) * spread;
+    // Direction from bullet origin to aim point
+    _sv1.subVectors(_sv1, b.position).normalize();
+    b.quaternion.setFromUnitVectors(_up3, _sv1);
     b.velocity = _sv1.clone().multiplyScalar(enemyBulletSpeed);
     b.life = enemyBulletLife;
     b.userData.damage = enemyBulletDamage;
     enemyBullets.push(b); scene.add(b);
+    // Only play shot sound when enemy is close enough to hear (~half the shooting range)
+    if (dist < hostileUnitShootingRange * 0.5) _playEnemyShot();
 }
 function fireHostileBullet(u) {
     if (u.userData.turretPivot) {
@@ -1459,6 +1477,13 @@ function updateEffects(dt) {
         if (d.mesh.position.y < groundLevel + 1 || d.life <= 0) {
             scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.dispose(); _planeDebris.splice(i, 1);
         }
+    }
+    // ── Spawn grace period — white blink while invincible ─────────
+    if (_graceTimer > 0) {
+        _graceTimer = Math.max(0, _graceTimer - dt);
+        const glow = Math.floor(_graceTimer * 8) % 2 === 0; // ~8 Hz blink
+        _planeMaterials.forEach(m => m.emissive.setHex(glow ? 0xffffff : 0x000000));
+        if (_graceTimer <= 0) _planeMaterials.forEach(m => m.emissive.setHex(0x000000));
     }
     // ── Idea 3: Player blink-on-damage ───────────────────────────
     if (_playerBlinkTimer > 0) {
@@ -1755,6 +1780,7 @@ function resolveCollisions() {
                 _dyingMarkers.push({ mesh: m.userData.hoopMesh, timer: 3 * TARGET_FPS });
             }
             score += 10; scoreElement.textContent = score; addXP(15);
+            _playCollectYellow();
             const cid = m.userData.corridorId;
             if (cid && corridors[cid] && !corridors[cid].completed) {
                 const cor = corridors[cid];
@@ -1789,6 +1815,7 @@ function resolveCollisions() {
                 collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.16, 0.1 + Math.random() * 0.1, Math.sin(_a) * 0.16), life: 30, maxLife: 30 });
             }
             score += 5; scoreElement.textContent = score; addXP(8);
+            _playCollectGreen();
             if (sid && constellations[sid] && !constellations[sid].completed) {
                 const con = constellations[sid];
                 con.remaining--;
@@ -1821,6 +1848,7 @@ function resolveCollisions() {
                     collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.2, 0.15, Math.sin(_a) * 0.2), life: 25, maxLife: 25 });
                 }
                 score += 5; scoreElement.textContent = score; addXP(10);
+                _playCollectCyan();
                 _hitMarkerTimer = 9;
                 if (tube.collectibles.length === 0) {
                     tube.completed = true;
@@ -1875,7 +1903,7 @@ function resolveCollisions() {
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
                 createExplosion(b.position);
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
-                if (flareTimer > 0) continue; // §5.7: flares active — deflect bullet
+                if (flareTimer > 0 || _graceTimer > 0) continue; // deflect: flares or spawn grace period
                 planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
                 _playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
@@ -2341,6 +2369,74 @@ window.onload = () => {
     animate();
     runSplash();
 };
+
+// Green collectible — bright high sine ping (880→440 Hz)
+function _playCollectGreen() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, t);
+        osc.frequency.exponentialRampToValueAtTime(440, t + 0.15);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.2, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.18); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+// Cyan tube orb — sharper higher ping (1100→550 Hz), shorter
+function _playCollectCyan() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1100, t);
+        osc.frequency.exponentialRampToValueAtTime(550, t + 0.1);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.14); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+// Yellow marker — warmer triangle wave, lower pitch (523→262 Hz), longer decay
+function _playCollectYellow() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523, t);
+        osc.frequency.exponentialRampToValueAtTime(262, t + 0.22);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.28); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+// Enemy shot — short sawtooth "pew" (400→80 Hz, 90 ms)
+function _playEnemyShot() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(400, t);
+        osc.frequency.exponentialRampToValueAtTime(80, t + 0.09);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.10, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.1); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
 
 function _playKeyClick() {
     try {

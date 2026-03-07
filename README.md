@@ -97,6 +97,7 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 | Missiles launched | Sharp whoosh | Rising noise burst, high-pass filtered > 1.2 kHz, 140 ms |
 | Napalm dropped | Low rumble | Sawtooth sweep 90 → 30 Hz, 320 ms |
 | Bomb / missile / napalm hits enemy | Key-click | Fires once per detonation when ≥ 1 unit is in AoE range |
+| Enemy shoots (nearby) | Short sawtooth pew | Sawtooth sweep 400 → 80 Hz, 90 ms; only audible within 300 units |
 
 ---
 
