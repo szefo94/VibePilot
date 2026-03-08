@@ -224,6 +224,8 @@ const wingTrailR = createWingTrail(); wingTrailR.pts.frustumCulled = false; wing
 const _sv1 = new THREE.Vector3();
 const _sv2 = new THREE.Vector3();
 const _sv3 = new THREE.Vector3();
+const _sq1 = new THREE.Quaternion(); // scratch quaternion for steering
+const _sq2 = new THREE.Quaternion(); // scratch quaternion for steering
 const _camOffset = new THREE.Vector3();
 const _lookAt = new THREE.Vector3();
 const _wp = new THREE.Vector3(); // scratch for getWorldPosition
@@ -260,7 +262,8 @@ const scoreElement = document.getElementById('score'), hpElement = document.getE
     rateRollPos  = document.getElementById('rate-roll-pos'),  rateRollNeg  = document.getElementById('rate-roll-neg'),  rateRollVal  = document.getElementById('rate-roll-val'),
     rateYawPos   = document.getElementById('rate-yaw-pos'),   rateYawNeg   = document.getElementById('rate-yaw-neg'),   rateYawVal   = document.getElementById('rate-yaw-val'),
     speedBarEl   = document.getElementById('speed-bar');
-const hitMarkerEl = document.getElementById('hit-marker');
+const hitMarkerEl    = document.getElementById('hit-marker');
+const _steerCursorEl = document.getElementById('steer-cursor');
 const memDebugEl  = document.getElementById('memory-debug');
 const gunBarEl = document.getElementById('gun-bar'), gunStatusEl = document.getElementById('gun-status');
 const bombBarEl = document.getElementById('bomb-bar'), bombStatusEl = document.getElementById('bomb-status');
@@ -285,6 +288,17 @@ const acceleration = .003, deceleration = .002, naturalDeceleration = .0005;
 const maxPitchRate = .025, maxRollRate = .035, maxYawRate = .03;
 const rotAccel = .00085;
 const rotDamping = .85;
+// --- Mouse-aim steering ---
+const MOUSE_STEERING      = true;  // set false to disable War Thunder-style mouse aim
+const STEER_MAX_TURN_RATE = 0.022; // rad per dt-unit — max angular speed toward cursor
+const STEER_SMOOTHING     = 0.14;  // exponential approach factor per dt (higher = snappier)
+const STEER_CURSOR_RADIUS = 0.72;  // NDC radius of the effective steering circle
+const STEER_MAX_ANGLE     = Math.PI * 0.35; // max steering angle at full cursor radius (~63°)
+const STEER_AUTO_BANK_K   = 9.0;   // horizontal turn rate → desired bank ratio
+const STEER_BANK_SMOOTH   = 0.10;  // bank convergence rate per dt
+const STEER_DEADZONE      = 0.06;  // NDC radius within which cursor is treated as centered
+const STEER_LEVEL_RATE    = 0.018; // pitch leveling rate per dt when cursor is centered
+const STEER_RETURN_DECAY  = 0.028; // per-dt decay rate — cursor drifts back to center when mouse idle
 const bulletDamage = 1, bombDamage = 40, bombAoERadius = 50, bulletSpeed = 1.8, bulletLife = 150, shootCooldownTime = 4;
 // --- Ammo system (§5.7) ---
 const GUN_MAX_AMMO = 60, GUN_RELOAD_TIME = 180;   // reload ~3 s at 60 fps (dt units)
@@ -339,6 +353,7 @@ const TUBE_XP = 200;
 let _hitMarkerTimer = 0;    // frames remaining for hit-confirm crosshair (idea 4)
 let _playerBlinkTimer = 0;  // frames remaining for plane red-blink on damage (idea 3)
 let _graceTimer = GRACE_PERIOD; // seconds of spawn invincibility remaining
+let _mouseNDC = { x: 0, y: 0 }; // mouse position in normalized device coords for steering
 // --- Memory debug refresh ---
 let _memDebugTimer = 0;
 // Unused variable removed: isLaserVisible
@@ -454,6 +469,10 @@ function _gridQuery(x, z, r) {
 
 // --- Input Handling ---
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
+window.addEventListener('mousemove', e => {
+    _mouseNDC.x = (e.clientX / window.innerWidth)  * 2 - 1;
+    _mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
 document.addEventListener('keydown', e => {
     if (isGameOver) return;
     if (document.getElementById('splash-screen')) return;
@@ -1532,6 +1551,7 @@ function destroyLogicalEnemy(id) {
 }
 function triggerGameOver() {
     if (isGameOver) return; isGameOver = true; speed = 0;
+    _steerCursorEl.style.display = 'none';
     gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Final Score: ${score}</span><br><span style="font-size:18px">Refresh to restart</span>`;
     gameOverElement.style.display = 'block';
     enemies.forEach(e => { if (e.label) e.label.sprite.visible = false; });
@@ -1585,19 +1605,55 @@ function updatePhysics(dt) {
     if (keys.w || _gpAxes.throttleUp > 0) speed = Math.min(maxSpeed, speed + acceleration * dt * Math.max(1, _gpAxes.throttleUp));
     else if (keys.s || _gpAxes.throttleDown > 0) speed = Math.max(minSpeed, speed - deceleration * dt * Math.max(1, _gpAxes.throttleDown));
     else speed = Math.max(minSpeed, speed - naturalDeceleration * dt);
-    // Rotation rates — combine keyboard (binary ±1) and gamepad analog axes; clamp sum to ±1
+    // ── Mouse-cursor quaternion steering (War Thunder style) ────────────
+    if (MOUSE_STEERING) {
+        // Clamp effective cursor to STEER_CURSOR_RADIUS circle in NDC
+        let cx = _mouseNDC.x, cy = _mouseNDC.y;
+        const cr = Math.sqrt(cx * cx + cy * cy);
+        if (cr > STEER_CURSOR_RADIUS) { cx *= STEER_CURSOR_RADIUS / cr; cy *= STEER_CURSOR_RADIUS / cr; }
+        // Current forward in world space; save pre-rotation horizontal components for auto-bank
+        _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
+        const oldFwdX = _sv1.x, oldFwdZ = _sv1.z;
+        if (cr >= STEER_DEADZONE) {
+            // Build desired direction in plane-local space (cursor center = plane forward, no camera bias)
+            // Negate cx so left→left, cy positive so up→up
+            const yawAng   = -(cx / STEER_CURSOR_RADIUS) * STEER_MAX_ANGLE;
+            const pitchAng =  (cy / STEER_CURSOR_RADIUS) * STEER_MAX_ANGLE;
+            _sv2.set(Math.sin(yawAng) * Math.cos(pitchAng), Math.sin(pitchAng), Math.cos(yawAng) * Math.cos(pitchAng));
+            _sv2.applyQuaternion(plane.quaternion).normalize();
+            // Angle between current forward and desired direction
+            const cosA = Math.max(-1, Math.min(1, _sv1.dot(_sv2)));
+            const angle = Math.acos(cosA);
+            if (angle > 0.0001) {
+                // Exponential approach (smooth), hard-clamped to max turn rate
+                const smoothAng = angle * (1 - Math.pow(1 - STEER_SMOOTHING, dt));
+                const applied   = Math.min(smoothAng, STEER_MAX_TURN_RATE * dt);
+                _sq1.setFromUnitVectors(_sv1, _sv2);
+                _sq2.identity().slerp(_sq1, applied / angle);
+                plane.quaternion.premultiply(_sq2).normalize();
+            }
+        } else {
+            // Cursor at rest: gently level pitch toward horizontal flight
+            _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
+            if (Math.abs(_sv1.y) > 0.005) plane.rotateX(_sv1.y * STEER_LEVEL_RATE * dt);
+        }
+        // Auto-banking: bank proportional to horizontal yaw change; also self-levels when cursor centered
+        _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // new forward
+        const hturn  = oldFwdX * _sv1.z - oldFwdZ * _sv1.x; // sin of horizontal turn
+        _sv3.set(1, 0, 0).applyQuaternion(plane.quaternion);  // local right
+        const bankErr = hturn * STEER_AUTO_BANK_K - _sv3.y;   // target bankY minus current
+        plane.rotateZ(bankErr * STEER_BANK_SMOOTH * dt);
+    }
+    // ── Keyboard / gamepad fine-control (pitch, roll, yaw added on top) ──
     const pitchIn = Math.max(-1, Math.min(1, (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0) + _gpAxes.pitch));
     const rollIn  = Math.max(-1, Math.min(1, (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0) + _gpAxes.roll));
     const yawIn   = Math.max(-1, Math.min(1, (keys.a ? 1 : 0) + (keys.d ? -1 : 0) + _gpAxes.yaw));
-    if (pitchIn < 0)      pitchRate = Math.max(-maxPitchRate, pitchRate + pitchIn * rotAccel * dt);
-    else if (pitchIn > 0) pitchRate = Math.min(maxPitchRate,  pitchRate + pitchIn * rotAccel * dt);
+    if (pitchIn !== 0) pitchRate = Math.max(-maxPitchRate, Math.min(maxPitchRate, pitchRate + pitchIn * rotAccel * dt));
     else pitchRate *= Math.pow(rotDamping, dt);
-    if (rollIn < 0)       rollRate = Math.max(-maxRollRate, rollRate + rollIn * rotAccel * dt);
-    else if (rollIn > 0)  rollRate = Math.min(maxRollRate,  rollRate + rollIn * rotAccel * dt);
-    else rollRate *= Math.pow(rotDamping, dt);
-    if (yawIn > 0)        yawRate = Math.min(maxYawRate,  yawRate + yawIn * rotAccel * dt);
-    else if (yawIn < 0)   yawRate = Math.max(-maxYawRate, yawRate + yawIn * rotAccel * dt);
-    else yawRate *= Math.pow(rotDamping, dt);
+    if (rollIn  !== 0) rollRate  = Math.max(-maxRollRate,  Math.min(maxRollRate,  rollRate  + rollIn  * rotAccel * dt));
+    else rollRate  *= Math.pow(rotDamping, dt);
+    if (yawIn   !== 0) yawRate   = Math.max(-maxYawRate,   Math.min(maxYawRate,   yawRate   + yawIn   * rotAccel * dt));
+    else yawRate   *= Math.pow(rotDamping, dt);
     plane.rotateX(pitchRate * dt); plane.rotateZ(rollRate * dt); plane.rotateY(yawRate * dt);
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, speed * dt);
@@ -2250,6 +2306,20 @@ function animate() {
     }
     updateDebugBoxes();
     updateCamera();
+    // Decay steering cursor toward center when mouse is idle
+    if (MOUSE_STEERING) {
+        const _decay = Math.pow(1 - STEER_RETURN_DECAY, dt);
+        _mouseNDC.x *= _decay;
+        _mouseNDC.y *= _decay;
+    }
+    // Update steering cursor position (clamped to effective steering circle)
+    if (_steerCursorEl.style.display !== 'none') {
+        let cx = _mouseNDC.x, cy = _mouseNDC.y;
+        const cr = Math.sqrt(cx * cx + cy * cy);
+        if (cr > STEER_CURSOR_RADIUS) { cx *= STEER_CURSOR_RADIUS / cr; cy *= STEER_CURSOR_RADIUS / cr; }
+        _steerCursorEl.style.left = ((cx + 1) * 0.5 * window.innerWidth)  + 'px';
+        _steerCursorEl.style.top  = ((-cy + 1) * 0.5 * window.innerHeight) + 'px';
+    }
     // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end (pauses when game is paused)
     if (!isPaused && !isGameOver) {
         _radarSweepAngle += rawDelta * (Math.PI * 2 / 3);
@@ -2596,7 +2666,7 @@ function runSplash() {
                                     cursor.style.opacity   = '0';
                                     splash.style.opacity   = '0';
                                     speed = maxSpeed * 0.5;
-                                    setTimeout(() => splash.remove(), 1050);
+                                    setTimeout(() => { splash.remove(); if (MOUSE_STEERING) _steerCursorEl.style.display = 'block'; }, 1050);
                                 }, 1800);
                             }
                         }, SUBTITLE_SPEED);

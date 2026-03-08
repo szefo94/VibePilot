@@ -83,6 +83,7 @@ body {
     background-color: #111;
     font-family: 'Share Tech Mono', 'Courier New', monospace;
     transition: background-color 0.05s;
+    cursor: none;
 }
 
 canvas {
@@ -555,4 +556,36 @@ canvas {
 .tube-ribbon.fade-out {
     opacity: 0;
     transition: opacity 0.7s ease-in;
+}
+
+/* ── Steering cursor (mouse-aim reticle) ─────────────────────── */
+#steer-cursor {
+    position: fixed;
+    display: none;
+    width: 22px;
+    height: 22px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 200;
+    border: 1.5px solid rgba(0, 255, 136, 0.85);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.35);
+}
+#steer-cursor .sc-line {
+    position: absolute;
+    background: rgba(0, 255, 136, 0.9);
+}
+#steer-cursor .sc-h {
+    width: 7px;
+    height: 1.5px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+#steer-cursor .sc-v {
+    width: 1.5px;
+    height: 7px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
