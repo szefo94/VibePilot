@@ -469,6 +469,15 @@ function _gridQuery(x, z, r) {
 
 // --- Input Handling ---
 const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
+let _mouseLMB = false; // left mouse button held — machinegun
+window.addEventListener('contextmenu', e => e.preventDefault()); // suppress right-click menu
+window.addEventListener('mousedown', e => {
+    if (isGameOver || isPaused) return;
+    if (document.getElementById('splash-screen')) return;
+    if (e.button === 0) _mouseLMB = true;
+    if (e.button === 2 && missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; }
+});
+window.addEventListener('mouseup', e => { if (e.button === 0) _mouseLMB = false; });
 window.addEventListener('mousemove', e => {
     _mouseNDC.x = (e.clientX / window.innerWidth)  * 2 - 1;
     _mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -498,7 +507,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !isGameOver) {
         isPaused = !isPaused;
         pausedElement.style.display = isPaused ? 'block' : 'none';
-        if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; }
+        if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; _mouseLMB = false; }
     }
 });
 
@@ -529,7 +538,7 @@ function pollGamepad() {
         // Start → pause/unpause during play, reload on game over
         if (p(9) && !_gpPrev[9]) {
             if (isGameOver) { location.reload(); }
-            else { isPaused = !isPaused; pausedElement.style.display = isPaused ? 'block' : 'none'; if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; } }
+            else { isPaused = !isPaused; pausedElement.style.display = isPaused ? 'block' : 'none'; if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; _mouseLMB = false; } }
         }
         if (!isGameOver && !isPaused) {
             if (p(1) && !_gpPrev[1]) { if (bombCooldown <= 0 && bombAmmo > 0) { dropBomb(); bombCooldown = bombCooldownTime; if (--bombAmmo <= 0) bombReloadTimer = BOMB_RELOAD_TIME; } }    // B → bomb
@@ -1657,7 +1666,7 @@ function updatePhysics(dt) {
     plane.rotateX(pitchRate * dt); plane.rotateZ(rollRate * dt); plane.rotateY(yawRate * dt);
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, speed * dt);
-    if ((keys[' '] || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo > 0) { fireBullet(); shootCooldown = shootCooldownTime; if (--gunAmmo <= 0) gunReloadTimer = GUN_RELOAD_TIME; }
+    if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo > 0) { fireBullet(); shootCooldown = shootCooldownTime; if (--gunAmmo <= 0) gunReloadTimer = GUN_RELOAD_TIME; }
     plane.updateMatrixWorld(true);
     // Update player bounding boxes (§2.1 — applyMatrix4 avoids per-vertex iteration)
     corePlaneComponents.forEach((m, i) => planePartBoxes[i].copy(planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));
