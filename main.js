@@ -1307,6 +1307,7 @@ function fireBullet() {
     b.life = bulletLife;
     b.userData = { type: 'bullet', collisionRadius: .3, damage: bulletDamage * playerDamageMultiplier };
     bullets.push(b); scene.add(b);
+    _playGunShot();
 }
 function dropBomb() {
     const b = new THREE.Mesh(bombGeometry, bombMaterial);
@@ -2514,6 +2515,26 @@ function _playEnemyShot() {
         gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
         osc.connect(gain); gain.connect(ctx.destination);
         osc.start(t); osc.stop(t + 0.1); osc.onended = () => ctx.close();
+    } catch(e) {}
+}
+
+// Machinegun shot — short noise tick with low-pass to soften (quieter than hit-marker)
+function _playGunShot() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const dur = 0.045;
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 3);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass'; filter.frequency.value = 3000;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.14, 0);
+        gain.gain.exponentialRampToValueAtTime(0.001, dur);
+        src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+        src.start(); src.onended = () => ctx.close();
     } catch(e) {}
 }
 
