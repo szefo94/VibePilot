@@ -902,7 +902,9 @@ function spawnForwardBase(cx, cz, islet) {
 // --- Base Fences ---
 // ================================================================
 function buildBaseFences() {
-    const POST_H = 8, TOWER_H = 14, SEG_LEN = 20, POLY_INSET = 0.84;
+    const POST_H = 8, SEG_LEN = 20, MARGIN = 15, POLY_INSET = 0.84;
+    const SIN60 = Math.sin(Math.PI / 3); // √3/2 — inradius/circumradius ratio for regular hexagon
+
     const postMatProto  = new THREE.MeshStandardMaterial({ color: 0x6a6a5a, roughness: 0.9, metalness: 0.1 });
     const railMat       = new THREE.MeshStandardMaterial({ color: 0x8a8a7a, roughness: 0.75, metalness: 0.15 });
     const sandbagMat    = new THREE.MeshStandardMaterial({ color: 0xa09060, roughness: 0.95 });
@@ -910,153 +912,190 @@ function buildBaseFences() {
     const barbMat       = new THREE.LineBasicMaterial({ color: 0x888877 });
     const postGeo       = new THREE.CylinderGeometry(0.28, 0.28, POST_H, 6);
     const towerBodyGeo  = new THREE.BoxGeometry(2.5, 10, 2.5);
-    const towerCapGeo   = new THREE.CylinderGeometry(2, 2, 2, 8);
+    const towerPlatGeo  = new THREE.CylinderGeometry(3.5, 3.5, 0.6, 8);
+    const towerPoleGeo  = new THREE.CylinderGeometry(0.12, 0.12, 7, 6);
     const sandbagGeo    = new THREE.BoxGeometry(3, 1.2, 1.5);
 
     baseMarkers.forEach(bm => {
-        // Land bases only (y ≈ groundLevel+2); skip naval and airborne
         if (bm.position.y < groundLevel + 1 || bm.position.y > groundLevel + 5) return;
 
         const cx = bm.position.x, cz = bm.position.z;
 
-        // Fence radius: units bounding radius + margin
-        let maxR = 30;
-        bm.units.forEach(u => {
-            const dx = u.position.x - cx, dz = u.position.z - cz;
-            const d = Math.sqrt(dx * dx + dz * dz);
-            if (d > maxR) maxR = d;
-        });
-        const fenceRadius = maxR + 15;
+        // --- Minimum-bounding hexagon ---
+        // Test 12 orientations over the 60° symmetry period; pick the one whose inradius is smallest.
+        // The hexagon containment condition uses 3 axis projections (edge-normals at θ+0°, θ+60°, θ+120°).
+        let bestRot = 0, bestCircumR = 45 + MARGIN;
+        {
+            let bestInR = Infinity;
+            for (let step = 0; step < 12; step++) {
+                const θ = (step / 12) * Math.PI / 3;   // 0 → π/3
+                const α = θ + Math.PI / 6;               // edge-normal base angle (θ+30°)
+                let maxInR = 30;
+                bm.units.forEach(u => {
+                    const dx = u.position.x - cx, dz = u.position.z - cz;
+                    for (let k = 0; k < 3; k++) {
+                        const a = α + k * Math.PI / 3;
+                        maxInR = Math.max(maxInR, Math.abs(dx * Math.cos(a) + dz * Math.sin(a)));
+                    }
+                });
+                if (maxInR < bestInR) { bestInR = maxInR; bestRot = θ; }
+            }
+            // circumradius = (inradius + margin) / sin60
+            bestCircumR = (bestInR + MARGIN * SIN60) / SIN60;
+        }
+
+        // Find the islet for polygon clamping
         const islet = islets.find(isl =>
             (cx - isl.x) ** 2 + (cz - isl.z) ** 2 < isl.radius * isl.radius &&
             _pointInPolygon(cx, cz, isl.polygon)
         );
-        const ns = Math.max(8, Math.ceil(2 * Math.PI * fenceRadius / SEG_LEN));
 
-        // F1: polygon-hugging — per-angle ray cast to islet boundary
-        const fencePts = [];
-        for (let i = 0; i < ns; i++) {
-            const a = (i / ns) * Math.PI * 2;
-            const dx = Math.cos(a), dz = Math.sin(a);
-            let r = fenceRadius;
+        // 6 hexagon corner vertices (angles: bestRot + i*60°), clamped to islet boundary
+        const hexV = [];
+        for (let i = 0; i < 6; i++) {
+            const a = bestRot + (i / 6) * Math.PI * 2;
+            let r = bestCircumR;
             if (islet) {
-                const t = _rayPolyIntersect(cx, cz, dx, dz, islet.polygon);
-                if (t > 0 && t < Infinity) r = Math.min(fenceRadius, t * POLY_INSET);
+                const t = _rayPolyIntersect(cx, cz, Math.cos(a), Math.sin(a), islet.polygon);
+                if (t > 0 && t < Infinity) r = Math.min(bestCircumR, t * POLY_INSET);
             }
-            fencePts.push({ x: cx + dx * r, z: cz + dz * r, a });
+            hexV.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r });
         }
 
-        // F2: gate — find segment index whose angle points toward map center (0,0)
-        const rawGateAngle = Math.atan2(-cz, -cx);
-        const gateAngle = (rawGateAngle + Math.PI * 2) % (Math.PI * 2);
-        let gateIdx = 0, bestDiff = Infinity;
-        for (let i = 0; i < ns; i++) {
-            let diff = Math.abs(fencePts[i].a - gateAngle);
+        // F2: gate — choose the edge whose midpoint is closest to the map-centre direction
+        const toCenterA = Math.atan2(-cz, -cx);
+        let gateEdge = 0, bestDiff = Infinity;
+        for (let ei = 0; ei < 6; ei++) {
+            const midA = Math.atan2(
+                (hexV[ei].z + hexV[(ei + 1) % 6].z) / 2 - cz,
+                (hexV[ei].x + hexV[(ei + 1) % 6].x) / 2 - cx
+            );
+            let diff = Math.abs(midA - toCenterA);
             if (diff > Math.PI) diff = Math.PI * 2 - diff;
-            if (diff < bestDiff) { bestDiff = diff; gateIdx = i; }
+            if (diff < bestDiff) { bestDiff = diff; gateEdge = ei; }
         }
-        const gateIdxNext = (gateIdx + 1) % ns;
 
-        // Registry entry for F5/F10
         const reg = { posts: [], bmRef: bm };
         _fenceRegistry[bm.id] = reg;
-
-        // --- Posts ---
         const cloneMat = () => postMatProto.clone();
-        for (let i = 0; i < ns; i++) {
-            const pt = fencePts[i];
-            if (i === gateIdx || i === gateIdxNext) continue; // F2: gate gap
 
-            if (i % 6 === 0) {
-                // F3: watchtower every 6th post
-                const g = new THREE.Group();
-                const body = new THREE.Mesh(towerBodyGeo, cloneMat());
-                body.position.y = 5; // center of 10-tall box
-                const cap = new THREE.Mesh(towerCapGeo, cloneMat());
-                cap.position.y = 11;
-                g.add(body, cap);
-                g.position.set(pt.x, groundLevel, pt.z);
-                scene.add(g);
-                reg.posts.push({ mesh: g, worldPos: new THREE.Vector3(pt.x, groundLevel + 5, pt.z) });
+        // Helper: build a watchtower Group at (px, pz) — used for hexagon corners
+        const makeTower = (px, pz) => {
+            const g = new THREE.Group();
+            const body = new THREE.Mesh(towerBodyGeo, cloneMat()); body.position.y = 5;
+            const plat = new THREE.Mesh(towerPlatGeo, cloneMat()); plat.position.y = 10.3;
+            const pole = new THREE.Mesh(towerPoleGeo, cloneMat()); pole.position.y = 14;
+            g.add(body, plat, pole);
+            g.position.set(px, groundLevel, pz);
+            scene.add(g);
+            reg.posts.push({ mesh: g, worldPos: new THREE.Vector3(px, groundLevel + 5, pz) });
+            // F9: flag pivot at pole tip
+            const flagPivot = new THREE.Group();
+            flagPivot.position.set(px, groundLevel + 17.5, pz);
+            const flag = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 1.8), flagMat.clone());
+            flag.position.set(1.75, -0.9, 0);
+            flagPivot.add(flag);
+            scene.add(flagPivot);
+            _flagMeshes.push({ mesh: flagPivot });
+        };
 
-                // F9: flag on tower cap
-                const flagGeo = new THREE.PlaneGeometry(3.5, 2);
-                const flag = new THREE.Mesh(flagGeo, flagMat.clone());
-                // Position pivot at flag attachment point (top of cap + a bit of pole)
-                const pivotY = groundLevel + TOWER_H + 2.5;
-                flag.position.set(pt.x + 1.75, pivotY, pt.z);
-                scene.add(flag);
-                _flagMeshes.push({ mesh: flag, pivotX: pt.x, pivotZ: pt.z, pivotY });
-            } else {
-                // Normal post
-                const m = new THREE.Mesh(postGeo, cloneMat());
-                m.position.set(pt.x, groundLevel + POST_H / 2, pt.z);
-                scene.add(m);
-                reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(pt.x, groundLevel + POST_H / 2, pt.z) });
+        // Iterate 5 non-gate edges (starting from the edge after the gate, going around)
+        // Each edge: corner tower at va, intermediate posts, then rails/barbed wire
+        const railPts = []; // accumulated rail path points
+
+        for (let step = 1; step <= 5; step++) {
+            const ei  = (gateEdge + step) % 6;
+            const va  = hexV[ei];
+            const vb  = hexV[(gateEdge + step + 1) % 6];
+            const edgeLen = Math.sqrt((vb.x - va.x) ** 2 + (vb.z - va.z) ** 2);
+            const n   = Math.max(1, Math.round(edgeLen / SEG_LEN));
+            const edgeDir = Math.atan2(vb.z - va.z, vb.x - va.x);
+
+            for (let k = 0; k <= n; k++) {
+                const t  = k / n;
+                const px = va.x + t * (vb.x - va.x);
+                const pz = va.z + t * (vb.z - va.z);
+
+                if (k === n) {
+                    // vb corner: belongs to next edge — skip post here (will be added as k=0 of next edge)
+                    // But DO add to rail path so rail reaches the corner
+                    railPts.push({ x: px, z: pz, edgeDir });
+                    break;
+                }
+
+                railPts.push({ x: px, z: pz, edgeDir });
+
+                if (k === 0) {
+                    // Corner vertex — watchtower (F3) unless immediately after gate (gate pillar handles that corner)
+                    if (step === 1) {
+                        // This corner is already the gate's right pillar — no extra mesh
+                    } else {
+                        makeTower(px, pz);
+                    }
+                } else {
+                    // Intermediate post
+                    const m = new THREE.Mesh(postGeo, cloneMat());
+                    m.position.set(px, groundLevel + POST_H / 2, pz);
+                    scene.add(m);
+                    reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(px, groundLevel + POST_H / 2, pz) });
+                }
+
+                // F8: sandbags on inner side every 3rd post
+                if (k % 3 === 0) {
+                    const inDx = cx - px, inDz = cz - pz;
+                    const inLen = Math.sqrt(inDx * inDx + inDz * inDz) || 1;
+                    const sx = px + (inDx / inLen) * 2.8, sz = pz + (inDz / inLen) * 2.8;
+                    for (let stack = 0; stack < 2; stack++) {
+                        const sb = new THREE.Mesh(sandbagGeo, sandbagMat);
+                        sb.position.set(sx, groundLevel + 0.6 + stack * 1.2, sz);
+                        sb.rotation.y = edgeDir + (Math.random() - 0.5) * 0.3;
+                        scene.add(sb);
+                    }
+                }
             }
         }
 
-        // F2: gate pillars (taller) and crossbar
-        const gp0 = fencePts[gateIdx], gp1 = fencePts[gateIdxNext];
-        const gatePillarGeo = new THREE.CylinderGeometry(0.45, 0.45, POST_H * 1.6, 8);
-        for (const gp of [gp0, gp1]) {
-            const m = new THREE.Mesh(gatePillarGeo, cloneMat());
-            m.position.set(gp.x, groundLevel + POST_H * 0.8, gp.z);
-            scene.add(m);
-            reg.posts.push({ mesh: m, worldPos: m.position.clone() });
-        }
-        const barLen = Math.sqrt((gp1.x - gp0.x) ** 2 + (gp1.z - gp0.z) ** 2);
-        const crossbarGeo = new THREE.BoxGeometry(barLen, 0.45, 0.45);
-        const crossbar = new THREE.Mesh(crossbarGeo, cloneMat());
-        crossbar.position.set((gp0.x + gp1.x) / 2, groundLevel + POST_H * 1.45, (gp0.z + gp1.z) / 2);
-        crossbar.rotation.y = Math.atan2(gp1.z - gp0.z, gp1.x - gp0.x);
-        scene.add(crossbar);
-        reg.posts.push({ mesh: crossbar, worldPos: crossbar.position.clone() });
-
-        // Ordered rail points: all non-gate posts in sequence, closed at end
-        const railPtsBase = [];
-        for (let k = 0; k < ns; k++) {
-            const idx = (gateIdxNext + 1 + k) % ns;
-            if (idx === gateIdx || idx === gateIdxNext) continue;
-            railPtsBase.push(fencePts[idx]);
+        // F2: gate — pillars at the two gate-edge corner vertices, crossbar spanning the gap
+        {
+            const gv0 = hexV[gateEdge], gv1 = hexV[(gateEdge + 1) % 6];
+            const pillarGeo = new THREE.CylinderGeometry(0.45, 0.45, POST_H * 1.6, 8);
+            for (const gv of [gv0, gv1]) {
+                const m = new THREE.Mesh(pillarGeo, cloneMat());
+                m.position.set(gv.x, groundLevel + POST_H * 0.8, gv.z);
+                scene.add(m);
+                reg.posts.push({ mesh: m, worldPos: m.position.clone() });
+            }
+            const barLen = Math.sqrt((gv1.x - gv0.x) ** 2 + (gv1.z - gv0.z) ** 2);
+            const crossbar = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.45, 0.45), cloneMat());
+            crossbar.position.set((gv0.x + gv1.x) / 2, groundLevel + POST_H * 1.45, (gv0.z + gv1.z) / 2);
+            crossbar.rotation.y = Math.atan2(gv1.z - gv0.z, gv1.x - gv0.x);
+            scene.add(crossbar);
+            reg.posts.push({ mesh: crossbar, worldPos: crossbar.position.clone() });
         }
 
-        // Rails (F1-shaped path, gap at gate)
+        // Rails — straight TubeGeometry along the hexagon edges (gap at gate)
         for (const railY of [groundLevel + 2.8, groundLevel + 6.2]) {
-            const pts = railPtsBase.map(fp => new THREE.Vector3(fp.x, railY, fp.z));
+            const pts = railPts.map(fp => new THREE.Vector3(fp.x, railY, fp.z));
             if (pts.length < 2) continue;
-            pts.push(pts[0].clone()); // close loop leaving gate gap
             const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false), pts.length * 2, 0.18, 4, false);
             scene.add(new THREE.Mesh(geo, railMat));
         }
 
-        // F4: barbed wire — slight zigzag Line above top rail
+        // F4: barbed wire — zigzag Line above top rail, alternating perpendicular offset per post
         {
             const bwPts = [];
-            for (const fp of railPtsBase) {
-                const side = (bwPts.length % 2 === 0) ? 0.6 : -0.6;
-                const nx = Math.cos(fp.a + Math.PI / 2) * side;
-                const nz = Math.sin(fp.a + Math.PI / 2) * side;
-                bwPts.push(new THREE.Vector3(fp.x + nx, groundLevel + POST_H + 0.35, fp.z + nz));
+            for (let i = 0; i < railPts.length; i++) {
+                const fp  = railPts[i];
+                const side = (i % 2 === 0) ? 0.6 : -0.6;
+                const perp = fp.edgeDir + Math.PI / 2;
+                bwPts.push(new THREE.Vector3(
+                    fp.x + Math.cos(perp) * side,
+                    groundLevel + POST_H + 0.35,
+                    fp.z + Math.sin(perp) * side
+                ));
             }
             if (bwPts.length > 1) {
-                bwPts.push(bwPts[0].clone()); // close
-                const bwGeo = new THREE.BufferGeometry().setFromPoints(bwPts);
-                scene.add(new THREE.Line(bwGeo, barbMat));
-            }
-        }
-
-        // F8: sandbag stacks on inner fence side every 3rd segment
-        for (let k = 0; k < railPtsBase.length; k += 3) {
-            const fp = railPtsBase[k];
-            const inDx = cx - fp.x, inDz = cz - fp.z;
-            const inLen = Math.sqrt(inDx * inDx + inDz * inDz) || 1;
-            const sx = fp.x + (inDx / inLen) * 2.8, sz = fp.z + (inDz / inLen) * 2.8;
-            for (let stack = 0; stack < 2; stack++) {
-                const sb = new THREE.Mesh(sandbagGeo, sandbagMat);
-                sb.position.set(sx, groundLevel + 0.6 + stack * 1.2, sz);
-                sb.rotation.y = fp.a + Math.PI / 2 + (Math.random() - 0.5) * 0.25;
-                scene.add(sb);
+                scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bwPts), barbMat));
             }
         }
     });
@@ -2553,15 +2592,13 @@ function animate() {
         _steerCursorEl.style.left = ((cx + 1) * 0.5 * window.innerWidth)  + 'px';
         _steerCursorEl.style.top  = ((-cy + 1) * 0.5 * window.innerHeight) + 'px';
     }
-    // F9: flag animation — rotate to face wind direction (opposite of plane forward)
+    // F9: flag animation — pivot Group rotates to face wind direction; flag extends sideways from pole tip
     if (_flagMeshes.length > 0) {
         _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
         const windAngle = Math.atan2(_sv1.x, _sv1.z);
         const wave = Math.sin(Date.now() * 0.0025) * 0.12;
+        const wy = windAngle + wave;
         for (const f of _flagMeshes) {
-            const wy = windAngle + wave;
-            f.mesh.position.x = f.pivotX + Math.sin(wy) * 1.75;
-            f.mesh.position.z = f.pivotZ + Math.cos(wy) * 1.75;
             f.mesh.rotation.y = wy;
         }
     }
