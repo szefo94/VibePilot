@@ -686,7 +686,7 @@ function destroyLabel(label) {
 // Recursively dispose geometries + materials of a Group/Mesh (memory leak fix)
 function disposeGroup(obj) {
     obj.traverse(child => {
-        if (!child.isMesh) return;
+        if (!child.isMesh && !child.isLine) return;
         child.geometry?.dispose();
         if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
         else child.material?.dispose();
@@ -1006,6 +1006,7 @@ function buildBaseFences() {
             const flag = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 1.8), flagMat.clone());
             flag.position.set(1.75, -0.9, 0);
             fp.add(flag); scene.add(fp);
+            reg.posts.push({ mesh: fp, worldPos: new THREE.Vector3(px, groundLevel + 17.5, pz) });
             _flagMeshes.push({ mesh: fp });
         };
 
@@ -1039,17 +1040,21 @@ function buildBaseFences() {
                         sb.position.set(sx, groundLevel + 0.6 + stack * 1.2, sz);
                         sb.rotation.y = edgeDir + (Math.random() - 0.5) * 0.3;
                         scene.add(sb);
+                        reg.posts.push({ mesh: sb, worldPos: sb.position.clone() });
                     }
                 }
             }
 
             // Straight rail segments per edge (LineCurve3 → sharp hex corners, no CatmullRom smoothing)
+            const midX = (va.x + vb.x) / 2, midZ = (va.z + vb.z) / 2;
             for (const railY of [groundLevel + 2.8, groundLevel + 6.2]) {
                 const curve = new THREE.LineCurve3(
                     new THREE.Vector3(va.x, railY, va.z),
                     new THREE.Vector3(vb.x, railY, vb.z)
                 );
-                scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 1, 0.18, 4, false), railMat));
+                const railMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 1, 0.18, 4, false), railMat);
+                scene.add(railMesh);
+                reg.posts.push({ mesh: railMesh, worldPos: new THREE.Vector3(midX, railY, midZ) });
             }
 
             // F4: barbed wire segment above this edge
@@ -1062,7 +1067,9 @@ function buildBaseFences() {
                     const perp = edgeDir + Math.PI / 2;
                     bwPts.push(new THREE.Vector3(px + Math.cos(perp) * side, groundLevel + POST_H + 0.35, pz + Math.sin(perp) * side));
                 }
-                scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bwPts), barbMat));
+                const bwLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(bwPts), barbMat);
+                scene.add(bwLine);
+                reg.posts.push({ mesh: bwLine, worldPos: new THREE.Vector3(midX, groundLevel + POST_H + 0.35, midZ) });
             }
         }
 
@@ -1079,7 +1086,7 @@ function buildBaseFences() {
             const barLen = Math.sqrt((gv1.x - gv0.x) ** 2 + (gv1.z - gv0.z) ** 2);
             const crossbar = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.45, 0.45), cloneMat());
             crossbar.position.set((gv0.x + gv1.x) / 2, groundLevel + POST_H * 1.45, (gv0.z + gv1.z) / 2);
-            crossbar.rotation.y = Math.atan2(gv1.z - gv0.z, gv1.x - gv0.x);
+            crossbar.rotation.y = -Math.atan2(gv1.z - gv0.z, gv1.x - gv0.x);
             scene.add(crossbar);
             reg.posts.push({ mesh: crossbar, worldPos: crossbar.position.clone() });
         }
@@ -2586,6 +2593,7 @@ function animate() {
         const wave = Math.sin(Date.now() * 0.0025) * 0.12;
         const wy = windAngle + wave;
         for (const f of _flagMeshes) {
+            if (!f.mesh.parent) continue; // removed from scene
             f.mesh.rotation.y = wy;
         }
     }
