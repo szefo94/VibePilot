@@ -346,6 +346,34 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 ---
 
+## Base Fences
+
+Each land base (airbase and forward base) is enclosed by a perimeter fence that hugs the islet coastline. Fences are built once at world init by `buildBaseFences()`.
+
+### Features
+
+| Feature | Detail |
+|---|---|
+| **Polygon-hugging path (F1)** | Per-angle ray cast against the islet polygon; fence posts sit at `min(fenceRadius, coastlineDistance × 0.84)` from base centre, so the fence follows the island shape |
+| **Gate (F2)** | One segment facing the map centre has no normal posts; replaced with two taller gate pillars (1.6 × post height) and a horizontal crossbar |
+| **Watchtowers (F3)** | Every 6th post is a two-part tower: `BoxGeometry` body (height 10) topped with a `CylinderGeometry` cap (height 2) |
+| **Barbed wire (F4)** | A `THREE.Line` traces a zigzag above the top rail (alternating ±0.6 unit lateral offset per post), giving a barbed-wire silhouette |
+| **Destructible posts (F5)** | Each post is an individual `THREE.Mesh`; bombs and missiles call `_damageFenceNear(pos, radius)` which removes posts within blast range |
+| **Sandbag berms (F8)** | Every 3rd fence segment has two stacked `BoxGeometry` sandbag blocks on the inner side, slightly rotated for a natural look |
+| **Animated flags (F9)** | Each watchtower mounts a `PlaneGeometry` flag; each frame the flag rotates and translates to face the wind direction derived from the player's forward vector |
+| **Damage state (F10)** | `notifyBase()` calls `_updateFenceDamageState()`; posts are recoloured from grey (`0x6a6a5a`) toward burnt orange (`0x8B4513`) and tilted randomly as the base loses units |
+
+### Key Functions
+
+| Function | Signature | Description |
+|---|---|---|
+| `buildBaseFences` | `() → void` | Builds all fences at world init; populates `_fenceRegistry` and `_flagMeshes` |
+| `_rayPolyIntersect` | `(ox, oz, dx, dz, poly) → number` | Returns distance along ray to the nearest polygon edge; used by F1 coastline hugging |
+| `_damageFenceNear` | `(pos, radius) → void` | Removes all posts within `radius` of `pos`; called from bomb and missile detonation (F5) |
+| `_updateFenceDamageState` | `(bmId) → void` | Tints and randomly tilts fence posts proportional to base HP loss (F10) |
+
+---
+
 ## Ground Units & Bases
 
 ### Unit Types

@@ -102,6 +102,23 @@ function _generateIsletPolygon(cx, cz, radius) {
     }
 }
 
+// Ray-polygon intersection: returns distance along ray (ox,oz)+(dx,dz)*t where it exits the polygon.
+// Used by buildBaseFences F1 to hug fence to islet coastline.
+function _rayPolyIntersect(ox, oz, dx, dz, poly) {
+    let minT = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        const ex = b.x - a.x, ez = b.z - a.z;
+        const denom = dx * ez - dz * ex;
+        if (Math.abs(denom) < 1e-10) continue;
+        const tx = a.x - ox, tz = a.z - oz;
+        const t = (tx * ez - tz * ex) / denom;
+        const s = (tx * dz - tz * dx) / denom;
+        if (t > 0.5 && s >= 0 && s <= 1 && t < minT) minT = t;
+    }
+    return minT;
+}
+
 function _pointInPolygon(px, pz, poly) {
     let inside = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -334,6 +351,8 @@ const bullets = [], bombs = [], missiles = [], missileTrailParticles = [], napal
 const enemies = [], groundUnits = [], airUnits = [];
 const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
+const _fenceRegistry = {}; // baseId → { posts:[{mesh,worldPos,tiltApplied}], bmRef }
+const _flagMeshes = [];    // { mesh, pivot: Vector3 }
 // Debug
 const debugHelpers = [];
 let debugCollision = false;
@@ -617,6 +636,7 @@ function notifyBase(baseId) { // (§2.2) unified signature — pass baseId strin
     const bm = basesById[baseId];
     if (!bm || bm.eliminated) return;
     bm.alive = bm.units.filter(x => x.userData.hp > 0).length;
+    _updateFenceDamageState(bm.id); // F10
     if (bm.alive === 0) {
         showNotification(`◆ ${bm.name} ELIMINATED  +${bm.bonusXp} XP`, true);
         showCongratsBanner(bm.name);
@@ -876,6 +896,207 @@ function spawnForwardBase(cx, cz, islet) {
         groundUnits.push(h); scene.add(h);
     }
     finaliseBase(bm, startIdx, groundUnits, 250);
+}
+
+// ================================================================
+// --- Base Fences ---
+// ================================================================
+function buildBaseFences() {
+    const POST_H = 8, TOWER_H = 14, SEG_LEN = 20, POLY_INSET = 0.84;
+    const postMatProto  = new THREE.MeshStandardMaterial({ color: 0x6a6a5a, roughness: 0.9, metalness: 0.1 });
+    const railMat       = new THREE.MeshStandardMaterial({ color: 0x8a8a7a, roughness: 0.75, metalness: 0.15 });
+    const sandbagMat    = new THREE.MeshStandardMaterial({ color: 0xa09060, roughness: 0.95 });
+    const flagMat       = new THREE.MeshBasicMaterial({ color: 0xcc2200, side: THREE.DoubleSide });
+    const barbMat       = new THREE.LineBasicMaterial({ color: 0x888877 });
+    const postGeo       = new THREE.CylinderGeometry(0.28, 0.28, POST_H, 6);
+    const towerBodyGeo  = new THREE.BoxGeometry(2.5, 10, 2.5);
+    const towerCapGeo   = new THREE.CylinderGeometry(2, 2, 2, 8);
+    const sandbagGeo    = new THREE.BoxGeometry(3, 1.2, 1.5);
+
+    baseMarkers.forEach(bm => {
+        // Land bases only (y ≈ groundLevel+2); skip naval and airborne
+        if (bm.position.y < groundLevel + 1 || bm.position.y > groundLevel + 5) return;
+
+        const cx = bm.position.x, cz = bm.position.z;
+
+        // Fence radius: units bounding radius + margin
+        let maxR = 30;
+        bm.units.forEach(u => {
+            const dx = u.position.x - cx, dz = u.position.z - cz;
+            const d = Math.sqrt(dx * dx + dz * dz);
+            if (d > maxR) maxR = d;
+        });
+        const fenceRadius = maxR + 15;
+        const islet = islets.find(isl =>
+            (cx - isl.x) ** 2 + (cz - isl.z) ** 2 < isl.radius * isl.radius &&
+            _pointInPolygon(cx, cz, isl.polygon)
+        );
+        const ns = Math.max(8, Math.ceil(2 * Math.PI * fenceRadius / SEG_LEN));
+
+        // F1: polygon-hugging — per-angle ray cast to islet boundary
+        const fencePts = [];
+        for (let i = 0; i < ns; i++) {
+            const a = (i / ns) * Math.PI * 2;
+            const dx = Math.cos(a), dz = Math.sin(a);
+            let r = fenceRadius;
+            if (islet) {
+                const t = _rayPolyIntersect(cx, cz, dx, dz, islet.polygon);
+                if (t > 0 && t < Infinity) r = Math.min(fenceRadius, t * POLY_INSET);
+            }
+            fencePts.push({ x: cx + dx * r, z: cz + dz * r, a });
+        }
+
+        // F2: gate — find segment index whose angle points toward map center (0,0)
+        const rawGateAngle = Math.atan2(-cz, -cx);
+        const gateAngle = (rawGateAngle + Math.PI * 2) % (Math.PI * 2);
+        let gateIdx = 0, bestDiff = Infinity;
+        for (let i = 0; i < ns; i++) {
+            let diff = Math.abs(fencePts[i].a - gateAngle);
+            if (diff > Math.PI) diff = Math.PI * 2 - diff;
+            if (diff < bestDiff) { bestDiff = diff; gateIdx = i; }
+        }
+        const gateIdxNext = (gateIdx + 1) % ns;
+
+        // Registry entry for F5/F10
+        const reg = { posts: [], bmRef: bm };
+        _fenceRegistry[bm.id] = reg;
+
+        // --- Posts ---
+        const cloneMat = () => postMatProto.clone();
+        for (let i = 0; i < ns; i++) {
+            const pt = fencePts[i];
+            if (i === gateIdx || i === gateIdxNext) continue; // F2: gate gap
+
+            if (i % 6 === 0) {
+                // F3: watchtower every 6th post
+                const g = new THREE.Group();
+                const body = new THREE.Mesh(towerBodyGeo, cloneMat());
+                body.position.y = 5; // center of 10-tall box
+                const cap = new THREE.Mesh(towerCapGeo, cloneMat());
+                cap.position.y = 11;
+                g.add(body, cap);
+                g.position.set(pt.x, groundLevel, pt.z);
+                scene.add(g);
+                reg.posts.push({ mesh: g, worldPos: new THREE.Vector3(pt.x, groundLevel + 5, pt.z) });
+
+                // F9: flag on tower cap
+                const flagGeo = new THREE.PlaneGeometry(3.5, 2);
+                const flag = new THREE.Mesh(flagGeo, flagMat.clone());
+                // Position pivot at flag attachment point (top of cap + a bit of pole)
+                const pivotY = groundLevel + TOWER_H + 2.5;
+                flag.position.set(pt.x + 1.75, pivotY, pt.z);
+                scene.add(flag);
+                _flagMeshes.push({ mesh: flag, pivotX: pt.x, pivotZ: pt.z, pivotY });
+            } else {
+                // Normal post
+                const m = new THREE.Mesh(postGeo, cloneMat());
+                m.position.set(pt.x, groundLevel + POST_H / 2, pt.z);
+                scene.add(m);
+                reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(pt.x, groundLevel + POST_H / 2, pt.z) });
+            }
+        }
+
+        // F2: gate pillars (taller) and crossbar
+        const gp0 = fencePts[gateIdx], gp1 = fencePts[gateIdxNext];
+        const gatePillarGeo = new THREE.CylinderGeometry(0.45, 0.45, POST_H * 1.6, 8);
+        for (const gp of [gp0, gp1]) {
+            const m = new THREE.Mesh(gatePillarGeo, cloneMat());
+            m.position.set(gp.x, groundLevel + POST_H * 0.8, gp.z);
+            scene.add(m);
+            reg.posts.push({ mesh: m, worldPos: m.position.clone() });
+        }
+        const barLen = Math.sqrt((gp1.x - gp0.x) ** 2 + (gp1.z - gp0.z) ** 2);
+        const crossbarGeo = new THREE.BoxGeometry(barLen, 0.45, 0.45);
+        const crossbar = new THREE.Mesh(crossbarGeo, cloneMat());
+        crossbar.position.set((gp0.x + gp1.x) / 2, groundLevel + POST_H * 1.45, (gp0.z + gp1.z) / 2);
+        crossbar.rotation.y = Math.atan2(gp1.z - gp0.z, gp1.x - gp0.x);
+        scene.add(crossbar);
+        reg.posts.push({ mesh: crossbar, worldPos: crossbar.position.clone() });
+
+        // Ordered rail points: all non-gate posts in sequence, closed at end
+        const railPtsBase = [];
+        for (let k = 0; k < ns; k++) {
+            const idx = (gateIdxNext + 1 + k) % ns;
+            if (idx === gateIdx || idx === gateIdxNext) continue;
+            railPtsBase.push(fencePts[idx]);
+        }
+
+        // Rails (F1-shaped path, gap at gate)
+        for (const railY of [groundLevel + 2.8, groundLevel + 6.2]) {
+            const pts = railPtsBase.map(fp => new THREE.Vector3(fp.x, railY, fp.z));
+            if (pts.length < 2) continue;
+            pts.push(pts[0].clone()); // close loop leaving gate gap
+            const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false), pts.length * 2, 0.18, 4, false);
+            scene.add(new THREE.Mesh(geo, railMat));
+        }
+
+        // F4: barbed wire — slight zigzag Line above top rail
+        {
+            const bwPts = [];
+            for (const fp of railPtsBase) {
+                const side = (bwPts.length % 2 === 0) ? 0.6 : -0.6;
+                const nx = Math.cos(fp.a + Math.PI / 2) * side;
+                const nz = Math.sin(fp.a + Math.PI / 2) * side;
+                bwPts.push(new THREE.Vector3(fp.x + nx, groundLevel + POST_H + 0.35, fp.z + nz));
+            }
+            if (bwPts.length > 1) {
+                bwPts.push(bwPts[0].clone()); // close
+                const bwGeo = new THREE.BufferGeometry().setFromPoints(bwPts);
+                scene.add(new THREE.Line(bwGeo, barbMat));
+            }
+        }
+
+        // F8: sandbag stacks on inner fence side every 3rd segment
+        for (let k = 0; k < railPtsBase.length; k += 3) {
+            const fp = railPtsBase[k];
+            const inDx = cx - fp.x, inDz = cz - fp.z;
+            const inLen = Math.sqrt(inDx * inDx + inDz * inDz) || 1;
+            const sx = fp.x + (inDx / inLen) * 2.8, sz = fp.z + (inDz / inLen) * 2.8;
+            for (let stack = 0; stack < 2; stack++) {
+                const sb = new THREE.Mesh(sandbagGeo, sandbagMat);
+                sb.position.set(sx, groundLevel + 0.6 + stack * 1.2, sz);
+                sb.rotation.y = fp.a + Math.PI / 2 + (Math.random() - 0.5) * 0.25;
+                scene.add(sb);
+            }
+        }
+    });
+}
+
+// F5: damage / destroy fence posts within radius of an explosion
+function _damageFenceNear(pos, radius) {
+    const rSq = radius * radius;
+    for (const reg of Object.values(_fenceRegistry)) {
+        for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
+            const p = reg.posts[pi];
+            if (pos.distanceToSquared(p.worldPos) < rSq) {
+                scene.remove(p.mesh);
+                disposeGroup(p.mesh);
+                reg.posts.splice(pi, 1);
+            }
+        }
+    }
+}
+
+// F10: tint + tilt posts proportional to base damage
+function _updateFenceDamageState(bmId) {
+    const reg = _fenceRegistry[bmId];
+    if (!reg) return;
+    const bm = reg.bmRef;
+    const dmg = bm.total > 0 ? 1 - bm.alive / bm.total : 0; // 0=intact, 1=dead
+    // Color: grey 0x6a6a5a → burnt orange 0x8B4513
+    const r = (0x6a + (0x8B - 0x6a) * dmg) / 255;
+    const g = (0x6a + (0x45 - 0x6a) * dmg) / 255;
+    const b = (0x5a + (0x13 - 0x5a) * dmg) / 255;
+    reg.posts.forEach(p => {
+        p.mesh.traverse(child => {
+            if (child.isMesh && child.material) child.material.color.setRGB(r, g, b);
+        });
+        if (!p.tiltApplied && dmg > 0.15 && Math.random() < dmg * 0.2) {
+            p.mesh.rotation.z += (Math.random() - 0.5) * 0.45 * dmg;
+            p.mesh.rotation.x += (Math.random() - 0.5) * 0.25 * dmg;
+            p.tiltApplied = true;
+        }
+    });
 }
 
 // ================================================================
@@ -1605,7 +1826,7 @@ function spawnPlaneDebris() {
 // ================================================================
 // --- Initialization ---
 // ================================================================
-hpElement.textContent = planeHP; updateDamageUI(); createAllUnits();
+hpElement.textContent = planeHP; updateDamageUI(); createAllUnits(); buildBaseFences();
 
 // ================================================================
 // --- Sub-System Functions (§1.2) ---
@@ -2080,6 +2301,7 @@ function updateProjectiles(dt) {
                 }
             }
             if (_bombAoeHit) _playKeyClick();
+            _damageFenceNear(b.position, b.userData.aoERadius * 0.6); // F5
             scene.remove(b); bombs.splice(i, 1);
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
@@ -2177,6 +2399,7 @@ function updateProjectiles(dt) {
                     }
                 }
                 if (_missileAoeHit) _playKeyClick();
+                _damageFenceNear(m.position, missileAoERadius * 0.5); // F5
             }
             scene.remove(m); missiles.splice(i, 1);
         }
@@ -2329,6 +2552,18 @@ function animate() {
         if (cr > STEER_CURSOR_RADIUS) { cx *= STEER_CURSOR_RADIUS / cr; cy *= STEER_CURSOR_RADIUS / cr; }
         _steerCursorEl.style.left = ((cx + 1) * 0.5 * window.innerWidth)  + 'px';
         _steerCursorEl.style.top  = ((-cy + 1) * 0.5 * window.innerHeight) + 'px';
+    }
+    // F9: flag animation — rotate to face wind direction (opposite of plane forward)
+    if (_flagMeshes.length > 0) {
+        _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
+        const windAngle = Math.atan2(_sv1.x, _sv1.z);
+        const wave = Math.sin(Date.now() * 0.0025) * 0.12;
+        for (const f of _flagMeshes) {
+            const wy = windAngle + wave;
+            f.mesh.position.x = f.pivotX + Math.sin(wy) * 1.75;
+            f.mesh.position.z = f.pivotZ + Math.cos(wy) * 1.75;
+            f.mesh.rotation.y = wy;
+        }
     }
     // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end (pauses when game is paused)
     if (!isPaused && !isGameOver) {

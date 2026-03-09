@@ -74,6 +74,25 @@
 
 ---
 
+## Fences
+
+> Base perimeter fences are currently circular rings of posts + two horizontal rails around each land base. Ideas below upgrade them progressively.
+
+| # | Idea | Impact | Effort | Status |
+|---|---|---|---|---|
+| F1 | **Polygon-hugging fence** — instead of a circle, trace the fence along the islet polygon at a fixed inset distance so the fence actually follows the island coastline | High | Medium | ✅ |
+| F2 | **Fence gate** — one post pair on each fence has a wider gap with a horizontal crossbar, acting as the base entrance | Medium | Low | ✅ |
+| F3 | **Watchtowers** — replace every Nth post with a taller tower mesh (box body + cylinder top) that also hosts an auto-turret | High | Medium | ✅ |
+| F4 | **Barbed wire top** — add a thin zigzag `THREE.Line` or flat torus strip along the top rail to visually suggest barbed wire | Low | Low | ✅ |
+| F5 | **Destructible fence segments** — track which fence post/rail segments have been hit by bombs/missiles; remove individual segments on destruction | High | High | ✅ |
+| F6 | **Searchlight posts** — every 6th post mounts a slow-sweeping `SpotLight` cone; if it sweeps over the player the base enters alarm state (faster firing, tighter aim) | High | High | — |
+| F7 | **Fence colour by faction** — hostile bases use rust-red rails and darker posts; friendly bases use olive-green to aid quick identification from the air | Medium | Low | — |
+| F8 | **Sandbag berms** — low flattened `BoxGeometry` stacks between posts on the inner side of the fence, breaking up the silhouette and adding cover variation | Low | Low | ✅ |
+| F9 | **Animated flag on corner posts** — small plane mesh at corner posts rotates to always face the wind direction (based on player speed vector) | Low | Low | ✅ |
+| F10 | **Fence damage state** — fence visually degrades as base HP falls: posts tilt (random `rotateZ`), rails sag, colour shifts from grey to burnt orange | Medium | Medium | ✅ |
+
+---
+
 ## Architecture & Technical
 
 | # | Idea | Impact | Effort | Status |
