@@ -337,6 +337,10 @@ const napalmDamage = 8, napalmRadius = 55;
 let score = 0, planeHP = 100, level = 1, xp = 0, xpToNextLevel = 100, playerDamageMultiplier = 1;
 // Control flow
 let isGameOver = false, isPaused = false;
+// Game-over free-look orbit
+const _gameOverPos = new THREE.Vector3();
+let _goOrbitYaw = 0, _goOrbitPitch = 0.3;
+const _goOrbitDist = 35;
 // Flight rates
 let pitchRate = 0, rollRate = 0, yawRate = 0, speed = .1;
 // Cooldowns
@@ -502,7 +506,13 @@ window.addEventListener('mousemove', e => {
     _mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
 });
 document.addEventListener('keydown', e => {
-    if (isGameOver) return;
+    if (isGameOver) {
+        // Allow orbit controls during game-over free-look
+        if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+        const _k = e.key.toLowerCase();
+        if (keys.hasOwnProperty(_k)) keys[_k] = true;
+        return;
+    }
     if (document.getElementById('splash-screen')) return;
     const k = e.key.toLowerCase();
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
@@ -514,7 +524,6 @@ document.addEventListener('keydown', e => {
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
 });
 document.addEventListener('keyup', e => {
-    if (isGameOver) return;
     const k = e.key.toLowerCase();
     if (keys.hasOwnProperty(k)) keys[k] = false;
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
@@ -1821,6 +1830,8 @@ function destroyLogicalEnemy(id) {
 }
 function triggerGameOver() {
     if (isGameOver) return; isGameOver = true; speed = 0;
+    _gameOverPos.copy(plane.position);
+    _goOrbitYaw = 0; _goOrbitPitch = 0.3;
     _steerCursorEl.style.display = 'none';
     gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Final Score: ${score}</span><br><span style="font-size:18px">Refresh to restart</span>`;
     gameOverElement.style.display = 'block';
@@ -2546,10 +2557,25 @@ function updateDebugBoxes() {
 }
 
 function updateCamera() {
+    if (isGameOver) {
+        const ORBIT_SPEED = 0.025;
+        if (keys.ArrowLeft  || keys.a) _goOrbitYaw   -= ORBIT_SPEED;
+        if (keys.ArrowRight || keys.d) _goOrbitYaw   += ORBIT_SPEED;
+        if (keys.ArrowUp)              _goOrbitPitch  = Math.min(_goOrbitPitch + ORBIT_SPEED, Math.PI / 2 - 0.05);
+        if (keys.ArrowDown)            _goOrbitPitch  = Math.max(_goOrbitPitch - ORBIT_SPEED, -0.3);
+        const r = _goOrbitDist;
+        camera.position.set(
+            _gameOverPos.x + r * Math.cos(_goOrbitPitch) * Math.sin(_goOrbitYaw),
+            _gameOverPos.y + r * Math.sin(_goOrbitPitch),
+            _gameOverPos.z + r * Math.cos(_goOrbitPitch) * Math.cos(_goOrbitYaw)
+        );
+        camera.lookAt(_gameOverPos);
+        return;
+    }
     _camOffset.set(0, 8, -22).applyQuaternion(plane.quaternion);
     const camTarget = _sv1.copy(plane.position).add(_camOffset);
     _lookAt.set(0, 1, 20).applyQuaternion(plane.quaternion).add(plane.position);
-    if (!isGameOver && !isPaused) camera.position.lerp(camTarget, .06);
+    if (!isPaused) camera.position.lerp(camTarget, .06);
     camera.lookAt(_lookAt);
 }
 
@@ -2938,11 +2964,28 @@ function runSplash() {
 
     function startTypeOut() {
         prompt.remove();
+        let cancelled = false;
+
+        function dismiss() {
+            if (cancelled) return;
+            cancelled = true;
+            document.removeEventListener('keydown', onEscapeKey);
+            setText(titleEl, TITLE);
+            setText(subEl, SUBTITLE);
+            cursor.style.animation = 'none';
+            cursor.style.opacity   = '0';
+            splash.style.opacity   = '0';
+            speed = maxSpeed * 0.5;
+            setTimeout(() => { splash.remove(); if (MOUSE_STEERING) _steerCursorEl.style.display = 'block'; }, 500);
+        }
+        function onEscapeKey(e) { if (e.key === 'Escape') dismiss(); }
+        document.addEventListener('keydown', onEscapeKey);
 
         // Phase 1: type TITLE
         let i = 0;
         setCursor(titleEl);
         const titleTimer = setInterval(() => {
+            if (cancelled) { clearInterval(titleTimer); return; }
             i++;
             setText(titleEl, TITLE.slice(0, i));
             _playKeyClick();
@@ -2950,27 +2993,24 @@ function runSplash() {
                 clearInterval(titleTimer);
                 // Pause, then fade title out
                 setTimeout(() => {
+                    if (cancelled) return;
                     titleEl.style.opacity = '0';
                     cursor.style.opacity  = '0';
                     // Phase 2: type SUBTITLE after fade
                     setTimeout(() => {
+                        if (cancelled) return;
                         cursor.style.opacity = '1';
                         setCursor(subEl);
                         let j = 0;
                         const subTimer = setInterval(() => {
+                            if (cancelled) { clearInterval(subTimer); return; }
                             j++;
                             setText(subEl, SUBTITLE.slice(0, j));
                             _playKeyClick();
                             if (j >= SUBTITLE.length) {
                                 clearInterval(subTimer);
                                 // Pause, then fade entire splash out
-                                setTimeout(() => {
-                                    cursor.style.animation = 'none';
-                                    cursor.style.opacity   = '0';
-                                    splash.style.opacity   = '0';
-                                    speed = maxSpeed * 0.5;
-                                    setTimeout(() => { splash.remove(); if (MOUSE_STEERING) _steerCursorEl.style.display = 'block'; }, 1050);
-                                }, 1800);
+                                setTimeout(() => { dismiss(); }, 1800);
                             }
                         }, SUBTITLE_SPEED);
                     }, 650);
