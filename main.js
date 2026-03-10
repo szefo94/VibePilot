@@ -302,8 +302,8 @@ _ringsCanvas.width = MINIMAP_SIZE; _ringsCanvas.height = MINIMAP_SIZE;
 // ================================================================
 const maxSpeed = .8, minSpeed = .02;
 const acceleration = .003, deceleration = .002, naturalDeceleration = .0005;
-const maxPitchRate = .035, maxRollRate = .050, maxYawRate = .035;
-const rotAccel = .00133;
+const maxPitchRate = .025, maxRollRate = .035, maxYawRate = .030;
+const rotAccel = .00085;
 const rotDamping = .85;
 // --- Mouse-aim steering ---
 const MOUSE_STEERING      = true;  // set false to disable War Thunder-style mouse aim
