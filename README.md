@@ -355,13 +355,13 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 | Feature | Detail |
 |---|---|
 | **Polygon-hugging path (F1)** | Per-angle ray cast against the islet polygon; fence posts sit at `min(fenceRadius, coastlineDistance × 0.84)` from base centre, so the fence follows the island shape |
-| **Gate (F2)** | One segment facing the map centre has no normal posts; replaced with two taller gate pillars (1.6 × post height) and a horizontal crossbar |
-| **Watchtowers (F3)** | Every 6th post is a two-part tower: `BoxGeometry` body (height 10) topped with a `CylinderGeometry` cap (height 2) |
-| **Barbed wire (F4)** | A `THREE.Line` traces a zigzag above the top rail (alternating ±0.6 unit lateral offset per post), giving a barbed-wire silhouette |
-| **Destructible posts (F5)** | Each post is an individual `THREE.Mesh`; bombs and missiles call `_damageFenceNear(pos, radius)` which removes posts within blast range |
-| **Sandbag berms (F8)** | Every 3rd fence segment has two stacked `BoxGeometry` sandbag blocks on the inner side, slightly rotated for a natural look |
-| **Animated flags (F9)** | Each watchtower mounts a `PlaneGeometry` flag; each frame the flag rotates and translates to face the wind direction derived from the player's forward vector |
-| **Damage state (F10)** | `notifyBase()` calls `_updateFenceDamageState()`; posts are recoloured from grey (`0x6a6a5a`) toward burnt orange (`0x8B4513`) and tilted randomly as the base loses units |
+| **Gate (F2)** | One hex edge facing the map centre has no fence posts; instead it has a full watchtower at each corner and a horizontal crossbar between them. All gate parts are **linked** — destroying any one (tower, flag, or crossbar) removes the entire gate instantly |
+| **Watchtowers (F3/F9)** | Full towers at every hex corner: `BoxGeometry` body (height 10), flat `CylinderGeometry` observation deck, thin flagpole, and an animated red `PlaneGeometry` flag at the tip. Gate corners use the same tower style |
+| **Barbed wire (F4)** | A `THREE.Line` traces a zigzag above the top rail per edge (alternating ±0.6 unit lateral offset per post). Tracked in the fence registry and removed by explosions |
+| **Destructible posts (F5)** | Every fence element is individually tracked in `_fenceRegistry`: posts, towers, rails, barbed wire, sandbags, gate parts, and flags. Bombs use full `bombAoERadius` (50) for fence damage; missiles use `missileAoERadius × 0.5` |
+| **Sandbag berms (F8)** | Every 3rd fence segment has two stacked `BoxGeometry` sandbag blocks on the inner side, slightly rotated for a natural look. Each sandbag is individually tracked and destructible |
+| **Animated flags (F9)** | Each watchtower mounts a `PlaneGeometry` flag on a `THREE.Group` pivot at the pole tip. Every frame the pivot rotates to face the wind direction (derived from player heading) with a sine-wave sway. Flags stop animating once their tower is destroyed |
+| **Damage state (F10)** | `notifyBase()` calls `_updateFenceDamageState()`; surviving posts are recoloured from grey (`0x6a6a5a`) toward burnt orange (`0x8B4513`) and tilted randomly as the base loses units |
 
 ### Key Functions
 
