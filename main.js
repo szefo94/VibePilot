@@ -2970,8 +2970,11 @@ function runSplash() {
             if (cancelled) return;
             cancelled = true;
             document.removeEventListener('keydown', onEscapeKey);
-            setText(titleEl, TITLE);
-            setText(subEl, SUBTITLE);
+            // Use textContent directly — setText() uses insertBefore(cursor) which throws
+            // a DOMException if cursor is not a child of that element at dismiss time.
+            titleEl.textContent = TITLE;
+            subEl.textContent   = SUBTITLE;
+            titleEl.style.opacity = '1';
             cursor.style.animation = 'none';
             cursor.style.opacity   = '0';
             splash.style.opacity   = '0';
