@@ -532,7 +532,7 @@ document.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'b') debugCollision = !debugCollision;
     if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); _memDebugTimer = 0; }
     if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
-    if (e.key === 'Escape' && !isGameOver) {
+    if (e.key === 'Escape' && !isGameOver && !document.getElementById('splash-screen')) {
         isPaused = !isPaused;
         pausedElement.style.display = isPaused ? 'block' : 'none';
         if (isPaused) { Object.keys(keys).forEach(k => keys[k] = false); pitchRate = rollRate = yawRate = 0; _mouseLMB = false; }
