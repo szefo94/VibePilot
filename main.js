@@ -741,8 +741,12 @@ function createGroundUnit(type) {
             break;
         case 'destroyer':
             n = "Destroyer"; l = ~~randomRange(3, 6); hp = 40 * l; collR = 10 * 5; hpY = 4 * 5; xp = 75 * l; hostile = true; u.position.y = waterLevel;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat), new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 3, 8), unitMat));
-            u.children[1].position.set(0, 2, -2); u.children[2].position.set(0, 1.5, 5); u.children[3].position.set(0, 1.5, 6.5); u.children[3].rotation.x = Math.PI / 2; u.scale.set(5, 5, 5); break;
+            u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat));
+            u.children[1].position.set(0, 2, -2);
+            { const tp = new THREE.Group(); tp.position.set(0, 1.5, 5);
+              const tb = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 4, 8), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2;
+              tp.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), tb); u.add(tp); turretPivotRef = tp; }
+            u.scale.set(5, 5, 5); break;
         case 'carrier':
             n = "Carrier"; l = 10; hp = 200; collR = 18 * 8; hpY = 6 * 8; xp = 300; u.position.y = waterLevel;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(8, 3, 35), unitMat), new THREE.Mesh(new THREE.BoxGeometry(12, .5, 32), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 3, 6), unitMat));
