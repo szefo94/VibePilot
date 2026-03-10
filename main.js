@@ -357,6 +357,8 @@ const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
 const _fenceRegistry = {}; // baseId → { posts:[{mesh,worldPos,tiltApplied}], bmRef }
 const _flagMeshes = [];    // { mesh, pivot: Vector3 }
+// Color-lines overlay (webgl_lines_colors aesthetic)
+let _colorLinesGroup = null;
 // Debug
 const debugHelpers = [];
 let debugCollision = false;
@@ -532,6 +534,7 @@ document.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'b') debugCollision = !debugCollision;
     if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); _memDebugTimer = 0; }
     if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
+    if (e.key.toLowerCase() === 'c') _buildColorLines();
     if (e.key === 'Escape' && !isGameOver && !document.getElementById('splash-screen')) {
         isPaused = !isPaused;
         pausedElement.style.display = isPaused ? 'block' : 'none';
@@ -1103,6 +1106,45 @@ function buildBaseFences() {
             for (const gp of gatePosts) gp.gateGroup = gatePosts;
         }
     }
+}
+
+// webgl_lines_colors aesthetic overlay — three HSL color schemes on parametric 3D curves
+function _buildColorLines() {
+    if (_colorLinesGroup) { _colorLinesGroup.visible = !_colorLinesGroup.visible; return; }
+    _colorLinesGroup = new THREE.Group();
+    const col = new THREE.Color();
+    const spread = MAP_BOUNDARY * 0.65;
+    // Three schemes matching the example: cyan (H=0.6), pink/red (H=0.9), rainbow (H=t)
+    const schemes = [
+        { h: 0.6,  count: 4 },
+        { h: 0.9,  count: 4 },
+        { h: null, count: 4 },
+    ];
+    for (const { h, count } of schemes) {
+        for (let ci = 0; ci < count; ci++) {
+            const ox = randomRange(-spread, spread);
+            const oz = randomRange(-spread, spread);
+            const N = 600;
+            const pos = new Float32Array(N * 3);
+            const clr = new Float32Array(N * 3);
+            for (let i = 0; i < N; i++) {
+                const t  = i / (N - 1);
+                const a  = t * Math.PI * 10;                      // 5 full rotations
+                const r  = 60 + Math.sin(t * Math.PI * 4) * 35;  // pulsing radius
+                const y  = groundLevel + 2 + t * 140;             // climb from ground to ceiling
+                pos[i*3]   = ox + Math.cos(a) * r;
+                pos[i*3+1] = y;
+                pos[i*3+2] = oz + Math.sin(a) * r;
+                col.setHSL(h !== null ? h : t, 1.0, 0.42 + Math.abs(Math.sin(t * Math.PI)) * 0.18);
+                clr[i*3] = col.r; clr[i*3+1] = col.g; clr[i*3+2] = col.b;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            geo.setAttribute('color',    new THREE.Float32BufferAttribute(clr, 3));
+            _colorLinesGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true })));
+        }
+    }
+    scene.add(_colorLinesGroup);
 }
 
 // F5: damage / destroy fence posts within radius of an explosion
