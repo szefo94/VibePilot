@@ -1805,21 +1805,27 @@ function updateEffects(dt) {
         _memDebugTimer = 120;
         let html = '<strong>MEM</strong><br>';
         if (performance.memory) {
-            html += `${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)}` +
+            html += `heap: ${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)}` +
                     `/${(performance.memory.totalJSHeapSize / 1048576).toFixed(0)} MB<br>`;
         }
         const fencePosts = Object.values(_fenceRegistry).reduce((s, r) => s + r.posts.length, 0);
+        // [label, value, unit]
         const counts = [
-            ['scene', scene.children.length],
-            ['ground', groundUnits.length], ['bullet', bullets.length],
-            ['eBullet', enemyBullets.length], ['expl', activeExplosions.length],
-            ['air', airUnits.length], ['enemies', enemies.length],
-            ['collect', collectibles.length], ['markers', markers.length],
-            ['missiles', missiles.length], ['napFire', napalmFireParticles.length],
-            ['fencePosts', fencePosts],
-            ['tubes', tubes.reduce((s, t) => s + t.collectibles.length, 0)],
-        ].sort((a, b) => b[1] - a[1]).filter(c => c[1] > 0);
-        html += counts.map(([n, v]) => `${n}: ${v}`).join('<br>');
+            ['scene',      scene.children.length,                                          'obj'],
+            ['fencePosts', fencePosts,                                                     'meshes'],
+            ['ground',     groundUnits.length,                                             'units'],
+            ['air',        airUnits.length,                                                'units'],
+            ['enemies',    enemies.length,                                                 'units'],
+            ['bullet',     bullets.length,                                                 'proj'],
+            ['eBullet',    enemyBullets.length,                                            'proj'],
+            ['missiles',   missiles.length,                                                'proj'],
+            ['expl',       activeExplosions.length,                                        'fx'],
+            ['napFire',    napalmFireParticles.length,                                     'fx'],
+            ['collect',    collectibles.length,                                            'items'],
+            ['markers',    markers.length,                                                  'items'],
+            ['tubeOrbs',   tubes.reduce((s, t) => s + t.collectibles.length, 0),          'items'],
+        ].filter(c => c[1] > 0).sort((a, b) => b[1] - a[1]);
+        html += counts.map(([n, v, u]) => `${n}: <b>${v}</b> ${u}`).join('<br>');
         memDebugEl.innerHTML = html;
     }
 }
