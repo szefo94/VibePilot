@@ -302,8 +302,8 @@ _ringsCanvas.width = MINIMAP_SIZE; _ringsCanvas.height = MINIMAP_SIZE;
 // ================================================================
 const maxSpeed = .8, minSpeed = .02;
 const acceleration = .003, deceleration = .002, naturalDeceleration = .0005;
-const maxPitchRate = .025, maxRollRate = .035, maxYawRate = .03;
-const rotAccel = .00085;
+const maxPitchRate = .045, maxRollRate = .065, maxYawRate = .04;
+const rotAccel = .0018;
 const rotDamping = .85;
 // --- Mouse-aim steering ---
 const MOUSE_STEERING      = true;  // set false to disable War Thunder-style mouse aim
@@ -1901,6 +1901,9 @@ function updatePhysics(dt) {
     else speed = Math.max(minSpeed, speed - naturalDeceleration * dt);
     // ── Mouse-cursor quaternion steering (War Thunder style) ────────────
     if (MOUSE_STEERING) {
+        // Pre-check manual roll/pitch keys so corrections can be suppressed during manoeuvres
+        const _rollKeyHeld  = keys.ArrowLeft || keys.ArrowRight || Math.abs(_gpAxes.roll)  > 0.1;
+        const _pitchKeyHeld = keys.ArrowUp   || keys.ArrowDown  || Math.abs(_gpAxes.pitch) > 0.1;
         // Clamp effective cursor to STEER_CURSOR_RADIUS circle in NDC
         let cx = _mouseNDC.x, cy = _mouseNDC.y;
         const cr = Math.sqrt(cx * cx + cy * cy);
@@ -1926,17 +1929,19 @@ function updatePhysics(dt) {
                 _sq2.identity().slerp(_sq1, applied / angle);
                 plane.quaternion.premultiply(_sq2).normalize();
             }
-        } else {
-            // Cursor at rest: gently level pitch toward horizontal flight
+        } else if (!_pitchKeyHeld) {
+            // Cursor at rest and no manual pitch: gently level pitch toward horizontal flight
             _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
             if (Math.abs(_sv1.y) > 0.005) plane.rotateX(_sv1.y * STEER_LEVEL_RATE * dt);
         }
-        // Auto-banking: bank proportional to horizontal yaw change; also self-levels when cursor centered
-        _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // new forward
-        const hturn  = oldFwdX * _sv1.z - oldFwdZ * _sv1.x; // sin of horizontal turn
-        _sv3.set(1, 0, 0).applyQuaternion(plane.quaternion);  // local right
-        const bankErr = hturn * STEER_AUTO_BANK_K - _sv3.y;   // target bankY minus current
-        plane.rotateZ(bankErr * STEER_BANK_SMOOTH * dt);
+        // Auto-banking: skip entirely when manual roll is held so full 360° rolls are possible
+        if (!_rollKeyHeld) {
+            _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // new forward
+            const hturn  = oldFwdX * _sv1.z - oldFwdZ * _sv1.x; // sin of horizontal turn
+            _sv3.set(1, 0, 0).applyQuaternion(plane.quaternion);  // local right
+            const bankErr = hturn * STEER_AUTO_BANK_K - _sv3.y;   // target bankY minus current
+            plane.rotateZ(bankErr * STEER_BANK_SMOOTH * dt);
+        }
     }
     // ── Keyboard / gamepad fine-control (pitch, roll, yaw added on top) ──
     const pitchIn = Math.max(-1, Math.min(1, (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0) + _gpAxes.pitch));
