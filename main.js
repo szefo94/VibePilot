@@ -357,8 +357,10 @@ const obstacles = [], markers = [], collectibles = [];
 const baseMarkers = [], basesById = {};
 const _fenceRegistry = {}; // baseId → { posts:[{mesh,worldPos,tiltApplied}], bmRef }
 const _flagMeshes = [];    // { mesh, pivot: Vector3 }
-// Color-lines overlay (webgl_lines_colors aesthetic)
-let _colorLinesGroup = null;
+// Color-lines mode (webgl_lines_colors aesthetic — wireframe on black)
+let _colorMode = false;
+let _colorModeBg = null;
+const _colorModeOrigMats = new Map();
 // Debug
 const debugHelpers = [];
 let debugCollision = false;
@@ -534,7 +536,7 @@ document.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'b') debugCollision = !debugCollision;
     if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); _memDebugTimer = 0; }
     if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
-    if (e.key.toLowerCase() === 'c') _buildColorLines();
+    if (e.key.toLowerCase() === 'c') _toggleColorMode();
     if (e.key === 'Escape' && !isGameOver && !document.getElementById('splash-screen')) {
         isPaused = !isPaused;
         pausedElement.style.display = isPaused ? 'block' : 'none';
@@ -1108,43 +1110,35 @@ function buildBaseFences() {
     }
 }
 
-// webgl_lines_colors aesthetic overlay — three HSL color schemes on parametric 3D curves
-function _buildColorLines() {
-    if (_colorLinesGroup) { _colorLinesGroup.visible = !_colorLinesGroup.visible; return; }
-    _colorLinesGroup = new THREE.Group();
+// webgl_lines_colors mode — swap all mesh materials to vibrant HSL wireframe on black background
+function _toggleColorMode() {
+    _colorMode = !_colorMode;
     const col = new THREE.Color();
-    const spread = MAP_BOUNDARY * 0.65;
-    // Three schemes matching the example: cyan (H=0.6), pink/red (H=0.9), rainbow (H=t)
-    const schemes = [
-        { h: 0.6,  count: 4 },
-        { h: 0.9,  count: 4 },
-        { h: null, count: 4 },
-    ];
-    for (const { h, count } of schemes) {
-        for (let ci = 0; ci < count; ci++) {
-            const ox = randomRange(-spread, spread);
-            const oz = randomRange(-spread, spread);
-            const N = 600;
-            const pos = new Float32Array(N * 3);
-            const clr = new Float32Array(N * 3);
-            for (let i = 0; i < N; i++) {
-                const t  = i / (N - 1);
-                const a  = t * Math.PI * 10;                      // 5 full rotations
-                const r  = 60 + Math.sin(t * Math.PI * 4) * 35;  // pulsing radius
-                const y  = groundLevel + 2 + t * 140;             // climb from ground to ceiling
-                pos[i*3]   = ox + Math.cos(a) * r;
-                pos[i*3+1] = y;
-                pos[i*3+2] = oz + Math.sin(a) * r;
-                col.setHSL(h !== null ? h : t, 1.0, 0.42 + Math.abs(Math.sin(t * Math.PI)) * 0.18);
-                clr[i*3] = col.r; clr[i*3+1] = col.g; clr[i*3+2] = col.b;
-            }
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            geo.setAttribute('color',    new THREE.Float32BufferAttribute(clr, 3));
-            _colorLinesGroup.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ vertexColors: true })));
-        }
+    if (_colorMode) {
+        _colorModeBg = scene.background;
+        scene.background = new THREE.Color(0x000000);
+        let idx = 0;
+        scene.traverse(obj => {
+            if (!obj.isMesh || _colorModeOrigMats.has(obj)) return;
+            _colorModeOrigMats.set(obj, obj.material);
+            // Three HSL schemes cycling by index, modulated by world Y for depth variation
+            const scheme = idx % 3; // 0=cyan, 1=pink, 2=rainbow
+            const yFrac  = Math.max(0, Math.min(1, (obj.getWorldPosition(new THREE.Vector3()).y - groundLevel) / 200));
+            const h = scheme === 0 ? 0.55 + yFrac * 0.1
+                    : scheme === 1 ? 0.88 + yFrac * 0.08
+                    : (idx * 0.137 + yFrac * 0.3) % 1.0;
+            col.setHSL(h, 1.0, 0.5);
+            obj.material = new THREE.MeshBasicMaterial({ color: col.clone(), wireframe: true });
+            idx++;
+        });
+    } else {
+        scene.background = _colorModeBg;
+        _colorModeOrigMats.forEach((mat, mesh) => {
+            if (mesh.material && mesh.material !== mat) mesh.material.dispose();
+            mesh.material = mat;
+        });
+        _colorModeOrigMats.clear();
     }
-    scene.add(_colorLinesGroup);
 }
 
 // F5: damage / destroy fence posts within radius of an explosion
