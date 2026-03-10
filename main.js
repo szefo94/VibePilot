@@ -1940,7 +1940,9 @@ function updatePhysics(dt) {
             const hturn  = oldFwdX * _sv1.z - oldFwdZ * _sv1.x; // sin of horizontal turn
             _sv3.set(1, 0, 0).applyQuaternion(plane.quaternion);  // local right
             const bankErr = hturn * STEER_AUTO_BANK_K - _sv3.y;   // target bankY minus current
-            plane.rotateZ(bankErr * STEER_BANK_SMOOTH * dt);
+            // Cap correction to maxRollRate so auto-level is never faster than pressing the opposite key
+            const bankCorr = Math.max(-maxRollRate, Math.min(maxRollRate, bankErr * STEER_BANK_SMOOTH));
+            plane.rotateZ(bankCorr * dt);
         }
     }
     // ── Keyboard / gamepad fine-control (pitch, roll, yaw added on top) ──
