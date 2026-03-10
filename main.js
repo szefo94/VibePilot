@@ -1081,14 +1081,14 @@ function buildBaseFences() {
                 const m = new THREE.Mesh(pillarGeo, cloneMat());
                 m.position.set(gv.x, groundLevel + POST_H * 0.8, gv.z);
                 scene.add(m);
-                reg.posts.push({ mesh: m, worldPos: m.position.clone() });
+                reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(gv.x, groundLevel, gv.z) });
             }
             const barLen = Math.sqrt((gv1.x - gv0.x) ** 2 + (gv1.z - gv0.z) ** 2);
             const crossbar = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.45, 0.45), cloneMat());
             crossbar.position.set((gv0.x + gv1.x) / 2, groundLevel + POST_H * 1.45, (gv0.z + gv1.z) / 2);
             crossbar.rotation.y = -Math.atan2(gv1.z - gv0.z, gv1.x - gv0.x);
             scene.add(crossbar);
-            reg.posts.push({ mesh: crossbar, worldPos: crossbar.position.clone() });
+            reg.posts.push({ mesh: crossbar, worldPos: new THREE.Vector3((gv0.x + gv1.x) / 2, groundLevel, (gv0.z + gv1.z) / 2) });
         }
     }
 }
@@ -2334,7 +2334,7 @@ function updateProjectiles(dt) {
                 }
             }
             if (_bombAoeHit) _playKeyClick();
-            _damageFenceNear(b.position, b.userData.aoERadius * 0.6); // F5
+            _damageFenceNear(b.position, b.userData.aoERadius); // F5
             scene.remove(b); bombs.splice(i, 1);
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
