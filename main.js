@@ -1073,22 +1073,21 @@ function buildBaseFences() {
             }
         }
 
-        // F2: gate — two taller pillars + crossbar
+        // F2: gate — watchtowers at gate corners + crossbar; all linked so destroying one removes all
         {
             const gv0 = hexV[gateEdge], gv1 = hexV[(gateEdge + 1) % 6];
-            const pillarGeo = new THREE.CylinderGeometry(0.45, 0.45, POST_H * 1.6, 8);
-            for (const gv of [gv0, gv1]) {
-                const m = new THREE.Mesh(pillarGeo, cloneMat());
-                m.position.set(gv.x, groundLevel + POST_H * 0.8, gv.z);
-                scene.add(m);
-                reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(gv.x, groundLevel, gv.z) });
-            }
+            const gateStart = reg.posts.length;
+            makeTower(gv0.x, gv0.z);
+            makeTower(gv1.x, gv1.z);
             const barLen = Math.sqrt((gv1.x - gv0.x) ** 2 + (gv1.z - gv0.z) ** 2);
             const crossbar = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.45, 0.45), cloneMat());
             crossbar.position.set((gv0.x + gv1.x) / 2, groundLevel + POST_H * 1.45, (gv0.z + gv1.z) / 2);
             crossbar.rotation.y = -Math.atan2(gv1.z - gv0.z, gv1.x - gv0.x);
             scene.add(crossbar);
             reg.posts.push({ mesh: crossbar, worldPos: new THREE.Vector3((gv0.x + gv1.x) / 2, groundLevel, (gv0.z + gv1.z) / 2) });
+            // Link: destroying any gate part removes all of them
+            const gatePosts = reg.posts.slice(gateStart);
+            for (const gp of gatePosts) gp.gateGroup = gatePosts;
         }
     }
 }
@@ -1097,11 +1096,18 @@ function buildBaseFences() {
 function _damageFenceNear(pos, radius) {
     const rSq = radius * radius;
     for (const reg of Object.values(_fenceRegistry)) {
-        for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
-            const p = reg.posts[pi];
+        const toRemove = new Set();
+        for (const p of reg.posts) {
             if (pos.distanceToSquared(p.worldPos) < rSq) {
-                scene.remove(p.mesh);
-                disposeGroup(p.mesh);
+                toRemove.add(p.mesh);
+                if (p.gateGroup) p.gateGroup.forEach(gp => toRemove.add(gp.mesh));
+            }
+        }
+        if (!toRemove.size) continue;
+        for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
+            if (toRemove.has(reg.posts[pi].mesh)) {
+                scene.remove(reg.posts[pi].mesh);
+                disposeGroup(reg.posts[pi].mesh);
                 reg.posts.splice(pi, 1);
             }
         }
