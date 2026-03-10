@@ -1808,12 +1808,15 @@ function updateEffects(dt) {
             html += `${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)}` +
                     `/${(performance.memory.totalJSHeapSize / 1048576).toFixed(0)} MB<br>`;
         }
+        const fencePosts = Object.values(_fenceRegistry).reduce((s, r) => s + r.posts.length, 0);
         const counts = [
+            ['scene', scene.children.length],
             ['ground', groundUnits.length], ['bullet', bullets.length],
             ['eBullet', enemyBullets.length], ['expl', activeExplosions.length],
             ['air', airUnits.length], ['enemies', enemies.length],
             ['collect', collectibles.length], ['markers', markers.length],
             ['missiles', missiles.length], ['napFire', napalmFireParticles.length],
+            ['fencePosts', fencePosts],
             ['tubes', tubes.reduce((s, t) => s + t.collectibles.length, 0)],
         ].sort((a, b) => b[1] - a[1]).filter(c => c[1] > 0);
         html += counts.map(([n, v]) => `${n}: ${v}`).join('<br>');
