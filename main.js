@@ -376,6 +376,8 @@ const _planeDebris    = []; // debris pieces after player destruction (idea 6)
 // --- Tube challenges (ideas 7-9) ---
 const tubes = [];
 const TUBE_XP = 200;
+// Persistent HUD for challenge tube runs
+const _tubeStatusEl = (() => { const el = document.createElement('div'); el.id = 'tube-status'; el.style.cssText = 'display:none;position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);color:#00ccff;font:bold 20px monospace;text-align:center;text-shadow:0 0 10px #00ccff,0 0 20px #00ccff;pointer-events:none;z-index:200;letter-spacing:2px;'; document.body.appendChild(el); return el; })();
 // --- Hit-marker / blink timers ---
 let _hitMarkerTimer = 0;    // frames remaining for hit-confirm crosshair (idea 4)
 let _playerBlinkTimer = 0;  // frames remaining for plane red-blink on damage (idea 3)
@@ -1360,13 +1362,9 @@ function createAllUnits() {
     for (let i = 0; i < numForwardBases; i++) { let p; do { p = getSpawnPointOnIslet(); } while (p.x * p.x + p.z * p.z < sz2); spawnForwardBase(p.x, p.z, p.islet); }
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
-    // Idea 7-9: spawn mathematical tube challenges
-    for (let _ti = 0; _ti < 4; _ti++) {
-        const _tx = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75);
-        const _tz = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75);
-        const _ty = randomRange(groundLevel + 55, ceilingLevel - 55);
-        spawnTube(_tx, _ty, _tz);
-    }
+    // Spawn challenge tubes (cyan, one-pass with orb ratio scoring) and free tubes (orange, open entry)
+    for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'challenge'); }
+    for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'free'); }
     for (let i = 0; i < numHoverWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x += 500; p.z += 500; } spawnHoverWing(p.x, p.z); }
     for (let i = 0; i < numStrikeWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x -= 500; p.z -= 500; } spawnStrikeWing(p.x, p.z); }
 }
@@ -1492,8 +1490,16 @@ function computeSafeTubeRadius(curve, maxRadius, samples = 40, skipWindow = 4) {
     }
     return Math.min(maxRadius, minDist * 0.5 - 1); // leave 1-unit gap
 }
+// Find nearest t ∈ [0,1] on a CatmullRomCurve3 and distance to that point
+function _nearestTubeT(curve, pos) {
+    const N = 24; let bestT = 0, bestD = Infinity;
+    for (let i = 0; i <= N; i++) { const t = i / N, d = pos.distanceTo(curve.getPoint(t)); if (d < bestD) { bestD = d; bestT = t; } }
+    const step = 1 / N;
+    for (let i = 0; i <= 10; i++) { const t = Math.max(0, Math.min(1, bestT - step / 2 + (i / 10) * step)); const d = pos.distanceTo(curve.getPoint(t)); if (d < bestD) { bestD = d; bestT = t; } }
+    return { t: bestT, d: bestD };
+}
 // Tubes are mathematical hollow tunnels; fly inside and collect all orbs for big XP
-function spawnTube(cx, cy, cz) {
+function spawnTube(cx, cy, cz, type = 'challenge') {
     const labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
     const name = `Tube ${labels[tubes.length % labels.length]}`;
     const patType = ~~(Math.random() * 3);
@@ -1524,19 +1530,28 @@ function spawnTube(cx, cy, cz) {
     // Compute largest non-self-intersecting radius from actual curve geometry
     const tubeRadius = Math.max(12, computeSafeTubeRadius(curve, 20));
     const tubeGeo = new THREE.TubeGeometry(curve, 48, tubeRadius, 8, false);
-    const tubeMesh = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: 0x00ccff, wireframe: true, transparent: true, opacity: 0.35 }));
+    const isChallenge = type === 'challenge';
+    const tubeColor  = isChallenge ? 0x00ccff : 0xff8800; // cyan = challenge, orange = free
+    const orbColor   = isChallenge ? 0x00ccff : 0xff8800;
+    const tubeMesh = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: tubeColor, wireframe: true, transparent: true, opacity: 0.35 }));
     scene.add(tubeMesh);
     // Place collectibles at even intervals along the curve
     const numTC = 10, tubeCols = [];
     for (let k = 0; k <= numTC; k++) {
         const pos = curve.getPoint(k / numTC).clone();
         pos.y = Math.max(groundLevel + 5, Math.min(ceilingLevel - 5, pos.y));
-        const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshBasicMaterial({ color: 0x00ccff }));
+        const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshBasicMaterial({ color: orbColor }));
         tcm.position.copy(pos);
         scene.add(tcm);
         tubeCols.push(tcm);
     }
-    tubes.push({ mesh: tubeMesh, geo: tubeGeo, name, collectibles: tubeCols, completed: false, cx, cz });
+    const totalOrbs = tubeCols.length;
+    // challenge-specific state; free tubes carry the same fields but logic ignores them
+    tubes.push({ mesh: tubeMesh, geo: tubeGeo, curve, tubeRadius, name, collectibles: tubeCols,
+        completed: false, cx, cz, isChallenge,
+        state: 'idle',   // 'idle' | 'entered' | 'done'
+        entryT: null, inRunCollected: 0, totalOrbs,
+        wasInside: false });
 }
 function spawnSingleHoopWithMarker() {
     const x = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
@@ -1752,10 +1767,10 @@ function updateExplosions(dt) { // §4.5: frame-rate independent, no disposal ra
 // --- Visual Effects Subsystem (ideas 1-6, 10) ---
 // ================================================================
 // Idea 7-9 tube ribbon banner
-function showTubeRibbon(name) {
+function showTubeRibbon(name, xp = TUBE_XP) {
     const el = document.createElement('div');
     el.className = 'tube-ribbon';
-    el.innerHTML = `&#9889; ${name} &mdash; COMPLETE &#9889;<br><span style="font-size:16px">+${TUBE_XP} XP &mdash; STRENGTH ENHANCED</span>`;
+    el.innerHTML = `&#9889; ${name} &mdash; COMPLETE &#9889;<br><span style="font-size:16px">+${xp} XP &mdash; STRENGTH ENHANCED</span>`;
     document.body.appendChild(el);
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('visible')));
     setTimeout(() => { el.classList.remove('visible'); el.classList.add('fade-out'); setTimeout(() => el.remove(), 800); }, 3500);
@@ -2227,23 +2242,29 @@ function resolveCollisions() {
     // Player vs Tube collectibles (ideas 7-9)
     for (const tube of tubes) {
         if (tube.completed) continue;
+        // Challenge tubes: only collect orbs while actively running (entered state)
+        if (tube.isChallenge && tube.state !== 'entered') continue;
         for (let i = tube.collectibles.length - 1; i >= 0; i--) {
             const tc = tube.collectibles[i];
             if (_planePickupBox.containsPoint(tc.position)) {
                 const _bPos = tc.position.clone();
                 scene.remove(tc); tc.geometry.dispose(); tc.material.dispose();
                 tube.collectibles.splice(i, 1);
-                // Cyan burst for tube collectibles
+                const burstColor = tube.isChallenge ? 0x00ccff : 0xff8800;
                 for (let _b = 0; _b < 6; _b++) {
                     const _a = (_b / 6) * Math.PI * 2;
-                    const _bm = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 3), new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true }));
+                    const _bm = new THREE.Mesh(new THREE.SphereGeometry(0.4, 4, 3), new THREE.MeshBasicMaterial({ color: burstColor, transparent: true }));
                     _bm.position.copy(_bPos); scene.add(_bm);
                     collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.2, 0.15, Math.sin(_a) * 0.2), life: 25, maxLife: 25 });
                 }
                 score += 5; scoreElement.textContent = score; addXP(10);
                 _playCollectCyan();
                 _hitMarkerTimer = 9;
-                if (tube.collectibles.length === 0) {
+                if (tube.isChallenge) {
+                    tube.inRunCollected++;
+                    _tubeStatusEl.textContent = `${tube.name}  ${tube.inRunCollected} / ${tube.totalOrbs}`;
+                } else if (tube.collectibles.length === 0) {
+                    // Free tube: complete when all orbs collected
                     tube.completed = true;
                     scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
                     if (!isGameOver) { addXP(TUBE_XP); score += TUBE_XP; scoreElement.textContent = score; }
@@ -2254,6 +2275,64 @@ function resolveCollisions() {
             }
         }
     }
+    // Challenge tube entry / exit / wall-collision logic
+    let _inAnyChallengeTube = false;
+    for (const tube of tubes) {
+        if (!tube.isChallenge || tube.completed || tube.state === 'done') continue;
+        const { t, d } = _nearestTubeT(tube.curve, plane.position);
+        const inside   = d < tube.tubeRadius - planeSphereRadius;
+        const nearEnd  = t < 0.12 || t > 0.88;
+        if (tube.state === 'idle') {
+            if (inside && nearEnd) {
+                // Valid entry through a cap
+                tube.state    = 'entered';
+                tube.entryT   = t < 0.5 ? 0 : 1;
+                tube.inRunCollected = 0;
+                tube.wasInside = true;
+                _inAnyChallengeTube = true;
+                _tubeStatusEl.style.display = 'block';
+                _tubeStatusEl.textContent   = `${tube.name}  0 / ${tube.totalOrbs}`;
+            } else if (inside && !nearEnd) {
+                // Flew in through the wall from outside — fatal
+                triggerGameOver();
+            }
+        } else if (tube.state === 'entered') {
+            if (inside) {
+                tube.wasInside = true;
+                _inAnyChallengeTube = true;
+            } else {
+                // Transition: just left the tube volume
+                if (!nearEnd) {
+                    // Exited through the wall — fatal
+                    triggerGameOver();
+                } else {
+                    const exitEnd = t < 0.5 ? 0 : 1;
+                    if (exitEnd !== tube.entryT) {
+                        // Correct exit — score based on orb ratio
+                        const ratio = tube.totalOrbs > 0 ? tube.inRunCollected / tube.totalOrbs : 0;
+                        const xp    = Math.max(20, Math.round(TUBE_XP * ratio));
+                        tube.state  = 'done'; tube.completed = true;
+                        scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
+                        tube.collectibles.forEach(tc => { scene.remove(tc); tc.geometry.dispose(); tc.material.dispose(); });
+                        tube.collectibles = [];
+                        _tubeStatusEl.style.display = 'none';
+                        if (!isGameOver) { addXP(xp); score += xp; scoreElement.textContent = score; }
+                        const pct = Math.round(ratio * 100);
+                        showNotification(`⚡ ${tube.name}  ${tube.inRunCollected}/${tube.totalOrbs} orbs (${pct}%)  +${xp} XP`, true);
+                        showTubeRibbon(tube.name, xp);
+                        addToConqueredRow(`⚡ ${tube.name}`, 'row4-scroll');
+                    } else {
+                        // Turned back — exit through same end resets run
+                        tube.state = 'idle';
+                        tube.wasInside = false;
+                        _tubeStatusEl.style.display = 'none';
+                        showNotification(`✕ ${tube.name} aborted`);
+                    }
+                }
+            }
+        }
+    }
+    if (!_inAnyChallengeTube) _tubeStatusEl.style.display = 'none';
     // Player vs World obstacles
     for (const o of obstacles) {
         if (o.userData.type === 'torus') continue;
