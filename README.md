@@ -42,6 +42,7 @@
 | `B` | Toggle collision box debug view |
 | `N` | Toggle wing trails |
 | `M` | Toggle memory debug panel |
+| `C` | Toggle color lines mode (all meshes → vibrant HSL wireframe on black) |
 | `Esc` | Pause / Resume |
 
 ### Gamepad (Xbox / PS5 DualSense)
@@ -467,7 +468,8 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 | Base elimination bonus | 150 – 500 |
 | Constellation completed | +50 XP |
 | Corridor completed | +75 XP |
-| Tube completed | +200 XP |
+| Challenge tube completed | 20 – 200 XP (proportional to orbs collected) |
+| Free tube completed | +200 XP |
 
 ### XP & Levelling
 
@@ -511,15 +513,33 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 - Each hoop chain is named `Corridor Alpha / Beta / … / Theta`
 - Per-ring notification: `◆ Name N/total`; completing all rings awards +75 XP and adds an entry to conquered panel row 3
 
-### Tubes — Challenge System
+### Tubes
 
-- Count: `numTubes = 5` mathematical hollow tunnels placed across the map
+Two types of mathematical hollow tunnels are placed across the map — 3 challenge (cyan) + 3 free (orange).
+
 - Path types: helix · sine S-curve · corkscrew dive (random per tube)
 - Named: `Tube Alpha / Beta / Gamma / Delta / Epsilon / …`
 - Tube radius: at least 12 units (full player wingspan); capped to avoid self-intersection
-- 11 cyan orbs placed at even intervals along each tube's curve
-- Fly inside and collect all orbs: awards `TUBE_XP = 200` XP, fires a ribbon banner, adds `⚡ Name` to conquered panel row 4
-- One-time only: on completion the tube wireframe and all remaining orbs are removed
+- 11 orbs placed at even intervals along each tube's curve
+
+#### Challenge Tubes (cyan)
+
+| Mechanic | Detail |
+|---|---|
+| Entry | Fly in through either **open end** of the tube (t < 0.12 or t > 0.88) |
+| Solid walls | Entering or exiting through the side wall is **fatal** (game over) |
+| One-pass | Enter once through one end, exit once through the **other** end |
+| Live HUD | Persistent centre-screen label shows `Tube Name  X / 11` while inside |
+| Orb collection | Only counted when actively in a run (entered state) |
+| Exit scoring | XP = `max(20, round(200 × collected / total))`; notification shows orb count, percentage, and XP |
+| Abort | Exiting back through the **entry end** cancels the run cleanly with no penalty |
+| Completion | Tube wireframe and remaining orbs removed; ribbon banner shown |
+
+#### Free Tubes (orange)
+
+- Open entry: fly in or out anywhere, as many times as desired
+- Collect all 11 orbs in any order: awards `TUBE_XP = 200` XP, fires a ribbon banner
+- One-time completion: tube removed when all orbs are picked up
 
 ---
 
@@ -631,7 +651,8 @@ The minimap operates as a real radar:
 | `numObstacles` | 80 | Total obstacle objects distributed across the map. |
 | `numCollectibleChains` | 20 | Number of collectible constellation chains. |
 | `numHoopChains` | 8 | Number of torus hoop corridor chains. |
-| `numTubes` | 5 | Number of mathematical tube challenge courses. |
+| `numChallengeTubes` | 3 | Number of cyan challenge tubes (one-pass, orb-ratio scoring). |
+| `numFreeTubes` | 3 | Number of orange free tubes (open entry, full XP on all orbs). |
 
 ---
 
@@ -708,8 +729,9 @@ The minimap operates as a real radar:
 | `spawnStrikeWing` | `(cx, cz) → void` | 2–3 fighters + optional tanker + optional AC-130 (orbiting). |
 | `spawnCollectibleChains` | `(count) → void` | Constellation-named chains of green collectibles. |
 | `spawnHoopChains` | `(count) → void` | Corridor-named torus hoop chains with score markers. |
-| `spawnTube` | `(cx, cy, cz) → void` | Mathematical tube challenge (helix / S-curve / corkscrew) with 11 cyan orbs. |
+| `spawnTube` | `(cx, cy, cz, type?) → void` | Mathematical tube (helix / S-curve / corkscrew). `type` is `'challenge'` (cyan, one-pass) or `'free'` (orange, open). |
 | `computeSafeTubeRadius` | `(curve, maxRadius) → number` | Samples 40 points on the curve, finds minimum non-adjacent pairwise distance; returns the largest safe tube radius that prevents self-intersection. |
+| `_nearestTubeT` | `(curve, pos) → {t, d}` | Finds the nearest t ∈ [0,1] on a CatmullRomCurve3 and the distance from `pos` to that point; used each frame for challenge tube wall/entry/exit detection. |
 | `addCollectibleAt` | `(x, y, z) → void` | Single collectible at given world position. |
 
 ### Islet Helpers
@@ -747,7 +769,7 @@ The minimap operates as a real radar:
 | `triggerGameOver` | `() → void` | Sets `isGameOver`, stops plane, hides player mesh, spawns debris pieces, shows Game Over overlay. |
 | `spawnPlaneDebris` | `() → void` | Spawns 6 box debris pieces with random velocities and angular velocities, falling under gravity. |
 | `updateEffects` | `(dt) → void` | Central effects tick: burst particles, dying blink animations, debris physics, player damage blink, hit marker, memory debug update. |
-| `showTubeRibbon` | `(name) → void` | Creates a cyan ribbon banner on tube completion; auto-fades like the congrats banner. |
+| `showTubeRibbon` | `(name, xp?) → void` | Creates a cyan ribbon banner on tube completion showing earned XP; auto-fades like the congrats banner. |
 | `updateRadarSnapshot` | `() → void` | Captures all entity positions + player pos/heading into `_radarBlips[]` and `_radarPlayerPos`. Called once per 3 s sweep cycle. |
 | `animate` | `() → void` | Main `requestAnimationFrame` loop — physics, AI, collisions, HUD, camera, minimap. |
 | `updateMinimap` | `() → void` | Draws radar rings, sweep trail, sweep line, then all frozen blips from `_radarBlips[]`. |
