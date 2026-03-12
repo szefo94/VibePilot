@@ -375,14 +375,14 @@ let _emptyClipFlash = 0;
 // F6: searchlight sweepers
 const _searchlights = [];
 // Death debrief stat tracking (sampled every ~1 s)
-const _statHp = [100], _statScore = [0], _statXp = [0], _statMem = [0];
+const _statHp = [100], _statScore = [0], _statXp = [0], _statLvl = [1];
 let _statTimer = 60;
 let _heartbeatPhase = 0; // drives emissive glow pulse on all heart collectibles
 const _deathGraphEl = (() => {
     const div = document.createElement('div');
     div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;min-width:640px;';
     div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
-        '<canvas id="_deathCanvas" width="590" height="270"></canvas>' +
+        '<canvas id="_deathCanvas" width="590" height="360"></canvas>' +
         '<div style="text-align:center;font-size:11px;color:#556;margin-top:8px">[G] toggle debrief</div>';
     document.body.appendChild(div); return div;
 })();
@@ -395,6 +395,7 @@ function _drawDeathGraph() {
         { data: _statHp,    label: 'HP',    color: '#ff4455', max: 100 },
         { data: _statScore, label: 'Score', color: '#4488ff', max: null },
         { data: _statXp,    label: 'XP',    color: '#44ee88', max: null },
+        { data: _statLvl,   label: 'Level', color: '#ffcc44', max: null },
     ];
     rows.forEach((row, ri) => {
         const y0 = pad + ri * (stripH + gap);
@@ -2142,7 +2143,7 @@ function triggerGameOver() {
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });
     spawnPlaneDebris(); // idea 6
     // Final stat sample + show debrief graph
-    _statHp.push(0); _statScore.push(score); _statXp.push(xp); _statMem.push(performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0);
+    _statHp.push(0); _statScore.push(score); _statXp.push(xp); _statLvl.push(level);
     setTimeout(() => { _drawDeathGraph(); _deathGraphEl.style.display = 'block'; }, 4000);
 }
 // Idea 6: shatter plane into tumbling debris pieces
@@ -2999,7 +3000,7 @@ function animate() {
     // Stat sampling (~1 s interval) for death debrief
     if (!isGameOver && !isPaused) {
         _statTimer -= dt;
-        if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); _statMem.push(performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0); }
+        if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); _statLvl.push(level); }
     }
     if (!isGameOver && !isPaused) {
         updatePhysics(dt);
@@ -3317,20 +3318,30 @@ function _playMissileLaunch() {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const t = ctx.currentTime;
-        // Sharp whoosh — rising noise burst
-        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+        const dur = 1.6;
+        // Layer 1 — rocket hiss: band-passed noise, sustained then fading
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
         const data = buf.getChannelData(0);
-        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (i / data.length);
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        // High-pass to make it crisp
-        const hp = ctx.createBiquadFilter();
-        hp.type = 'highpass'; hp.frequency.value = 1200;
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.5, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-        src.connect(hp); hp.connect(gain); gain.connect(ctx.destination);
-        src.start(t); src.onended = () => ctx.close();
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(2200, t); bp.frequency.linearRampToValueAtTime(800, t + dur);
+        bp.Q.value = 0.6;
+        const hiss = ctx.createGain();
+        hiss.gain.setValueAtTime(0.0, t);
+        hiss.gain.linearRampToValueAtTime(0.55, t + 0.06); // sharp ignition spike
+        hiss.gain.linearRampToValueAtTime(0.3, t + 0.3);   // settle into sizzle
+        hiss.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        src.connect(bp); bp.connect(hiss); hiss.connect(ctx.destination);
+        src.start(t);
+        // Layer 2 — low ignition thud: short sine bump on launch
+        const osc = ctx.createOscillator(); osc.type = 'sine';
+        osc.frequency.setValueAtTime(140, t); osc.frequency.exponentialRampToValueAtTime(40, t + 0.18);
+        const tg = ctx.createGain();
+        tg.gain.setValueAtTime(0.35, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        osc.connect(tg); tg.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.25);
+        src.onended = () => ctx.close();
     } catch(e) {}
 }
 
