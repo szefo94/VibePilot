@@ -374,6 +374,48 @@ let _highScore = parseInt(localStorage.getItem('vibepilot_hs') || '0');
 let _emptyClipFlash = 0;
 // F6: searchlight sweepers
 const _searchlights = [];
+// Death debrief stat tracking (sampled every ~1 s)
+const _statHp = [100], _statScore = [0], _statXp = [0];
+let _statTimer = 60;
+const _deathGraphEl = (() => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;min-width:640px;';
+    div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
+        '<canvas id="_deathCanvas" width="590" height="270"></canvas>' +
+        '<div style="text-align:center;font-size:11px;color:#556;margin-top:8px">[G] toggle debrief</div>';
+    document.body.appendChild(div); return div;
+})();
+function _drawDeathGraph() {
+    const cv = document.getElementById('_deathCanvas'); if (!cv) return;
+    const ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    ctx.fillStyle = '#090912'; ctx.fillRect(0, 0, W, H);
+    const pad = 38, stripH = 72, gap = 10;
+    const rows = [
+        { data: _statHp,    label: 'HP',    color: '#ff4455', max: 100 },
+        { data: _statScore, label: 'Score', color: '#4488ff', max: null },
+        { data: _statXp,    label: 'XP',    color: '#44ee88', max: null },
+    ];
+    rows.forEach((row, ri) => {
+        const y0 = pad + ri * (stripH + gap);
+        const maxVal = row.max || Math.max(...row.data, 1);
+        ctx.fillStyle = '#0d0d1a'; ctx.fillRect(pad, y0, W - pad * 2, stripH);
+        ctx.strokeStyle = '#1a1a30'; ctx.lineWidth = 1;
+        for (let g = 0; g <= 4; g++) { ctx.beginPath(); ctx.moveTo(pad, y0 + g * stripH / 4); ctx.lineTo(W - pad, y0 + g * stripH / 4); ctx.stroke(); }
+        if (row.data.length >= 2) {
+            ctx.strokeStyle = row.color; ctx.lineWidth = 2; ctx.beginPath();
+            row.data.forEach((v, i) => {
+                const x = pad + (i / (row.data.length - 1)) * (W - pad * 2);
+                const y = y0 + stripH - (Math.min(v, maxVal) / maxVal) * stripH;
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }); ctx.stroke();
+        }
+        ctx.fillStyle = row.color; ctx.font = '11px monospace';
+        ctx.fillText(`${row.label}  (peak: ${Math.max(...row.data)})`, pad + 2, y0 - 4);
+    });
+    const secs = _statHp.length - 1;
+    ctx.fillStyle = '#334'; ctx.font = '10px monospace';
+    ctx.fillText(`0 s`, pad, H - 6); ctx.fillText(`${secs} s`, W - pad - 20, H - 6);
+}
 // V5: bullet tracer shared material
 const _tracerMat = new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.55 });
 // V4: hostile muzzle flash small spheres
@@ -429,6 +471,10 @@ const _napClusterPatchGeo = new THREE.CylinderGeometry(_napClusterR, _napCluster
 const _napClusterOrbGeo = new THREE.SphereGeometry(0.55, 5, 4);
 const _napClusterOrbMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.9 });
 const bombRadius = 1.5, bombGeometry = new THREE.SphereGeometry(bombRadius, 10, 10);
+// Pre-baked bomb visual geometries (shared, avoids per-drop GC stall)
+const _bombBodyGeo = (() => { const g = new THREE.CylinderGeometry(0.7, 0.9, 3.2, 8); g.rotateX(Math.PI / 2); return g; })();
+const _bombNoseGeo = (() => { const g = new THREE.ConeGeometry(0.7, 1.8, 8); g.rotateX(-Math.PI / 2); g.translate(0, 0, 2.5); return g; })();
+const _bombFinGeo  = new THREE.BoxGeometry(0.12, 1.4, 0.7);
 const bombCooldownTime = 45;
 const gravity = .008;
 const explosionGeometry = new THREE.SphereGeometry(1, 16, 16);
@@ -573,6 +619,7 @@ document.addEventListener('keydown', e => {
     if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); _memDebugTimer = 0; }
     if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
     if (e.key.toLowerCase() === 'c') _toggleColorMode();
+    if (e.key.toLowerCase() === 'g' && isGameOver) { _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none'; }
     if (e.key === 'Escape' && !isGameOver && !document.getElementById('splash-screen')) {
         isPaused = !isPaused;
         pausedElement.style.display = isPaused ? 'block' : 'none';
@@ -933,6 +980,14 @@ function spawnAirbase(cx, cz, islet) {
     airport.position.x = cx; airport.position.z = cz; airport.rotation.y = heading;
     groundUnits.push(airport); scene.add(airport);
     airport.userData.label.name = abName; updateUnitLabel(airport.userData.label, airport.userData.hp);
+    // Searchlight on control tower (local pos 25, 34, -25 rotated by heading)
+    const _cth = Math.cos(heading), _sth = Math.sin(heading);
+    const _slTx = cx + 25 * _cth - (-25) * _sth, _slTy = groundLevel + 38, _slTz = cz + 25 * (-_sth) + (-25) * _cth;
+    const _slAb = new THREE.SpotLight(0xffffaa, 2.0, 180, Math.PI / 8, 0.25);
+    _slAb.position.set(_slTx, _slTy, _slTz); scene.add(_slAb); scene.add(_slAb.target);
+    _searchlights.push({ spot: _slAb, worldPos: new THREE.Vector3(_slTx, _slTy, _slTz),
+        angle: Math.random() * Math.PI * 2, speed: (0.003 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1),
+        range: 140, halfAngle: Math.PI / 8, baseIds: [bm.id] });
     const runX = Math.sin(heading), runZ = Math.cos(heading), perpX = Math.cos(heading), perpZ = -Math.sin(heading);
     const side = Math.random() > .5 ? 1 : -1, numHangars = ~~randomRange(3, 6);
     for (let i = 0; i < numHangars; i++) {
@@ -1095,10 +1150,19 @@ function buildBaseFences() {
             fp.add(flag); scene.add(fp);
             reg.posts.push({ mesh: fp, worldPos: new THREE.Vector3(px, groundLevel + 17.5, pz) });
             _flagMeshes.push({ mesh: fp });
+            // Searchlight on tower platform
+            const slY = groundLevel + 12;
+            const slSpot = new THREE.SpotLight(0xffffaa, 1.5, 110, Math.PI / 7, 0.3);
+            slSpot.position.set(px, slY, pz);
+            scene.add(slSpot); scene.add(slSpot.target);
+            _searchlights.push({ spot: slSpot, worldPos: new THREE.Vector3(px, slY, pz),
+                angle: Math.random() * Math.PI * 2,
+                speed: (0.004 + Math.random() * 0.004) * (Math.random() > 0.5 ? 1 : -1),
+                range: 90, halfAngle: Math.PI / 7, baseIds: bases.map(b => b.id) });
+            reg.posts.push({ mesh: slSpot, worldPos: new THREE.Vector3(px, slY, pz) });
         };
 
         // --- Build 5 non-gate edges ---
-        let _slPostIdx = 0; // F6: searchlight counter across all edges of this fence
         for (let step = 1; step <= 5; step++) {
             const ei      = (gateEdge + step) % 6;
             const va      = hexV[ei];
@@ -1118,22 +1182,6 @@ function buildBaseFences() {
                 m.position.set(px, groundLevel + POST_H / 2, pz);
                 scene.add(m);
                 reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(px, groundLevel + POST_H / 2, pz) });
-                // F6: searchlight every 6th intermediate post
-                _slPostIdx++;
-                if (_slPostIdx % 6 === 0) {
-                    const slSpot = new THREE.SpotLight(0xffffaa, 1.2, 90, Math.PI / 7, 0.35);
-                    slSpot.position.set(px, groundLevel + POST_H + 1, pz);
-                    scene.add(slSpot); scene.add(slSpot.target);
-                    _searchlights.push({
-                        spot: slSpot,
-                        worldPos: new THREE.Vector3(px, groundLevel + POST_H + 1, pz),
-                        angle: Math.random() * Math.PI * 2,
-                        speed: (0.005 + Math.random() * 0.005) * (Math.random() > 0.5 ? 1 : -1),
-                        range: 70, halfAngle: Math.PI / 7,
-                        baseIds: bases.map(b => b.id)
-                    });
-                    reg.posts.push({ mesh: slSpot, worldPos: new THREE.Vector3(px, groundLevel + POST_H + 1, pz) });
-                }
                 // F8: sandbags every 3rd intermediate post
                 if (k % 3 === 0) {
                     const inDx = cx - px, inDz = cz - pz;
@@ -1487,6 +1535,7 @@ function spawnSingleEnemy() {
 }
 function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
+    m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
     y = Math.max(groundLevel + 8, Math.min(ceilingLevel - 8, y));
     m.position.set(x, y, z); m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null };
     collectibles.push(m); scene.add(m);
@@ -1732,13 +1781,9 @@ function fireBullet() {
 }
 function _createBombMesh(mat) {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 3.2, 8), mat);
-    body.rotation.x = Math.PI / 2; // body along +Z
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.8, 8), mat);
-    nose.rotation.x = -Math.PI / 2; nose.position.z = 2.5; // tip forward
-    g.add(body, nose);
+    g.add(new THREE.Mesh(_bombBodyGeo, mat), new THREE.Mesh(_bombNoseGeo, mat));
     for (let _f = 0; _f < 4; _f++) {
-        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.4, 0.7), mat);
+        const fin = new THREE.Mesh(_bombFinGeo, mat);
         fin.rotation.z = _f * Math.PI / 2;
         fin.position.set(Math.sin(_f * Math.PI / 2) * 0.9, Math.cos(_f * Math.PI / 2) * 0.9, -1.6);
         g.add(fin);
@@ -2041,6 +2086,9 @@ function triggerGameOver() {
     enemies.forEach(e => { if (e.label) e.label.sprite.visible = false; });
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });
     spawnPlaneDebris(); // idea 6
+    // Final stat sample + show debrief graph
+    _statHp.push(0); _statScore.push(score); _statXp.push(xp);
+    setTimeout(() => { _drawDeathGraph(); _deathGraphEl.style.display = 'block'; }, 800);
 }
 // Idea 6: shatter plane into tumbling debris pieces
 function spawnPlaneDebris() {
@@ -2799,7 +2847,7 @@ function updateProjectiles(dt) {
         }
         if (p.tick <= 0) {
             p.tick = NAPALM_TICK_INTERVAL;
-            const dmg = napalmDamage * (p.patchR ? 0.45 : 1) * playerDamageMultiplier;
+            const dmg = napalmDamage * (p.patchR ? 0.05 : 1) * playerDamageMultiplier;
             const rSq = _pR * _pR;
             const _napDestroy = [];
             let _napAoeHit = false;
@@ -2893,6 +2941,11 @@ function animate() {
     const rawDelta = clock.getDelta();
     const dt = Math.min(rawDelta * TARGET_FPS, 6); // cap at 6 frames — prevents spiral-of-death on tab switch
 
+    // Stat sampling (~1 s interval) for death debrief
+    if (!isGameOver && !isPaused) {
+        _statTimer -= dt;
+        if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); }
+    }
     if (!isGameOver && !isPaused) {
         updatePhysics(dt);
         updateAI(dt);
