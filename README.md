@@ -95,7 +95,7 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 | Enemy hit / hit marker | Key-click | Same noise burst as splash click |
 | Player takes damage | Heavy thud | Sine sweep 130 → 35 Hz + noise transient, 220 ms |
 | Bomb dropped | Falling whistle | Sine sweep 600 → 180 Hz, 380 ms |
-| Missiles launched | Sharp whoosh | Rising noise burst, high-pass filtered > 1.2 kHz, 140 ms |
+| Missiles launched | Rocket sizzle | Band-passed noise 2 200 → 800 Hz (exhaust hiss, 1.6 s) + short 140 → 40 Hz sine ignition thud |
 | Napalm dropped | Low rumble | Sawtooth sweep 90 → 30 Hz, 320 ms |
 | Bomb / missile / napalm hits enemy | Key-click | Fires once per detonation when ≥ 1 unit is in AoE range |
 | Enemy shoots (nearby) | Short sawtooth pew | Sawtooth sweep 400 → 80 Hz, 90 ms; only audible within 300 units |
@@ -127,14 +127,14 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 
 ### Mission Debrief (`G` key)
 
-Shown automatically on death (800 ms delay); toggled with `G` thereafter. Displays four strip charts sampled once per second throughout the session:
+Shown automatically on death (4 s delay, giving the debris animation time to play); toggled with `G` thereafter. Displays four strip charts sampled once per second throughout the session:
 
 | Strip | Colour | Scale |
 |---|---|---|
 | HP | Red | Fixed 0 – 100 |
 | Score | Blue | Auto (peak) |
 | XP | Green | Auto (peak) |
-| Mem MB | Purple | Auto (peak) — JS heap usage via `performance.memory`; 0 if unavailable |
+| Level | Gold | Auto (peak) — separate axis so single-digit level values aren't crushed by large XP totals |
 
 ---
 

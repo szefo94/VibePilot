@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+> **Prompts:** "also show level on top of xp chart (make it two charts) / guided missile do not release sound, fix it, or maybe adjust so it sounds like its sizzling towards target"
+
+### Fixes
+- **Missile sound inaudible**: Replaced the previous 0.12 s high-pass noise whoosh with a 1.6 s rocket sizzle. Band-passed noise sweeps 2 200 → 800 Hz (exhaust hiss), with a sharp ignition spike, sustained sizzle body, and gradual fade. Layered with a short 140 → 40 Hz sine thud on ignition. Sound is clearly audible and matches missile travel.
+
+### Features
+- **Level strip in death debrief**: Added a 4th gold strip chart tracking player `level` over time. XP and Level now have independent auto-scaled axes — level values (single/double digits) are no longer crushed by large XP totals. Canvas height restored to 360 px.
+
+---
+
+> **Prompts:** "graph draw should be counted couple of seconds after death / remove memory graph draw, it shows me nothing helpful"
+
+### Fixes
+- **Debrief shows during death animation**: Graph now appears 4 seconds after death (was 800 ms), giving the plane debris animation time to play out before the overlay appears.
+- **Memory strip removed**: The JS heap MB chart was not useful in practice and has been removed. Debrief is back to three strips: HP / Score / XP.
+
+---
+
 > **Prompts:** "hearts in tubes are still upside down, fix it. Also i'd like all hearts to glow a little, like slow heartbeat / update readme and changes, push to git"
 
 ### Fixes
