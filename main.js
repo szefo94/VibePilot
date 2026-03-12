@@ -382,7 +382,7 @@ const _deathGraphEl = (() => {
     const div = document.createElement('div');
     div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;min-width:640px;';
     div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
-        '<canvas id="_deathCanvas" width="590" height="360"></canvas>' +
+        '<canvas id="_deathCanvas" width="590" height="270"></canvas>' +
         '<div style="text-align:center;font-size:11px;color:#556;margin-top:8px">[G] toggle debrief</div>';
     document.body.appendChild(div); return div;
 })();
@@ -392,10 +392,9 @@ function _drawDeathGraph() {
     ctx.fillStyle = '#090912'; ctx.fillRect(0, 0, W, H);
     const pad = 38, stripH = 72, gap = 10;
     const rows = [
-        { data: _statHp,    label: 'HP',     color: '#ff4455', max: 100 },
-        { data: _statScore, label: 'Score',  color: '#4488ff', max: null },
-        { data: _statXp,    label: 'XP',     color: '#44ee88', max: null },
-        { data: _statMem,   label: 'Mem MB', color: '#cc88ff', max: null },
+        { data: _statHp,    label: 'HP',    color: '#ff4455', max: 100 },
+        { data: _statScore, label: 'Score', color: '#4488ff', max: null },
+        { data: _statXp,    label: 'XP',    color: '#44ee88', max: null },
     ];
     rows.forEach((row, ri) => {
         const y0 = pad + ri * (stripH + gap);
@@ -2144,7 +2143,7 @@ function triggerGameOver() {
     spawnPlaneDebris(); // idea 6
     // Final stat sample + show debrief graph
     _statHp.push(0); _statScore.push(score); _statXp.push(xp); _statMem.push(performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0);
-    setTimeout(() => { _drawDeathGraph(); _deathGraphEl.style.display = 'block'; }, 800);
+    setTimeout(() => { _drawDeathGraph(); _deathGraphEl.style.display = 'block'; }, 4000);
 }
 // Idea 6: shatter plane into tumbling debris pieces
 function spawnPlaneDebris() {
