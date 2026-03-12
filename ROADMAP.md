@@ -5,29 +5,7 @@
 
 ---
 
-## Priority picks
-
-### Quick wins — low effort, noticeable payoff
-
-| # | Idea | Why now |
-|---|---|---|
-| G18 | **Level-up banner** | Banner system already exists; one `showCongratsBanner` variant call |
-| G20 | **Score multiplier chain** | One counter + one multiplier variable; changes feel of every kill |
-| G3  | **Invincibility frames** | 30-frame timer guard on `takeDamage`; prevents frustrating chain deaths |
-| G5  | **Persistent high score** | `localStorage` get/set around score; no architecture change |
-| G6  | **Health regen** | One line in the physics loop; huge quality-of-life |
-| A6  | **Engine hum** | Web Audio sine node tied to `speed`; already have audio infra |
-| A8  | **Explosion rumble** | Reuse bomb-drop synthesis pattern; 10 lines |
-| A9  | **Level-up chime** | Rising arpeggio via Web Audio; pairs with G18 banner |
-| A11 | **Empty-clip click** | Dry tick when gun fires at 0 ammo; 5 lines |
-| V2  | **Explosion scale by weapon** | Pass `scale` to `createExplosion`; bullets 1×, bombs 1.5×, missiles 2× |
-| V8  | **Screen shake** | `camera.position` jitter on hit/nearby explosion; 15 lines |
-| V9  | **Rotor animation** | `rotation.z += dt` on helicopter/AC-130 rotor mesh each frame |
-| V13 | **Empty-clip flash** | Flash ammo bar red for 3–4 frames; reuses damage-blink pattern |
-| F7  | **Fence colour by faction** | Material colour swap at spawn time; 1 line per base type |
-| T6  | **localStorage settings** | Save toggle states (trails, debug panel) across sessions |
-
-### High impact — bigger effort but transforms the game
+## High impact — bigger effort but transforms the game
 
 | # | Idea | Why it matters |
 |---|---|---|
@@ -126,3 +104,25 @@
 | T4 | **ESLint + Prettier** — consistent style, catches implicit globals | Low | Low |
 | T5 | **Unit tests for pure functions** — `randomRange`, collision math, spawn helpers | Low | Medium |
 | T6 | **localStorage settings** — save keybindings, volume level, and toggle states across sessions | Medium | Low |
+
+---
+
+## Quick wins — low effort, noticeable payoff
+
+| # | Idea | Why now |
+|---|---|---|
+| G18 | **Level-up banner** | Banner system already exists; one `showCongratsBanner` variant call |
+| G20 | **Score multiplier chain** | One counter + one multiplier variable; changes feel of every kill |
+| G3  | **Invincibility frames** | 30-frame timer guard on `takeDamage`; prevents frustrating chain deaths |
+| G5  | **Persistent high score** | `localStorage` get/set around score; no architecture change |
+| G6  | **Health regen** | One line in the physics loop; huge quality-of-life |
+| A6  | **Engine hum** | Web Audio sine node tied to `speed`; already have audio infra |
+| A8  | **Explosion rumble** | Reuse bomb-drop synthesis pattern; ~10 lines |
+| A9  | **Level-up chime** | Rising arpeggio via Web Audio; pairs with G18 banner |
+| A11 | **Empty-clip click** | Dry tick when gun fires at 0 ammo; ~5 lines |
+| V2  | **Explosion scale by weapon** | Pass `scale` to `createExplosion`; bullets 1×, bombs 1.5×, missiles 2× |
+| V8  | **Screen shake** | `camera.position` jitter on hit/nearby explosion; ~15 lines |
+| V9  | **Rotor animation** | `rotation.z += dt` on helicopter/AC-130 rotor mesh each frame |
+| V13 | **Empty-clip flash** | Flash ammo bar red for 3–4 frames; reuses damage-blink pattern |
+| F7  | **Fence colour by faction** | Material colour swap at spawn time; ~1 line per base type |
+| T6  | **localStorage settings** | Save toggle states (trails, debug panel) across sessions |
