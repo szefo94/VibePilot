@@ -423,6 +423,11 @@ const _flarePMatBase = new THREE.MeshBasicMaterial({ color: 0xffdd55, transparen
 const napalmBombMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: .6, emissive: 0x441100 });
 const napalmPatchGeo = new THREE.CylinderGeometry(napalmRadius, napalmRadius, 0.5, 20);
 const napalmPatchMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.65 });
+// --- Napalm cluster resources (50-orb scatter redesign) ---
+const _napClusterR = 15;
+const _napClusterPatchGeo = new THREE.CylinderGeometry(_napClusterR, _napClusterR, 0.3, 10);
+const _napClusterOrbGeo = new THREE.SphereGeometry(0.55, 5, 4);
+const _napClusterOrbMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.9 });
 const bombRadius = 1.5, bombGeometry = new THREE.SphereGeometry(bombRadius, 10, 10);
 const bombCooldownTime = 45;
 const gravity = .008;
@@ -1328,15 +1333,22 @@ function createAC130Visual() {
 function createAirUnit(type, x, y, z) {
     let visual, hp, collR, xp, hostile, name, level = 1;
     switch (type) {
-        case 'helicopter': visual = createHelicopterVisual(); hp = 60;  collR = 12; xp = 80;  hostile = true;  name = 'Helicopter'; break;
-        case 'balloon':    visual = createBalloonVisual();    hp = 15;  collR = 10; xp = 40;  hostile = false; name = 'Balloon';    break;
-        case 'fighter':    visual = createFighterVisual();    hp = 40;  collR = 10; xp = 100; hostile = true;  name = 'Fighter';    level = ~~randomRange(1, 3); hp *= level; xp *= level; break;
-        case 'tanker':     visual = createTankerVisual();     hp = 200; collR = 25; xp = 200; hostile = false; name = 'Tanker';     break;
-        case 'ac130':      visual = createAC130Visual();      hp = 150; collR = 22; xp = 250; hostile = true;  name = 'AC-130';     break;
+        // collR is fuselage/body sphere; all models are scaled 3× so local units × 3 = world units
+        case 'helicopter': visual = createHelicopterVisual(); hp = 60;  collR = 15; xp = 80;  hostile = true;  name = 'Helicopter'; break;
+        case 'balloon':    visual = createBalloonVisual();    hp = 15;  collR = 21; xp = 40;  hostile = false; name = 'Balloon';    break;
+        case 'fighter':    visual = createFighterVisual();    hp = 40;  collR = 14; xp = 100; hostile = true;  name = 'Fighter';    level = ~~randomRange(1, 3); hp *= level; xp *= level; break;
+        case 'tanker':     visual = createTankerVisual();     hp = 200; collR = 15; xp = 200; hostile = false; name = 'Tanker';     break;
+        case 'ac130':      visual = createAC130Visual();      hp = 150; collR = 20; xp = 250; hostile = true;  name = 'AC-130';     break;
     }
     visual.position.set(x, y, z); visual.scale.set(3, 3, 3); scene.add(visual);
     const label = createUnitLabel(name, level, hp, hp); scene.add(label.sprite);
     const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: collR, xpValue: xp, isHostile: hostile, baseId: null, label, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, userData: { hp, baseId: null } };
+    // Wing/rotor sub-sphere colliders (worldUnits = local × scale 3)
+    // wingType 'q' = quaternion right (fighter/tanker use lookAt), 'z' = outer-Z direction (orbit types with inner g rotated -PI/2)
+    if (type === 'helicopter') { au.wingHalfSpan = 25; au.wingR = 10; au.wingType = 'z'; } // rotor disc ±25 along outer Z
+    if (type === 'fighter')    { au.wingHalfSpan = 28; au.wingR = 10; au.wingType = 'q'; } // wing tips ±28 along group right
+    if (type === 'tanker')     { au.wingHalfSpan = 65; au.wingR = 13; au.wingType = 'q'; } // wide airliner wings
+    if (type === 'ac130')      { au.wingHalfSpan = 70; au.wingR = 14; au.wingType = 'z'; } // gunship wings ±70 along outer Z
     return au;
 }
 function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
@@ -1718,11 +1730,26 @@ function fireBullet() {
     _playGunShot();
     _playerMuzzleLight.intensity = 2.5; // V13
 }
+function _createBombMesh(mat) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 3.2, 8), mat);
+    body.rotation.x = Math.PI / 2; // body along +Z
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.8, 8), mat);
+    nose.rotation.x = -Math.PI / 2; nose.position.z = 2.5; // tip forward
+    g.add(body, nose);
+    for (let _f = 0; _f < 4; _f++) {
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.4, 0.7), mat);
+        fin.rotation.z = _f * Math.PI / 2;
+        fin.position.set(Math.sin(_f * Math.PI / 2) * 0.9, Math.cos(_f * Math.PI / 2) * 0.9, -1.6);
+        g.add(fin);
+    }
+    return g;
+}
 function dropBomb() {
-    const b = new THREE.Mesh(bombGeometry, bombMaterial);
+    const b = _createBombMesh(bombMaterial);
     _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // forward direction
     b.position.copy(plane.position).add(_bombOffset);
-    b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop); // velocity persists on bullet; clone needed
+    b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop);
     b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: bombDamage * playerDamageMultiplier, aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
     _playBombDrop();
@@ -1761,11 +1788,18 @@ function fireMissile() {
     _playMissileLaunch();
 }
 function dropNapalm() {
-    const b = new THREE.Mesh(bombGeometry, napalmBombMaterial);
-    _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
-    b.position.copy(plane.position).add(_bombOffset);
-    b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop);
-    napalmBombs.push(b); scene.add(b);
+    _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // forward
+    const fwdX = _wv1.x, fwdZ = _wv1.z;
+    for (let _ci = 0; _ci < 50; _ci++) {
+        const orb = new THREE.Mesh(_napClusterOrbGeo, _napClusterOrbMat.clone());
+        orb.position.copy(plane.position).add(_bombOffset);
+        const spd = speed * (0.4 + Math.random() * 0.9);
+        const sx = (Math.random() - 0.5) * 0.55, sz = (Math.random() - 0.5) * 0.55;
+        orb.velocity = new THREE.Vector3(fwdX + sx, 0.05 + Math.random() * 0.18, fwdZ + sz)
+            .normalize().multiplyScalar(spd).add(_bombDroop.clone().multiplyScalar(0.25));
+        orb.userData = { isNapalmCluster: true };
+        napalmBombs.push(orb); scene.add(orb);
+    }
     _playNapalmDrop();
 }
 function deployFlareEffect() {
@@ -2307,7 +2341,7 @@ function resolveCollisions() {
                     cor.completed = true;
                     if (cor.axisLine) { scene.remove(cor.axisLine); cor.axisLine.geometry.dispose(); cor.axisLine.material.dispose(); cor.axisLine = null; }
                     showNotification(`◆ ${cor.name} — ALL RINGS  +75 XP`, true);
-                    if (!isGameOver) { addXP(75); _healPlayer(10); } // G6
+                    if (!isGameOver) { addXP(75); _healPlayer(30); } // G6
                     addToConqueredRow(`◆ ${cor.name}`, 'row3-scroll');
                 } else {
                     showNotification(`◆ ${cor.name}  ${cor.total - cor.remaining}/${cor.total}`);
@@ -2332,7 +2366,7 @@ function resolveCollisions() {
                 collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.16, 0.1 + Math.random() * 0.1, Math.sin(_a) * 0.16), life: 30, maxLife: 30 });
             }
             score += 5; scoreElement.textContent = score; addXP(8);
-            if (!isGameOver && planeHP < 100) { planeHP = Math.min(100, planeHP + 2); hpElement.textContent = Math.max(0, planeHP); }
+            if (!isGameOver && planeHP < 100) { planeHP = Math.min(100, planeHP + 5); hpElement.textContent = Math.max(0, planeHP); }
             _playCollectGreen();
             if (sid && constellations[sid] && !constellations[sid].completed) {
                 const con = constellations[sid];
@@ -2523,7 +2557,19 @@ function resolveCollisions() {
             if ('group' in obj) {
                 const au = obj;
                 if (au.hp <= 0) continue;
-                if (b.position.distanceToSquared(au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2) {
+                // Main fuselage sphere check
+                let _auHit = b.position.distanceToSquared(au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2;
+                // Wing/rotor sub-sphere checks (corrects for scale×3 models with large wingspans)
+                if (!_auHit && au.wingHalfSpan) {
+                    let _wwx, _wwz;
+                    if (au.wingType === 'q') { _sv1.set(1, 0, 0).applyQuaternion(au.group.quaternion); _wwx = _sv1.x; _wwz = _sv1.z; }
+                    else { const _ry = au.group.rotation.y; _wwx = Math.sin(_ry); _wwz = Math.cos(_ry); }
+                    const _wr2 = (b.userData.collisionRadius + au.wingR) ** 2, _hs = au.wingHalfSpan, _gp = au.group.position;
+                    const _dx1 = b.position.x-(_gp.x+_wwx*_hs), _dy = b.position.y-_gp.y, _dz1 = b.position.z-(_gp.z+_wwz*_hs);
+                    const _dx2 = b.position.x-(_gp.x-_wwx*_hs),                              _dz2 = b.position.z-(_gp.z-_wwz*_hs);
+                    _auHit = (_dx1*_dx1+_dy*_dy+_dz1*_dz1 < _wr2) || (_dx2*_dx2+_dy*_dy+_dz2*_dz2 < _wr2);
+                }
+                if (_auHit) {
                     if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
@@ -2572,6 +2618,7 @@ function updateProjectiles(dt) {
     for (let i = bombs.length - 1; i >= 0; i--) {
         const b = bombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
+        if (b.velocity.lengthSq() > 0.001) b.quaternion.setFromUnitVectors(_sv1.set(0, 0, 1), _sv2.copy(b.velocity).normalize());
         if (b.position.y <= groundLevel + b.userData.collisionRadius) {
             createExplosion(b.position);
             // §4.1: collect then destroy to handle airport+turret order (no slice needed — outer loop only reads)
@@ -2717,41 +2764,43 @@ function updateProjectiles(dt) {
         tp.material.opacity = Math.max(0, (tp.life / tp.maxLife) * 0.75);
         if (tp.life <= 0) { scene.remove(tp); tp.material.dispose(); missileTrailParticles.splice(i, 1); }
     }
-    // Napalm bombs (§5.7) — fall like regular bombs, create burn patches on landing
+    // Napalm cluster orbs (§5.7) — scatter on drop, each creates a small fire patch on landing
     for (let i = napalmBombs.length - 1; i >= 0; i--) {
         const b = napalmBombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
-        if (b.position.y <= groundLevel + bombRadius) {
-            createExplosion(b.position);
-            const pm = new THREE.Mesh(napalmPatchGeo, napalmPatchMat.clone());
-            pm.position.set(b.position.x, groundLevel + 0.3, b.position.z);
+        if (b.position.y <= groundLevel + 0.8) {
+            const pm = new THREE.Mesh(_napClusterPatchGeo, napalmPatchMat.clone());
+            pm.position.set(b.position.x, groundLevel + 0.2, b.position.z);
             scene.add(pm);
-            napalmPatches.push({ pos: pm.position, life: NAPALM_DURATION, tick: 0, vTick: 0, mesh: pm });
-            scene.remove(b); napalmBombs.splice(i, 1);
-        } else if (b.position.y < groundLevel - 30) { scene.remove(b); napalmBombs.splice(i, 1); }
+            napalmPatches.push({ pos: pm.position, life: 90, maxLife: 90, tick: 0, vTick: 0, mesh: pm, patchR: _napClusterR });
+            scene.remove(b); b.material.dispose(); napalmBombs.splice(i, 1);
+        } else if (b.position.y < groundLevel - 30) { scene.remove(b); b.material.dispose(); napalmBombs.splice(i, 1); }
     }
     // Napalm patches — tick damage over time (§5.7)
     for (let i = napalmPatches.length - 1; i >= 0; i--) {
         const p = napalmPatches[i];
         p.life -= dt; p.tick -= dt; p.vTick -= dt;
-        p.mesh.material.opacity = 0.4 * Math.max(0, p.life / NAPALM_DURATION);
-        // Spawn fire spheres across the full patch area every ~7 frames
+        const _pMaxLife = p.maxLife || NAPALM_DURATION;
+        const _pR = p.patchR || napalmRadius;
+        p.mesh.material.opacity = 0.45 * Math.max(0, p.life / _pMaxLife);
+        // Spawn fire tongues: cluster patches get 1 particle per 14 frames, full patches get 4 per 7 frames
+        const _vInterval = p.patchR ? 14 : 7;
         if (p.vTick <= 0) {
-            p.vTick = 7;
-            for (let f = 0; f < 4; f++) {
+            p.vTick = _vInterval;
+            for (let f = 0; f < (p.patchR ? 1 : 4); f++) {
                 const angle = Math.random() * Math.PI * 2;
-                const r = Math.sqrt(Math.random()) * napalmRadius; // uniform circle distribution
+                const r = Math.sqrt(Math.random()) * _pR;
                 const nfp = new THREE.Mesh(_napalmFireGeo, _napalmFireMat.clone());
                 nfp.position.set(p.pos.x + Math.cos(angle) * r, groundLevel + 0.5, p.pos.z + Math.sin(angle) * r);
-                nfp.velocity = new THREE.Vector3(0, 0.06 + Math.random() * 0.08, 0); // rise
-                nfp.life = nfp.maxLife = 18 + Math.random() * 18;
+                nfp.velocity = new THREE.Vector3(0, 0.07 + Math.random() * 0.09, 0);
+                nfp.life = nfp.maxLife = (p.patchR ? 10 : 18) + Math.random() * 12;
                 napalmFireParticles.push(nfp); scene.add(nfp);
             }
         }
         if (p.tick <= 0) {
             p.tick = NAPALM_TICK_INTERVAL;
-            const dmg = napalmDamage * playerDamageMultiplier;
-            const rSq = napalmRadius * napalmRadius;
+            const dmg = napalmDamage * (p.patchR ? 0.45 : 1) * playerDamageMultiplier;
+            const rSq = _pR * _pR;
             const _napDestroy = [];
             let _napAoeHit = false;
             for (const gu of groundUnits) {
