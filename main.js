@@ -1396,6 +1396,7 @@ function spawnSingleEnemy() {
 }
 function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
+    y = Math.max(groundLevel + 8, Math.min(ceilingLevel - 8, y));
     m.position.set(x, y, z); m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null };
     collectibles.push(m); scene.add(m);
 }
@@ -1446,6 +1447,7 @@ function _addHoopAxis(torusMesh, r) {
 function spawnHoopChains(count) {
     const addHoop = (x, y, z, corridorId) => {
         const r = randomRange(15, 30);
+        y = Math.max(groundLevel + r + 8, Math.min(ceilingLevel - r - 8, y));
         const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
         m.position.set(x, y, z); m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
         _addHoopAxis(m, r);
