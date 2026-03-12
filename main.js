@@ -435,7 +435,17 @@ for (let _i = 0; _i < 12; _i++) _expMatPool.push(new THREE.MeshBasicMaterial({ c
 const markerRadius = 5, markerGeometry = new THREE.SphereGeometry(markerRadius, 16, 16);
 const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xccad00 });
 const collectibleRadius = 1.5, numCollectibleChains = 20;
-const collectibleGeo = new THREE.SphereGeometry(collectibleRadius, 8, 8);
+const _hhs = collectibleRadius / 47.5; // scale heart to fit within collectibleRadius
+const _hox = -25 * _hhs, _hoy = -47.5 * _hhs; // center heart at origin
+const _heartShape = new THREE.Shape();
+_heartShape.moveTo(_hox+25*_hhs,_hoy+25*_hhs);
+_heartShape.bezierCurveTo(_hox+25*_hhs,_hoy+25*_hhs, _hox+20*_hhs,_hoy,          _hox,        _hoy);
+_heartShape.bezierCurveTo(_hox-30*_hhs,_hoy,          _hox-30*_hhs,_hoy+35*_hhs,  _hox-30*_hhs,_hoy+35*_hhs);
+_heartShape.bezierCurveTo(_hox-30*_hhs,_hoy+55*_hhs,  _hox-10*_hhs,_hoy+77*_hhs,  _hox+25*_hhs,_hoy+95*_hhs);
+_heartShape.bezierCurveTo(_hox+60*_hhs,_hoy+77*_hhs,  _hox+80*_hhs,_hoy+55*_hhs,  _hox+80*_hhs,_hoy+35*_hhs);
+_heartShape.bezierCurveTo(_hox+80*_hhs,_hoy+35*_hhs,  _hox+80*_hhs,_hoy,           _hox+50*_hhs,_hoy);
+_heartShape.bezierCurveTo(_hox+35*_hhs,_hoy,           _hox+25*_hhs,_hoy+25*_hhs,  _hox+25*_hhs,_hoy+25*_hhs);
+const collectibleGeo = new THREE.ExtrudeGeometry(_heartShape, { depth: collectibleRadius * 0.45, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1, bevelSegments: 2 });
 const collectibleMat = new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x006622 });
 // --- Shared player-bullet resources (avoids per-shot alloc) ---
 const _playerBulletGeo = new THREE.SphereGeometry(.3, 8, 8);
@@ -1854,6 +1864,8 @@ function showTubeRibbon(name, xp = TUBE_XP) {
     setTimeout(() => { el.classList.remove('visible'); el.classList.add('fade-out'); setTimeout(() => el.remove(), 800); }, 3500);
 }
 function updateEffects(dt) {
+    // ── Heart collectible spin ────────────────────────────────────
+    for (let i = 0; i < collectibles.length; i++) collectibles[i].rotation.y += 0.018 * dt;
     // ── Idea 1: Collectible burst particles ──────────────────────
     for (let i = collectibleBursts.length - 1; i >= 0; i--) {
         const b = collectibleBursts[i];
@@ -2320,6 +2332,7 @@ function resolveCollisions() {
                 collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.16, 0.1 + Math.random() * 0.1, Math.sin(_a) * 0.16), life: 30, maxLife: 30 });
             }
             score += 5; scoreElement.textContent = score; addXP(8);
+            if (!isGameOver && planeHP < 100) { planeHP = Math.min(100, planeHP + 2); hpElement.textContent = Math.max(0, planeHP); }
             _playCollectGreen();
             if (sid && constellations[sid] && !constellations[sid].completed) {
                 const con = constellations[sid];
@@ -3020,20 +3033,22 @@ window.onload = () => {
     runSplash();
 };
 
-// Green collectible — bright high sine ping (880→440 Hz)
+// Green heart collectible — warm ascending C-E-G arpeggio (life gain feel)
 function _playCollectGreen() {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const t = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, t);
-        osc.frequency.exponentialRampToValueAtTime(440, t + 0.15);
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.2, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.start(t); osc.stop(t + 0.18); osc.onended = () => ctx.close();
+        [523, 659, 784].forEach((freq, i) => {
+            const osc = ctx.createOscillator(); const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, t + i * 0.07);
+            gain.gain.setValueAtTime(0, t + i * 0.07);
+            gain.gain.linearRampToValueAtTime(0.18, t + i * 0.07 + 0.025);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.22);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(t + i * 0.07); osc.stop(t + i * 0.07 + 0.25);
+            if (i === 2) osc.onended = () => ctx.close();
+        });
     } catch(e) {}
 }
 
