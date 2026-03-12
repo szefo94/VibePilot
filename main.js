@@ -274,6 +274,9 @@ const enemyArrow = new THREE.Mesh(arrowGeometry, new THREE.MeshBasicMaterial({ c
 markerArrow.position.set(-1.5, 1.5, 0); groundTargetArrow.position.set(1.5, 1.5, 0); enemyArrow.position.set(0, 2.0, 0);
 markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
 plane.add(markerArrow, groundTargetArrow, enemyArrow);
+// V13: muzzle PointLight — starts off, flashes briefly on each player shot
+const _playerMuzzleLight = new THREE.PointLight(0xffa500, 0, 18);
+_playerMuzzleLight.position.set(0, 0, 4); plane.add(_playerMuzzleLight);
 // --- UI Elements & Minimap ---
 const scoreElement = document.getElementById('score'), hpElement = document.getElementById('hp'), gameOverElement = document.getElementById('game-over'), pausedElement = document.getElementById('paused'), enemyDistanceElement = document.getElementById('enemy-distance'), groundDistanceElement = document.getElementById('ground-distance'), markerDistanceElement = document.getElementById('marker-distance'), posXElement = document.getElementById('pos-x'), posYElement = document.getElementById('pos-y'), posZElement = document.getElementById('pos-z'), rotHdgElement = document.getElementById('rot-hdg'), rotPchElement = document.getElementById('rot-pch'), rotBnkElement = document.getElementById('rot-bnk'), levelElement = document.getElementById('level'), xpElement = document.getElementById('xp'), xpToNextLevelElement = document.getElementById('xp-to-next-level'), bulletDamageValueElement = document.getElementById('bullet-damage-value'), ratePitchPos = document.getElementById('rate-pitch-pos'), ratePitchNeg = document.getElementById('rate-pitch-neg'), ratePitchVal = document.getElementById('rate-pitch-val'),
     rateRollPos  = document.getElementById('rate-roll-pos'),  rateRollNeg  = document.getElementById('rate-roll-neg'),  rateRollVal  = document.getElementById('rate-roll-val'),
@@ -361,6 +364,22 @@ const _flagMeshes = [];    // { mesh, pivot: Vector3 }
 let _colorMode = false;
 let _colorModeBg = null;
 const _colorModeOrigMats = new Map();
+// G20: kill-streak score multiplier
+const _killTimes = [];
+let _scoreMulti = 1, _multiDisplayTimer = 0;
+const _multiEl = (() => { const el = document.createElement('div'); el.style.cssText = 'display:none;position:fixed;top:52%;left:50%;transform:translate(-50%,-50%);color:#ffdd00;font:bold 22px monospace;text-align:center;text-shadow:0 0 8px #ff8800,0 0 16px #ff8800;pointer-events:none;z-index:200;letter-spacing:3px;'; document.body.appendChild(el); return el; })();
+// G5: persistent high score
+let _highScore = parseInt(localStorage.getItem('vibepilot_hs') || '0');
+// V13: empty-clip flash timer (frames)
+let _emptyClipFlash = 0;
+// F6: searchlight sweepers
+const _searchlights = [];
+// V5: bullet tracer shared material
+const _tracerMat = new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.55 });
+// V4: hostile muzzle flash small spheres
+const _muzzleFlashes = [];
+const _muzzleFlashGeo = new THREE.SphereGeometry(0.5, 5, 4);
+const _muzzleFlashMat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true });
 // Debug
 const debugHelpers = [];
 let debugCollision = false;
@@ -605,10 +624,43 @@ function addXP(a) {
         if (level % 5  === 0) bombMaxAmmo++;
         if (level % 10 === 0) { missileMaxAmmo++; flareMaxAmmo++; napalmMaxAmmo++; }
         levelElement.textContent = level; updateDamageUI();
+        showLevelUpBanner(level); // G18
     }
     xpElement.textContent = xp; xpToNextLevelElement.textContent = xpToNextLevel;
 }
 function updateDamageUI() { bulletDamageValueElement.textContent = (bulletDamage * playerDamageMultiplier).toFixed(2); }
+
+// G18: level-up banner
+function showLevelUpBanner(lvl) {
+    if (isGameOver) return;
+    const el = document.createElement('div');
+    el.style.cssText = 'position:fixed;top:38%;left:50%;transform:translate(-50%,-50%) scale(0.6);background:linear-gradient(90deg,#ff6600,#ffdd00,#ff6600);color:#000;font:bold 26px "Orbitron",monospace;padding:12px 36px;border-radius:5px;letter-spacing:3px;pointer-events:none;z-index:300;opacity:0;transition:opacity 0.25s,transform 0.25s;white-space:nowrap;box-shadow:0 0 30px #ff8800;';
+    el.textContent = `▲  LEVEL UP  —  LVL ${lvl}  ▲`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translate(-50%,-50%) scale(1)'; }));
+    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translate(-50%,-50%) scale(0.8)'; setTimeout(() => el.remove(), 350); }, 1700);
+}
+// G6: heal on collection group/pipe completion
+function _healPlayer(amount) {
+    if (isGameOver) return;
+    const prev = planeHP;
+    planeHP = Math.min(100, planeHP + amount);
+    if (planeHP > prev) { hpElement.textContent = Math.max(0, planeHP); showNotification(`+${planeHP - prev} HP`); }
+}
+// G20: record a kill, return current streak multiplier
+function _addKill() {
+    const now = Date.now();
+    _killTimes.push(now);
+    while (_killTimes.length > 0 && now - _killTimes[0] > 5000) _killTimes.shift();
+    const streak = _killTimes.length;
+    _scoreMulti = streak >= 4 ? 4 : streak >= 3 ? 3 : streak >= 2 ? 2 : 1;
+    if (_scoreMulti > 1) {
+        _multiDisplayTimer = 150;
+        _multiEl.style.display = 'block';
+        _multiEl.textContent = `×${_scoreMulti}  STREAK`;
+    }
+    return _scoreMulti;
+}
 
 function showNotification(text, isEliminated = false) {
     if (isGameOver) return;
@@ -1031,6 +1083,7 @@ function buildBaseFences() {
         };
 
         // --- Build 5 non-gate edges ---
+        let _slPostIdx = 0; // F6: searchlight counter across all edges of this fence
         for (let step = 1; step <= 5; step++) {
             const ei      = (gateEdge + step) % 6;
             const va      = hexV[ei];
@@ -1050,6 +1103,22 @@ function buildBaseFences() {
                 m.position.set(px, groundLevel + POST_H / 2, pz);
                 scene.add(m);
                 reg.posts.push({ mesh: m, worldPos: new THREE.Vector3(px, groundLevel + POST_H / 2, pz) });
+                // F6: searchlight every 6th intermediate post
+                _slPostIdx++;
+                if (_slPostIdx % 6 === 0) {
+                    const slSpot = new THREE.SpotLight(0xffffaa, 1.2, 90, Math.PI / 7, 0.35);
+                    slSpot.position.set(px, groundLevel + POST_H + 1, pz);
+                    scene.add(slSpot); scene.add(slSpot.target);
+                    _searchlights.push({
+                        spot: slSpot,
+                        worldPos: new THREE.Vector3(px, groundLevel + POST_H + 1, pz),
+                        angle: Math.random() * Math.PI * 2,
+                        speed: (0.005 + Math.random() * 0.005) * (Math.random() > 0.5 ? 1 : -1),
+                        range: 70, halfAngle: Math.PI / 7,
+                        baseIds: bases.map(b => b.id)
+                    });
+                    reg.posts.push({ mesh: slSpot, worldPos: new THREE.Vector3(px, groundLevel + POST_H + 1, pz) });
+                }
                 // F8: sandbags every 3rd intermediate post
                 if (k % 3 === 0) {
                     const inDx = cx - px, inDz = cz - pz;
@@ -1197,10 +1266,10 @@ function createHelicopterVisual() {
     g.rotation.y = -Math.PI / 2;
     const mat = new THREE.MeshStandardMaterial({ color: 0x4a5240, roughness: 0.7 });
     const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 10, 8), mat); fuselage.rotation.x = Math.PI / 2;
-    const rotorA = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorA.position.y = 2.2;
-    const rotorB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorB.position.y = 2.2; rotorB.rotation.y = Math.PI / 2;
+    const rotorA = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorA.position.y = 2.2; rotorA.userData.spinY = 0.18;
+    const rotorB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorB.position.y = 2.2; rotorB.rotation.y = Math.PI / 2; rotorB.userData.spinY = 0.18;
     const tailBoom = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 8), mat); tailBoom.position.set(0, -0.3, -7);
-    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(5, 0.3, 0.8), mat); tailRotor.position.set(0, 0, -11); tailRotor.rotation.z = Math.PI / 2;
+    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(5, 0.3, 0.8), mat); tailRotor.position.set(0, 0, -11); tailRotor.rotation.z = Math.PI / 2; tailRotor.userData.spinZ = 0.25;
     g.add(fuselage, rotorA, rotorB, tailBoom, tailRotor); outer.add(g); return outer;
 }
 function createBalloonVisual() {
@@ -1265,7 +1334,7 @@ function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
     // Don't dispose immediately — blink animation (idea 5)
     destroyLabel(au.label);
     airUnits.splice(idx, 1);
-    if (!isGameOver) { score += au.xpValue; scoreElement.textContent = score; addXP(au.xpValue); }
+    if (!isGameOver) { const _m = _addKill(); score += au.xpValue * _m; scoreElement.textContent = score; addXP(au.xpValue); }
     notifyBase(au.userData.baseId);
     _dyingAirUnits.push({ group: au.group, timer: 50 });
 }
@@ -1287,7 +1356,7 @@ function killGroundUnit(gu) {
     destroyLabel(gu.userData.label);
     // Don't dispose immediately — blink animation (idea 5); dispose happens in updateEffects
     const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
-    if (!isGameOver) { score += gu.userData.xpValue; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
+    if (!isGameOver) { const _m = _addKill(); score += gu.userData.xpValue * _m; scoreElement.textContent = score; addXP(gu.userData.xpValue); }
     notifyBase(gu.userData.baseId);
     _dyingGround.push({ mesh: gu, timer: 50 });
 }
@@ -1633,7 +1702,11 @@ function fireBullet() {
     b.life = bulletLife;
     b.userData = { type: 'bullet', collisionRadius: .3, damage: bulletDamage * playerDamageMultiplier };
     bullets.push(b); scene.add(b);
+    // V5: tracer line
+    const _tGeo = new THREE.BufferGeometry().setFromPoints([b.position.clone(), b.position.clone()]);
+    b.tracer = new THREE.Line(_tGeo, _tracerMat); scene.add(b.tracer);
     _playGunShot();
+    _playerMuzzleLight.intensity = 2.5; // V13
 }
 function dropBomb() {
     const b = new THREE.Mesh(bombGeometry, bombMaterial);
@@ -1733,6 +1806,9 @@ function spawnEnemyBullet(fromPos, targetPos) {
     b.life = enemyBulletLife;
     b.userData.damage = enemyBulletDamage;
     enemyBullets.push(b); scene.add(b);
+    // V4: muzzle flash at barrel origin
+    const _mf = new THREE.Mesh(_muzzleFlashGeo, _muzzleFlashMat.clone());
+    _mf.position.copy(fromPos); scene.add(_mf); _muzzleFlashes.push({ mesh: _mf, life: 5 });
     // Only play shot sound when enemy is close enough to hear (~half the shooting range)
     if (dist < hostileUnitShootingRange * 0.5) _playEnemyShot();
 }
@@ -1852,6 +1928,19 @@ function updateEffects(dt) {
         _hitMarkerTimer = Math.max(0, _hitMarkerTimer - dt);
         hitMarkerEl.style.opacity = _hitMarkerTimer > 0 ? '1' : '0';
     }
+    // ── G20: streak multiplier display decay ─────────────────────
+    if (_multiDisplayTimer > 0) { _multiDisplayTimer = Math.max(0, _multiDisplayTimer - dt); if (_multiDisplayTimer <= 0) { _multiEl.style.display = 'none'; _scoreMulti = 1; } }
+    // ── V13: muzzle light decay ───────────────────────────────────
+    if (_playerMuzzleLight.intensity > 0) _playerMuzzleLight.intensity = Math.max(0, _playerMuzzleLight.intensity - 0.45 * dt);
+    // ── V13: empty-clip flash ─────────────────────────────────────
+    if (_emptyClipFlash > 0) _emptyClipFlash = Math.max(0, _emptyClipFlash - dt);
+    // ── V4: hostile muzzle flashes ────────────────────────────────
+    for (let i = _muzzleFlashes.length - 1; i >= 0; i--) {
+        const mf = _muzzleFlashes[i]; mf.life -= dt;
+        mf.mesh.material.opacity = Math.max(0, mf.life / 5);
+        mf.mesh.scale.setScalar(1 + (1 - mf.life / 5) * 2);
+        if (mf.life <= 0) { scene.remove(mf.mesh); mf.mesh.material.dispose(); _muzzleFlashes.splice(i, 1); }
+    }
     // ── Idea 10: Memory / entity debug panel ─────────────────────
     _memDebugTimer = Math.max(0, _memDebugTimer - dt);
     if (_memDebugTimer <= 0 && memDebugEl.classList.contains('active')) {
@@ -1888,7 +1977,7 @@ function destroyLogicalEnemy(id) {
         const e = enemies[i];
         destroyLabel(e.label);
         enemies.splice(i, 1);
-        if (!isGameOver) { score += 25; scoreElement.textContent = score; addXP(25); }
+        if (!isGameOver) { const _m = _addKill(); score += 25 * _m; scoreElement.textContent = score; addXP(25); }
         // Defer geometry disposal — blink animation (idea 5)
         _dyingEnemies.push({ parts: e.parts, mat: e.parts.length > 0 ? e.parts[0].material : null, timer: 50 });
         spawnSingleEnemy();
@@ -1899,7 +1988,9 @@ function triggerGameOver() {
     _gameOverPos.copy(plane.position);
     _goOrbitYaw = 0; _goOrbitPitch = 0.3;
     _steerCursorEl.style.display = 'none';
-    gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Final Score: ${score}</span><br><span style="font-size:18px">Refresh to restart</span>`;
+    if (score > _highScore) { _highScore = score; localStorage.setItem('vibepilot_hs', score); } // G5
+    const _isNewBest = score >= _highScore;
+    gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Score: ${score}${_isNewBest ? '  ★ NEW BEST' : ''}</span><br><span style="font-size:16px">Best: ${_highScore}</span><br><span style="font-size:18px">Refresh to restart</span>`;
     gameOverElement.style.display = 'block';
     enemies.forEach(e => { if (e.label) e.label.sprite.visible = false; });
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });
@@ -2012,6 +2103,7 @@ function updatePhysics(dt) {
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, speed * dt);
     if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo > 0) { fireBullet(); shootCooldown = shootCooldownTime; if (--gunAmmo <= 0) gunReloadTimer = GUN_RELOAD_TIME; }
+    else if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo <= 0) { _emptyClipFlash = 8; shootCooldown = shootCooldownTime; } // V13
     plane.updateMatrixWorld(true);
     // Update player bounding boxes (§2.1 — applyMatrix4 avoids per-vertex iteration)
     corePlaneComponents.forEach((m, i) => planePartBoxes[i].copy(planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));
@@ -2056,6 +2148,8 @@ function updateAI(dt) {
             au.group.rotation.y = -au.orbitAngle + Math.sign(au.orbitSpeed) * Math.PI / 2;
         }
         if (au.label) au.label.sprite.position.copy(au.group.position).add(_sv3.set(0, au.collisionRadius + 8, 0));
+        // V9: rotor / spinner animation
+        au.group.traverse(child => { if (child.userData.spinY) child.rotation.y += child.userData.spinY * dt; if (child.userData.spinZ) child.rotation.z += child.userData.spinZ * dt; });
         if (au.isHostile) {
             au.shootCooldown = Math.max(0, au.shootCooldown - dt);
             if (au.shootCooldown <= 0 && au.group.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
@@ -2085,7 +2179,8 @@ function updateAI(dt) {
         if (u.userData.isHostile && u.userData.hp > 0) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
             if (u.userData.shootCooldown <= 0 && u.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
-                fireHostileBullet(u); u.userData.shootCooldown = hostileUnitShootingCooldownTime;
+                const _reg = u.userData.baseId ? _fenceRegistry[u.userData.baseId] : null;
+                fireHostileBullet(u); u.userData.shootCooldown = (_reg?.alarmState ? hostileUnitShootingCooldownTime * 0.4 : hostileUnitShootingCooldownTime);
             }
         }
     });
@@ -2136,8 +2231,8 @@ function updateAmmoBar(barEl, statusEl, ammo, maxAmmo, reloadTimer, barColor, st
 }
 function updateAmmoHUD() {
     // Gun: three-threshold colour
-    const gunColor = gunAmmo < gunMaxAmmo * 0.25 ? 'var(--hud-red)' : gunAmmo < gunMaxAmmo * 0.5 ? 'var(--hud-amber)' : 'var(--hud-primary)';
-    updateAmmoBar(gunBarEl, gunStatusEl, gunAmmo, gunMaxAmmo, gunReloadTimer, gunColor, 'var(--hud-primary)');
+    const gunColor = _emptyClipFlash > 0 ? 'var(--hud-red)' : gunAmmo < gunMaxAmmo * 0.25 ? 'var(--hud-red)' : gunAmmo < gunMaxAmmo * 0.5 ? 'var(--hud-amber)' : 'var(--hud-primary)';
+    updateAmmoBar(gunBarEl, gunStatusEl, gunAmmo, gunMaxAmmo, gunReloadTimer, gunColor, _emptyClipFlash > 0 ? 'var(--hud-red)' : 'var(--hud-primary)');
 
     updateAmmoBar(bombBarEl, bombStatusEl, bombAmmo, bombMaxAmmo, bombReloadTimer,
         bombAmmo === 1 ? 'var(--hud-red)' : 'var(--hud-orange)', 'var(--hud-orange)');
@@ -2200,7 +2295,7 @@ function resolveCollisions() {
                     cor.completed = true;
                     if (cor.axisLine) { scene.remove(cor.axisLine); cor.axisLine.geometry.dispose(); cor.axisLine.material.dispose(); cor.axisLine = null; }
                     showNotification(`◆ ${cor.name} — ALL RINGS  +75 XP`, true);
-                    if (!isGameOver) addXP(75);
+                    if (!isGameOver) { addXP(75); _healPlayer(10); } // G6
                     addToConqueredRow(`◆ ${cor.name}`, 'row3-scroll');
                 } else {
                     showNotification(`◆ ${cor.name}  ${cor.total - cor.remaining}/${cor.total}`);
@@ -2233,7 +2328,7 @@ function resolveCollisions() {
                 if (con.remaining <= 0) {
                     con.completed = true;
                     showNotification(`★ ${con.name} Constellation — COMPLETE  +50 XP`, true);
-                    if (!isGameOver) addXP(50);
+                    if (!isGameOver) { addXP(50); _healPlayer(15); } // G6
                     addToConqueredRow(`★ ${con.name}`, 'row2-scroll');
                 } else {
                     showNotification(`★ ${con.name}  ${collected}/${con.total}`);
@@ -2269,7 +2364,7 @@ function resolveCollisions() {
                     // Free tube: complete when all orbs collected
                     tube.completed = true;
                     scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
-                    if (!isGameOver) { addXP(TUBE_XP); score += TUBE_XP; scoreElement.textContent = score; }
+                    if (!isGameOver) { addXP(TUBE_XP); score += TUBE_XP; scoreElement.textContent = score; _healPlayer(20); } // G6
                     showNotification(`⚡ ${tube.name} COMPLETE  +${TUBE_XP} XP`, true);
                     showTubeRibbon(tube.name);
                     addToConqueredRow(`⚡ ${tube.name}`, 'row4-scroll');
@@ -2318,7 +2413,7 @@ function resolveCollisions() {
                         tube.collectibles.forEach(tc => { scene.remove(tc); tc.geometry.dispose(); tc.material.dispose(); });
                         tube.collectibles = [];
                         _tubeStatusEl.style.display = 'none';
-                        if (!isGameOver) { addXP(xp); score += xp; scoreElement.textContent = score; }
+                        if (!isGameOver) { addXP(xp); score += xp; scoreElement.textContent = score; _healPlayer(20); } // G6
                         const pct = Math.round(ratio * 100);
                         showNotification(`⚡ ${tube.name}  ${tube.inRunCollected}/${tube.totalOrbs} orbs (${pct}%)  +${xp} XP`, true);
                         showTubeRibbon(tube.name, xp);
@@ -2394,6 +2489,7 @@ function resolveCollisions() {
         // vs Enemies (no grid — enemy fighters scattered with bounding boxes)
         for (const e of enemies) {
             if (e.parts.some(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; })) {
+                if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                 scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                 const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; });
                 if (part) part.userData.hp -= b.userData.damage;
@@ -2415,6 +2511,7 @@ function resolveCollisions() {
                 const au = obj;
                 if (au.hp <= 0) continue;
                 if (b.position.distanceToSquared(au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2) {
+                    if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     au.hp -= b.userData.damage; au.userData.hp = au.hp;
                     updateUnitLabel(au.label, au.hp);
@@ -2428,6 +2525,7 @@ function resolveCollisions() {
                 if (u.userData.bombOnly || u.userData.hp <= 0) continue;
                 if (u.userData.protector && u.userData.protector.userData.hp > 0) continue; // §4.1: immune while protector lives
                 if (b.position.distanceToSquared(u.position) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
+                    if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
                     if (u.userData.hp <= 0) killGroundUnit(u); // (§2.3)
@@ -2444,7 +2542,15 @@ function updateProjectiles(dt) {
     for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         b.position.addScaledVector(b.velocity, dt); b.life -= dt;
+        // V5: update tracer endpoints
+        if (b.tracer) {
+            const _tp = b.tracer.geometry.attributes.position;
+            _tp.setXYZ(0, b.position.x - b.velocity.x * 4, b.position.y - b.velocity.y * 4, b.position.z - b.velocity.z * 4);
+            _tp.setXYZ(1, b.position.x, b.position.y, b.position.z);
+            _tp.needsUpdate = true;
+        }
         if (b.life <= 0 || Math.abs(b.position.x) > MAP_BOUNDARY || Math.abs(b.position.z) > MAP_BOUNDARY) {
+            if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
             scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1);
         }
     }
@@ -2754,6 +2860,34 @@ function animate() {
         if (cr > STEER_CURSOR_RADIUS) { cx *= STEER_CURSOR_RADIUS / cr; cy *= STEER_CURSOR_RADIUS / cr; }
         _steerCursorEl.style.left = ((cx + 1) * 0.5 * window.innerWidth)  + 'px';
         _steerCursorEl.style.top  = ((-cy + 1) * 0.5 * window.innerHeight) + 'px';
+    }
+    // F6: searchlight sweep + alarm state detection
+    if (!isPaused && !isGameOver && _searchlights.length > 0) {
+        for (const sl of _searchlights) {
+            sl.angle += sl.speed * rawDelta * TARGET_FPS;
+            const tx = sl.worldPos.x + Math.cos(sl.angle) * sl.range * 0.75;
+            const tz = sl.worldPos.z + Math.sin(sl.angle) * sl.range * 0.75;
+            sl.spot.target.position.set(tx, groundLevel, tz);
+            sl.spot.target.updateMatrixWorld();
+            // Detect player in cone
+            const dx = plane.position.x - sl.worldPos.x, dz = plane.position.z - sl.worldPos.z;
+            const distXZ = Math.sqrt(dx * dx + dz * dz);
+            if (distXZ < sl.range) {
+                const dot = (dx / distXZ) * Math.cos(sl.angle) + (dz / distXZ) * Math.sin(sl.angle);
+                if (dot > Math.cos(sl.halfAngle)) {
+                    for (const bid of sl.baseIds) {
+                        const reg = _fenceRegistry[bid];
+                        if (reg) { reg.alarmState = true; reg.alarmTimer = 480; }
+                    }
+                    sl.spot.color.setHex(0xff4400); // turn red when alarmed
+                }
+            }
+            if (sl.spot.color.r < 1) sl.spot.color.lerp(new THREE.Color(0xffffaa), 0.02); // fade back
+        }
+        // Decay alarm timers
+        for (const reg of Object.values(_fenceRegistry)) {
+            if (reg.alarmState) { reg.alarmTimer = (reg.alarmTimer || 0) - rawDelta * TARGET_FPS; if (reg.alarmTimer <= 0) { reg.alarmState = false; } }
+        }
     }
     // F9: flag animation — pivot Group rotates to face wind direction; flag extends sideways from pole tip
     if (_flagMeshes.length > 0) {
