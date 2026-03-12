@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+> **Prompts:** "hearts in tubes are still upside down, fix it. Also i'd like all hearts to glow a little, like slow heartbeat / update readme and changes, push to git"
+
+### Fixes
+- **Tube hearts upside-down**: `spawnTube` now applies `rotation.z = Math.PI` to each orb mesh, matching the fix already applied in `addCollectibleAt`. Orbs also received `userData.originY` / `bobPhase` so bobbing works inside tubes.
+- **Tube heart material**: Changed from `MeshBasicMaterial` (no emissive) to `MeshStandardMaterial` with `emissive: orbColor` so the heartbeat glow pulse applies uniformly to all hearts.
+
+### Features
+- **Heartbeat glow**: All heart collectibles (free-floating + tube) pulse with a slow double-thump emissive glow. The phase drives `sin(t) + sin(2.1t)` for a natural heart-like beat; `emissiveIntensity` oscillates between ~0.25 and ~1.65.
+- **Heart bob animation**: Hearts float up and down GTA-style (`sin(phase) × 2.5` units, ~0.022 rad/frame). Both free collectibles and tube orbs bob independently with a random starting phase.
+
+---
+
+> **Prompts:** "also add memory usage graph / napalm should release in quite forward way over time / hearts should also wiggle up and down in slow matter like in gta / guided missiles should look more like guided missiles / ive discovered, that its quite possible, that there is some spike in memory when bomb destroys watchtower"
+
+### Fixes
+- **SpotLight memory leak on watchtower destruction**: `_damageFenceNear` now detects when a removed fence post is a `SpotLight` (`mesh.isSpotLight`), removes `mesh.target` from the scene, and splices the corresponding entry from `_searchlights[]`. Previously, only the SpotLight itself was removed; its target object remained in the scene and the light continued to be iterated every frame.
+
+### Features
+- **Memory usage graph in death debrief**: Added a 4th strip chart (purple, `#cc88ff`) showing JS heap usage in MB over the session, sampled once per second via `performance.memory.usedJSHeapSize`. Canvas height expanded from 270 to 360 px to accommodate it. Displays `0` on browsers that do not expose `performance.memory`.
+- **Napalm forward scatter**: 50 cluster orbs now spread in a long forward carpet instead of a radial circle. Side spread reduced from `±0.275` to `±0.09`; each orb receives a `fwdBias` of 0.75 – 1.25× the player's forward vector so the cluster fans out ahead of the aircraft.
+- **Guided missile visual**: Replaced the plain cone mesh with a `THREE.Group` containing a slim aluminium body cylinder (`MeshStandardMaterial`, light grey), a dark nose cone, four radially-distributed delta fins at the rear, and an orange glow sphere at the exhaust end. All geometry is Y-aligned to match the existing `setFromUnitVectors(_up3, velocity)` orientation.
+
+---
+
 > **Prompts:** "but sound is played even when enemies are not in range" / "enemies shoot constantly, make it so enemies shoot only when player gets in range"
 
 ### Fixes

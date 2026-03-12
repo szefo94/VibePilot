@@ -375,13 +375,14 @@ let _emptyClipFlash = 0;
 // F6: searchlight sweepers
 const _searchlights = [];
 // Death debrief stat tracking (sampled every ~1 s)
-const _statHp = [100], _statScore = [0], _statXp = [0];
+const _statHp = [100], _statScore = [0], _statXp = [0], _statMem = [0];
 let _statTimer = 60;
+let _heartbeatPhase = 0; // drives emissive glow pulse on all heart collectibles
 const _deathGraphEl = (() => {
     const div = document.createElement('div');
     div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;min-width:640px;';
     div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
-        '<canvas id="_deathCanvas" width="590" height="270"></canvas>' +
+        '<canvas id="_deathCanvas" width="590" height="360"></canvas>' +
         '<div style="text-align:center;font-size:11px;color:#556;margin-top:8px">[G] toggle debrief</div>';
     document.body.appendChild(div); return div;
 })();
@@ -391,9 +392,10 @@ function _drawDeathGraph() {
     ctx.fillStyle = '#090912'; ctx.fillRect(0, 0, W, H);
     const pad = 38, stripH = 72, gap = 10;
     const rows = [
-        { data: _statHp,    label: 'HP',    color: '#ff4455', max: 100 },
-        { data: _statScore, label: 'Score', color: '#4488ff', max: null },
-        { data: _statXp,    label: 'XP',    color: '#44ee88', max: null },
+        { data: _statHp,    label: 'HP',     color: '#ff4455', max: 100 },
+        { data: _statScore, label: 'Score',  color: '#4488ff', max: null },
+        { data: _statXp,    label: 'XP',     color: '#44ee88', max: null },
+        { data: _statMem,   label: 'Mem MB', color: '#cc88ff', max: null },
     ];
     rows.forEach((row, ri) => {
         const y0 = pad + ri * (stripH + gap);
@@ -450,9 +452,30 @@ let _memDebugTimer = 0;
 
 // --- Bomb & explosion resources ---
 const bombMaterial = new THREE.MeshStandardMaterial({ color: "#222", roughness: .7 });
-// --- Missile resources ---
-const _missileGeo = new THREE.CylinderGeometry(0.3, 0.6, 4, 6);
-const _missileMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+// --- Missile resources (Y-aligned so setFromUnitVectors(_up3, vel) points nose along velocity) ---
+const _missileBodyGeo  = new THREE.CylinderGeometry(0.28, 0.35, 5.5, 7); // Y-axis = missile length
+const _missileNoseGeo  = (() => { const g = new THREE.ConeGeometry(0.28, 2.2, 7); g.translate(0, 3.85, 0); return g; })(); // tip at +Y
+const _missileFinGeo   = (() => { const g = new THREE.BoxGeometry(0.1, 1.6, 1.1); g.translate(0, -2.6, 0); return g; })(); // delta fin at rear
+const _missileBodyMat  = new THREE.MeshStandardMaterial({ color: 0xd4d0c8, roughness: 0.5, metalness: 0.6 });
+const _missileNoseMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.4 });
+const _missileFinMat   = new THREE.MeshStandardMaterial({ color: 0x888880, roughness: 0.6 });
+const _missileGlowGeo  = new THREE.SphereGeometry(0.38, 5, 4);
+const _missileGlowMat  = new THREE.MeshBasicMaterial({ color: 0xff8822, transparent: true, opacity: 0.9 });
+function _createMissileMesh() {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(_missileBodyGeo, _missileBodyMat));
+    g.add(new THREE.Mesh(_missileNoseGeo, _missileNoseMat));
+    for (let _fi = 0; _fi < 4; _fi++) {
+        const fin = new THREE.Mesh(_missileFinGeo, _missileFinMat);
+        fin.rotation.y = _fi * Math.PI / 2; // spread 4 fins radially
+        fin.position.set(Math.sin(_fi * Math.PI / 2) * 0.35, 0, Math.cos(_fi * Math.PI / 2) * 0.35);
+        g.add(fin);
+    }
+    const glow = new THREE.Mesh(_missileGlowGeo, _missileGlowMat.clone());
+    glow.position.set(0, -2.8, 0); // engine exhaust at rear (-Y)
+    g.add(glow);
+    return g;
+}
 const _missileTrailGeo = new THREE.SphereGeometry(0.18, 4, 3);
 const _missileTrailMat = new THREE.MeshBasicMaterial({ color: 0xffaa44, transparent: true });
 // --- Napalm fire particle resources ---
@@ -1289,8 +1312,15 @@ function _damageFenceNear(pos, radius) {
         if (!toRemove.size) continue;
         for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
             if (toRemove.has(reg.posts[pi].mesh)) {
-                scene.remove(reg.posts[pi].mesh);
-                disposeGroup(reg.posts[pi].mesh);
+                const _dm = reg.posts[pi].mesh;
+                scene.remove(_dm);
+                if (_dm.isSpotLight) {
+                    scene.remove(_dm.target);
+                    const _slIdx = _searchlights.findIndex(sl => sl.spot === _dm);
+                    if (_slIdx > -1) _searchlights.splice(_slIdx, 1);
+                } else {
+                    disposeGroup(_dm);
+                }
                 reg.posts.splice(pi, 1);
             }
         }
@@ -1537,7 +1567,8 @@ function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
     m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
     y = Math.max(groundLevel + 8, Math.min(ceilingLevel - 8, y));
-    m.position.set(x, y, z); m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null };
+    m.position.set(x, y, z);
+    m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null, originY: y, bobPhase: Math.random() * Math.PI * 2 };
     collectibles.push(m); scene.add(m);
 }
 
@@ -1682,8 +1713,10 @@ function spawnTube(cx, cy, cz, type = 'challenge') {
     for (let k = 0; k <= numTC; k++) {
         const pos = curve.getPoint(k / numTC).clone();
         pos.y = Math.max(groundLevel + 5, Math.min(ceilingLevel - 5, pos.y));
-        const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshBasicMaterial({ color: orbColor }));
+        const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshStandardMaterial({ color: orbColor, emissive: orbColor, emissiveIntensity: 0.4 }));
+        tcm.rotation.z = Math.PI; // match regular hearts — flip upside-down ExtrudeGeometry
         tcm.position.copy(pos);
+        tcm.userData = { originY: pos.y, bobPhase: Math.random() * Math.PI * 2 };
         scene.add(tcm);
         tubeCols.push(tcm);
     }
@@ -1814,7 +1847,7 @@ function fireMissile() {
     _wv1.copy(_missileLTip).applyMatrix4(plane.matrixWorld); // lTip
     _sv3.copy(_missileRTip).applyMatrix4(plane.matrixWorld); // rTip
     const spawnOne = (origin) => {
-        const m = new THREE.Mesh(_missileGeo, _missileMat);
+        const m = _createMissileMesh();
         m.position.copy(origin);
         // Initial velocity: slow forward + downward drop
         m.velocity = _sv1.clone().multiplyScalar(MISSILE_INITIAL_SPEED);
@@ -1838,10 +1871,11 @@ function dropNapalm() {
     for (let _ci = 0; _ci < 50; _ci++) {
         const orb = new THREE.Mesh(_napClusterOrbGeo, _napClusterOrbMat.clone());
         orb.position.copy(plane.position).add(_bombOffset);
-        const spd = speed * (0.4 + Math.random() * 0.9);
-        const sx = (Math.random() - 0.5) * 0.55, sz = (Math.random() - 0.5) * 0.55;
-        orb.velocity = new THREE.Vector3(fwdX + sx, 0.05 + Math.random() * 0.18, fwdZ + sz)
-            .normalize().multiplyScalar(spd).add(_bombDroop.clone().multiplyScalar(0.25));
+        const spd = speed * (0.5 + Math.random() * 1.1);
+        const sx = (Math.random() - 0.5) * 0.18, sz = (Math.random() - 0.5) * 0.18;
+        const fwdBias = 0.75 + Math.random() * 0.5; // strong forward bias
+        orb.velocity = new THREE.Vector3(fwdX * fwdBias + sx, 0.04 + Math.random() * 0.14, fwdZ * fwdBias + sz)
+            .normalize().multiplyScalar(spd).add(_bombDroop.clone().multiplyScalar(0.2));
         orb.userData = { isNapalmCluster: true };
         napalmBombs.push(orb); scene.add(orb);
     }
@@ -1943,8 +1977,30 @@ function showTubeRibbon(name, xp = TUBE_XP) {
     setTimeout(() => { el.classList.remove('visible'); el.classList.add('fade-out'); setTimeout(() => el.remove(), 800); }, 3500);
 }
 function updateEffects(dt) {
-    // ── Heart collectible spin ────────────────────────────────────
-    for (let i = 0; i < collectibles.length; i++) collectibles[i].rotation.y += 0.018 * dt;
+    // ── Heart collectible spin + bob + heartbeat glow ─────────────
+    _heartbeatPhase += 0.028 * dt; // ~1 beat per 3.5 s
+    // double-thump: two quick peaks close together, then rest
+    const _hbRaw = Math.sin(_heartbeatPhase) * 0.5 + Math.sin(_heartbeatPhase * 2.1) * 0.5;
+    const _hbGlow = Math.max(0, _hbRaw); // 0..1 positive-only pulse
+    const _hbIntensity = 0.25 + _hbGlow * 1.4;
+    collectibleMat.emissiveIntensity = _hbIntensity;
+    for (let i = 0; i < collectibles.length; i++) {
+        const _hc = collectibles[i];
+        _hc.rotation.y += 0.018 * dt;
+        _hc.userData.bobPhase += 0.022 * dt;
+        _hc.position.y = _hc.userData.originY + Math.sin(_hc.userData.bobPhase) * 2.5;
+    }
+    // Tube-heart bob + glow
+    for (const _tb of tubes) {
+        for (const _tc of _tb.collectibles) {
+            _tc.rotation.y += 0.018 * dt;
+            if (_tc.userData.bobPhase !== undefined) {
+                _tc.userData.bobPhase += 0.022 * dt;
+                _tc.position.y = _tc.userData.originY + Math.sin(_tc.userData.bobPhase) * 2.5;
+            }
+            if (_tc.material && _tc.material.emissiveIntensity !== undefined) _tc.material.emissiveIntensity = _hbIntensity;
+        }
+    }
     // ── Idea 1: Collectible burst particles ──────────────────────
     for (let i = collectibleBursts.length - 1; i >= 0; i--) {
         const b = collectibleBursts[i];
@@ -2087,7 +2143,7 @@ function triggerGameOver() {
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });
     spawnPlaneDebris(); // idea 6
     // Final stat sample + show debrief graph
-    _statHp.push(0); _statScore.push(score); _statXp.push(xp);
+    _statHp.push(0); _statScore.push(score); _statXp.push(xp); _statMem.push(performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0);
     setTimeout(() => { _drawDeathGraph(); _deathGraphEl.style.display = 'block'; }, 800);
 }
 // Idea 6: shatter plane into tumbling debris pieces
@@ -2944,7 +3000,7 @@ function animate() {
     // Stat sampling (~1 s interval) for death debrief
     if (!isGameOver && !isPaused) {
         _statTimer -= dt;
-        if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); }
+        if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); _statMem.push(performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0); }
     }
     if (!isGameOver && !isPaused) {
         updatePhysics(dt);

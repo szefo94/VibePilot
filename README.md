@@ -125,6 +125,17 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 - Paused overlay
 - Game Over overlay
 
+### Mission Debrief (`G` key)
+
+Shown automatically on death (800 ms delay); toggled with `G` thereafter. Displays four strip charts sampled once per second throughout the session:
+
+| Strip | Colour | Scale |
+|---|---|---|
+| HP | Red | Fixed 0 – 100 |
+| Score | Blue | Auto (peak) |
+| XP | Green | Auto (peak) |
+| Mem MB | Purple | Auto (peak) — JS heap usage via `performance.memory`; 0 if unavailable |
+
 ---
 
 ## World
@@ -263,7 +274,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | AoE radius | 50 |
 | Cooldown | 45 frames |
 | Gravity | 0.008 /frame |
-| Geometry | `SphereGeometry(1.5)` |
+| Visual | Dark cylinder body + cone nose + 4 cross-fins (pre-baked geometry group) |
 | Starting ammo | 4 — increases **+1 every 5 levels** |
 | Reload time | ~5 s |
 
@@ -276,6 +287,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 | Top speed | 2× bullet speed (ramps up after drop phase) |
 | Drop phase | 22 frames — nose dips before homing engages |
 | Launch | Paired — two missiles from wingtip launchers |
+| Visual | Silver body cylinder + dark nose cone + 4 delta fins + orange engine glow sphere |
 | Trail | Orange particles every 2.5 frames, 20-frame life |
 | Starting ammo | 3 — increases **+1 every 10 levels** |
 | Reload time | 10 s |
@@ -295,9 +307,10 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Property | Value |
 |---|---|
-| Damage | 8 × `playerDamageMultiplier` per 0.5 s, for 5 s |
-| AoE radius | 55 |
-| Visual | Rising fire-sphere particles across patch radius for full duration |
+| Damage | 8 × `playerDamageMultiplier` per 0.5 s, for 5 s (0.05× per cluster patch tick) |
+| AoE radius | 55 (full patch) · 15 per cluster patch |
+| Visual | 50 scatter orbs launched in a forward carpet; each orb creates a small fire patch on landing |
+| Scatter pattern | Strong forward bias (0.75 – 1.25× forward vector), side spread `±0.09` — elongated along flight direction |
 | Starting ammo | 2 — increases **+1 every 10 levels** |
 | Reload time | 8 s |
 
@@ -370,7 +383,7 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 |---|---|---|
 | `buildBaseFences` | `() → void` | Builds all fences at world init; populates `_fenceRegistry` and `_flagMeshes` |
 | `_rayPolyIntersect` | `(ox, oz, dx, dz, poly) → number` | Returns distance along ray to the nearest polygon edge; used by F1 coastline hugging |
-| `_damageFenceNear` | `(pos, radius) → void` | Removes all posts within `radius` of `pos`; called from bomb and missile detonation (F5) |
+| `_damageFenceNear` | `(pos, radius) → void` | Removes all posts within `radius` of `pos`; called from bomb and missile detonation (F5). When the removed post is a `SpotLight` (watchtower searchlight), also removes `spot.target` from the scene and splices the entry from `_searchlights[]` to prevent memory leaks |
 | `_updateFenceDamageState` | `(bmId) → void` | Tints and randomly tilts fence posts proportional to base HP loss (F10) |
 
 ---
@@ -418,10 +431,10 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 - Count: `numHoverWings = 3`
 - `bonusXp`: 350
 
-| Unit | HP | Collision R | XP | Hostile | Movement |
-|---|---|---|---|---|---|
-| Helicopter | 60 | 12 | 80 | yes | Orbit |
-| Balloon | 15 | 10 | 40 | no | Stationary |
+| Unit | HP | Collision R | Wing sub-spheres | XP | Hostile | Movement |
+|---|---|---|---|---|---|---|
+| Helicopter | 60 | 15 | ±25 (r 10), rotor disc | 80 | yes | Orbit |
+| Balloon | 15 | 21 | — | 40 | no | Stationary |
 
 ### Strike Wing
 
@@ -429,11 +442,11 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 - Count: `numStrikeWings = 2`
 - `bonusXp`: 500
 
-| Unit | HP | Collision R | XP | Hostile | Movement |
-|---|---|---|---|---|---|
-| Fighter | 40 × level | 10 | 100 × level | yes | Linear |
-| Tanker | 200 | 25 | 200 | no | Linear |
-| AC-130 | 150 | 22 | 250 | yes | Orbit |
+| Unit | HP | Collision R | Wing sub-spheres | XP | Hostile | Movement |
+|---|---|---|---|---|---|---|
+| Fighter | 40 × level | 14 | ±28 (r 10) | 100 × level | yes | Linear |
+| Tanker | 200 | 15 | ±65 (r 13) | 200 | no | Linear |
+| AC-130 | 150 | 20 | ±70 (r 14) | 250 | yes | Orbit |
 
 ### Altitude Ranges (world Y)
 
@@ -506,6 +519,10 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 
 - Count: `numCollectibleChains = 20` chains, each named after a star constellation (Orion, Cassiopeia, Perseus … Vela)
 - `collectibleRadius = 1.5`, colour: `0x00ff44`
+- Shape: extruded heart (`THREE.ExtrudeGeometry` + bezier `THREE.Shape`)
+- **Bob animation**: each heart floats up/down `±2.5` units with a random phase (~0.022 rad/frame)
+- **Heartbeat glow**: all hearts pulse with a slow double-thump emissive glow (`emissiveIntensity` 0.25 – 1.65, `~1 beat per 3.5 s`)
+- Pickup: `+5 HP` (capped at 100), plays a rising healing arpeggio (523 → 659 → 784 Hz)
 - Per-pickup notification: `★ Name N/total`; completing a chain awards +50 XP and adds an entry to conquered panel row 2
 
 ### Markers — Corridor System
@@ -520,7 +537,7 @@ Two types of mathematical hollow tunnels are placed across the map — 3 challen
 - Path types: helix · sine S-curve · corkscrew dive (random per tube)
 - Named: `Tube Alpha / Beta / Gamma / Delta / Epsilon / …`
 - Tube radius: at least 12 units (full player wingspan); capped to avoid self-intersection
-- 11 orbs placed at even intervals along each tube's curve
+- 11 heart-shaped orbs placed at even intervals along each tube's curve; orbs bob and pulse with the same heartbeat glow as free collectibles
 
 #### Challenge Tubes (cyan)
 
