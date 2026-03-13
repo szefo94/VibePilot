@@ -331,7 +331,7 @@ const MISSILE_INITIAL_SPEED = bulletSpeed * 0.5;   // 0.9 — slow on launch
 const MISSILE_FINAL_SPEED   = bulletSpeed * 2;     // 3.6 — twice gun speed at cruise
 const MISSILE_ACCEL         = 0.05;               // speed added per dt after drop phase
 const MISSILE_DROP_PHASE    = 22;                 // dt frames of downward fall before homing
-const napalmDamage = 8, napalmRadius = 55;
+const napalmDamage = 15, napalmRadius = 55;
 
 // ================================================================
 // --- Game State (§1.3 — grouped by concern) ---
@@ -713,7 +713,7 @@ function addXP(a) {
     }
     xpElement.textContent = xp; xpToNextLevelElement.textContent = xpToNextLevel;
 }
-function updateDamageUI() { bulletDamageValueElement.textContent = (bulletDamage * playerDamageMultiplier).toFixed(2); }
+function updateDamageUI() { bulletDamageValueElement.textContent = Math.round(bulletDamage * playerDamageMultiplier); }
 
 // G18: level-up banner
 function showLevelUpBanner(lvl) {
@@ -1822,7 +1822,7 @@ function fireBullet() {
     b.position.copy(plane.position).addScaledVector(_sv1, 3);
     b.velocity = _sv1.clone().multiplyScalar(bulletSpeed); // clone needed — velocity persists on bullet
     b.life = bulletLife;
-    b.userData = { type: 'bullet', collisionRadius: .3, damage: bulletDamage * playerDamageMultiplier };
+    b.userData = { type: 'bullet', collisionRadius: .3, damage: Math.round(bulletDamage * playerDamageMultiplier) };
     bullets.push(b); scene.add(b);
     // V5: tracer line
     const _tGeo = new THREE.BufferGeometry().setFromPoints([b.position.clone(), b.position.clone()]);
@@ -1846,7 +1846,7 @@ function dropBomb() {
     _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // forward direction
     b.position.copy(plane.position).add(_bombOffset);
     b.velocity = _wv1.clone().multiplyScalar(speed).add(_bombDroop);
-    b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: bombDamage * playerDamageMultiplier, aoERadius: bombAoERadius };
+    b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: Math.round(bombDamage * playerDamageMultiplier), aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
     _playBombDrop();
 }
@@ -2844,7 +2844,7 @@ function updateProjectiles(dt) {
         if (hit || groundHit || expired) {
             if (hit || groundHit) {
                 // AoE damage
-                const dmg = missileDamage * playerDamageMultiplier;
+                const dmg = Math.round(missileDamage * playerDamageMultiplier);
                 createExplosion(m.position); createExplosion(m.position); // double flash for missiles
                 const _mDestroy = [];
                 let _missileAoeHit = false;
@@ -2921,7 +2921,7 @@ function updateProjectiles(dt) {
         }
         if (p.tick <= 0) {
             p.tick = NAPALM_TICK_INTERVAL;
-            const dmg = napalmDamage * (p.patchR ? 0.05 : 1) * playerDamageMultiplier;
+            const dmg = Math.max(1, Math.round(napalmDamage * (p.patchR ? 0.05 : 1) * playerDamageMultiplier));
             const rSq = _pR * _pR;
             const _napDestroy = [];
             let _napAoeHit = false;
