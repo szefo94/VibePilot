@@ -258,7 +258,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Property | Value |
 |---|---|
-| Base damage | 1 × `playerDamageMultiplier` |
+| Base damage | `round(1 × playerDamageMultiplier)` |
 | Speed | 1.8 |
 | Life | 150 frames |
 | Cooldown | 4 frames |
@@ -271,7 +271,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Property | Value |
 |---|---|
-| Damage | 40 × `playerDamageMultiplier` |
+| Damage | `round(40 × playerDamageMultiplier)` |
 | AoE radius | 50 |
 | Cooldown | 45 frames |
 | Gravity | 0.008 /frame |
@@ -283,7 +283,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Property | Value |
 |---|---|
-| Damage | 80 × `playerDamageMultiplier` + AoE splash (radius 25) |
+| Damage | `round(80 × playerDamageMultiplier)` + AoE splash (radius 25) |
 | Launch speed | 0.5× bullet speed |
 | Top speed | 2× bullet speed (ramps up after drop phase) |
 | Drop phase | 22 frames — nose dips before homing engages |
@@ -308,7 +308,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 
 | Property | Value |
 |---|---|
-| Damage | 8 × `playerDamageMultiplier` per 0.5 s, for 5 s (0.05× per cluster patch tick) |
+| Damage | `max(1, round(15 × playerDamageMultiplier))` per tick · cluster patches: `max(1, round(15 × 0.05 × mult))` = 1 minimum |
 | AoE radius | 55 (full patch) · 15 per cluster patch |
 | Visual | 50 scatter orbs launched in a forward carpet; each orb creates a small fire patch on landing |
 | Scatter pattern | Strong forward bias (0.75 – 1.25× forward vector), side spread `±0.09` — elongated along flight direction |
@@ -371,7 +371,7 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 |---|---|
 | **Polygon-hugging path (F1)** | Per-angle ray cast against the islet polygon; fence posts sit at `min(fenceRadius, coastlineDistance × 0.84)` from base centre, so the fence follows the island shape |
 | **Gate (F2)** | One hex edge facing the map centre has no fence posts; instead it has a full watchtower at each corner and a horizontal crossbar between them. All gate parts are **linked** — destroying any one (tower, flag, or crossbar) removes the entire gate instantly |
-| **Watchtowers (F3/F9)** | Full towers at every hex corner: `BoxGeometry` body (height 10), flat `CylinderGeometry` observation deck, thin flagpole, and an animated red `PlaneGeometry` flag at the tip. Gate corners use the same tower style |
+| **Watchtowers (F3/F9)** | Full towers at every hex corner: `BoxGeometry` body (height 10), flat `CylinderGeometry` observation deck, thin flagpole, and an animated red `PlaneGeometry` flag at the tip. Gate corners use the same tower style. Each tower mounts a `SpotLight` searchlight that sweeps a 90-unit radius arc; the airport control tower gets a wider 140-unit arc light |
 | **Barbed wire (F4)** | A `THREE.Line` traces a zigzag above the top rail per edge (alternating ±0.6 unit lateral offset per post). Tracked in the fence registry and removed by explosions |
 | **Destructible posts (F5)** | Every fence element is individually tracked in `_fenceRegistry`: posts, towers, rails, barbed wire, sandbags, gate parts, and flags. Bombs use full `bombAoERadius` (50) for fence damage; missiles use `missileAoERadius × 0.5` |
 | **Sandbag berms (F8)** | Every 3rd fence segment has two stacked `BoxGeometry` sandbag blocks on the inner side, slightly rotated for a natural look. Each sandbag is individually tracked and destructible |
@@ -384,7 +384,7 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 |---|---|---|
 | `buildBaseFences` | `() → void` | Builds all fences at world init; populates `_fenceRegistry` and `_flagMeshes` |
 | `_rayPolyIntersect` | `(ox, oz, dx, dz, poly) → number` | Returns distance along ray to the nearest polygon edge; used by F1 coastline hugging |
-| `_damageFenceNear` | `(pos, radius) → void` | Removes all posts within `radius` of `pos`; called from bomb and missile detonation (F5). When the removed post is a `SpotLight` (watchtower searchlight), also removes `spot.target` from the scene and splices the entry from `_searchlights[]` to prevent memory leaks |
+| `_damageFenceNear` | `(pos, radius) → void` | Removes all posts within `radius` of `pos`; called from bomb and missile detonation (F5). When a removed post is a `SpotLight`, sets `intensity = 0` (not `scene.remove` — removing a light triggers full shader recompilation) and splices from `_searchlights[]`. Non-light meshes are `scene.remove`d only — no `disposeGroup`, since tower geometries are shared across all towers |
 | `_updateFenceDamageState` | `(bmId) → void` | Tints and randomly tilts fence posts proportional to base HP loss (F10) |
 
 ---

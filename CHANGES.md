@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+> **Prompts:** "update .mds and push to git"
+
+*(documentation only — no code changes)*
+
+---
+
+> **Prompts:** "increase napalm damage, round all damage to ints"
+
+### Balance
+- **Napalm damage**: 8 → 15 per tick. Cluster patches deal `max(1, round(15 × 0.05 × mult))` = 1 minimum so they always register.
+
+### Polish
+- **All damage values rounded to integers** at source: bullet, bomb, missile, and napalm all apply `Math.round()` before deducting HP. No more fractional HP on any unit.
+- **HUD bullet damage** display now shows an integer instead of `1.00`.
+
+---
+
+> **Prompts:** "airport watchlight does not destroy with airport / light should begin at the place of watchtower not far off"
+
+### Fixes
+- **Airport searchlight not silenced on elimination**: `bm._spotLight` now stores the airport `SpotLight` reference. When `bm.alive === 0`, `intensity` is set to 0 and the entry is spliced from `_searchlights[]`.
+- **Searchlights starting at world origin**: All `SpotLight` targets now have their initial position set to `worldPos + cos/sin(initialAngle) × range × 0.75` immediately after creation, matching the first frame of the update loop. Previously the beam snapped from `(0, 0, 0)` on the first frame.
+
+---
+
+> **Prompts:** "hitting watchtowers is still freezing the game (shader recompile)"
+
+### Fixes
+- **SpotLight removal causing shader recompile freeze**: Changed from `scene.remove(spotLight)` to `spotLight.intensity = 0`. Removing a light from the Three.js scene changes the internal light-state hash, invalidating all cached shader programs and triggering a full recompile on the next frame. Silencing intensity keeps the light count stable.
+
+---
+
+> **Prompts:** "hitting watchtowers is still freezing the game (shared geometry disposal)"
+
+### Fixes
+- **Watchtower destruction freezing game (shared geometry)**: Removed `disposeGroup` call from `_damageFenceNear`. Tower/fence meshes share geometries (`towerBodyGeo`, `towerPlatGeo`, etc.) across all instances — disposing them corrupted remaining towers and caused a GPU re-upload stall. Meshes are now only `scene.remove`d; GC handles the JS objects.
+
+---
+
 > **Prompts:** "do roadmap A11"
 
 ### Features
