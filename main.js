@@ -795,6 +795,11 @@ function notifyBase(baseId) { // (§2.2) unified signature — pass baseId strin
         showCongratsBanner(bm.name);
         if (!isGameOver) { addXP(bm.bonusXp); score += Math.floor(bm.bonusXp / 2); scoreElement.textContent = score; }
         bm.eliminated = true; addToConqueredPanel(bm.name);
+        // Silence any searchlights owned by this base (intensity=0, not scene.remove — avoids shader recompile)
+        if (bm._spotLight) { bm._spotLight.intensity = 0; }
+        for (let _si = _searchlights.length - 1; _si >= 0; _si--) {
+            if (_searchlights[_si].baseIds && _searchlights[_si].baseIds.includes(bm.id)) _searchlights.splice(_si, 1);
+        }
     } else {
         showNotification(`▶ ${bm.name}  ${bm.alive}/${bm.total}`);
     }
@@ -1008,9 +1013,13 @@ function spawnAirbase(cx, cz, islet) {
     const _slTx = cx + 25 * _cth - (-25) * _sth, _slTy = groundLevel + 38, _slTz = cz + 25 * (-_sth) + (-25) * _cth;
     const _slAb = new THREE.SpotLight(0xffffaa, 2.0, 180, Math.PI / 8, 0.25);
     _slAb.position.set(_slTx, _slTy, _slTz); scene.add(_slAb); scene.add(_slAb.target);
+    const _slAbInitA = Math.random() * Math.PI * 2;
+    _slAb.target.position.set(_slTx + Math.cos(_slAbInitA) * 140 * 0.75, groundLevel, _slTz + Math.sin(_slAbInitA) * 140 * 0.75);
+    _slAb.target.updateMatrixWorld();
     _searchlights.push({ spot: _slAb, worldPos: new THREE.Vector3(_slTx, _slTy, _slTz),
-        angle: Math.random() * Math.PI * 2, speed: (0.003 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1),
+        angle: _slAbInitA, speed: (0.003 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1),
         range: 140, halfAngle: Math.PI / 8, baseIds: [bm.id] });
+    bm._spotLight = _slAb; // reference for cleanup on base elimination
     const runX = Math.sin(heading), runZ = Math.cos(heading), perpX = Math.cos(heading), perpZ = -Math.sin(heading);
     const side = Math.random() > .5 ? 1 : -1, numHangars = ~~randomRange(3, 6);
     for (let i = 0; i < numHangars; i++) {
@@ -1178,8 +1187,11 @@ function buildBaseFences() {
             const slSpot = new THREE.SpotLight(0xffffaa, 1.5, 110, Math.PI / 7, 0.3);
             slSpot.position.set(px, slY, pz);
             scene.add(slSpot); scene.add(slSpot.target);
+            const _slInitA = Math.random() * Math.PI * 2;
+            slSpot.target.position.set(px + Math.cos(_slInitA) * 90 * 0.75, groundLevel, pz + Math.sin(_slInitA) * 90 * 0.75);
+            slSpot.target.updateMatrixWorld();
             _searchlights.push({ spot: slSpot, worldPos: new THREE.Vector3(px, slY, pz),
-                angle: Math.random() * Math.PI * 2,
+                angle: _slInitA,
                 speed: (0.004 + Math.random() * 0.004) * (Math.random() > 0.5 ? 1 : -1),
                 range: 90, halfAngle: Math.PI / 7, baseIds: bases.map(b => b.id) });
             reg.posts.push({ mesh: slSpot, worldPos: new THREE.Vector3(px, slY, pz) });
