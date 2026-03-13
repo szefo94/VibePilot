@@ -1318,9 +1318,11 @@ function _damageFenceNear(pos, radius) {
                     scene.remove(_dm.target);
                     const _slIdx = _searchlights.findIndex(sl => sl.spot === _dm);
                     if (_slIdx > -1) _searchlights.splice(_slIdx, 1);
-                } else {
-                    disposeGroup(_dm);
                 }
+                // Do NOT call disposeGroup here — fence/tower meshes share geometries
+                // (towerBodyGeo, towerPlatGeo, towerPoleGeo, postGeo, railMat, etc.)
+                // across all towers in the scene. Disposing them would corrupt every
+                // other tower next frame (GPU stall / re-upload = freeze).
                 reg.posts.splice(pi, 1);
             }
         }
