@@ -2341,8 +2341,14 @@ function updateAI(dt) {
         }
         if (u.userData.label) { u.getWorldPosition(_targetWorldPosition); u.userData.label.sprite.position.copy(_targetWorldPosition).add(_sv3.set(0, u.userData.hpOffsetY, 0)); }
         if (u.userData.turretPivot && u.userData.hp > 0) {
-            u.userData.turretPivot.getWorldPosition(_wp);
-            u.userData.turretPivot.lookAt(_sv3.set(plane.position.x, _wp.y, plane.position.z));
+            const _tp = u.userData.turretPivot;
+            _tp.getWorldPosition(_wp);
+            const _tpDx = plane.position.x - _wp.x, _tpDz = plane.position.z - _wp.z;
+            const _tpHorizDist = Math.sqrt(_tpDx * _tpDx + _tpDz * _tpDz);
+            _tp.rotation.order = 'YXZ';
+            _tp.rotation.y = Math.atan2(_tpDx, _tpDz) - u.rotation.y;
+            const _tpRawPitch = Math.atan2(plane.position.y - _wp.y, Math.max(1, _tpHorizDist));
+            _tp.rotation.x = -Math.max(-Math.PI / 12, Math.min(Math.PI / 4, _tpRawPitch));
         }
         if (u.userData.isHostile && u.userData.hp > 0) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
