@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+> **Prompts:** "do roadmap A11"
+
+### Features
+- **A11 — Empty-clip click**: Pressing Space / LMB / RT when gun ammo is 0 now plays a dry metallic tick — 25 ms high-passed white noise (> 3 kHz). Fires once per cooldown cycle so a held trigger doesn't spam.
+
+---
+
 > **Prompts:** "also show level on top of xp chart (make it two charts) / guided missile do not release sound, fix it, or maybe adjust so it sounds like its sizzling towards target"
 
 ### Fixes

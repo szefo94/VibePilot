@@ -2253,7 +2253,7 @@ function updatePhysics(dt) {
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, speed * dt);
     if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo > 0) { fireBullet(); shootCooldown = shootCooldownTime; if (--gunAmmo <= 0) gunReloadTimer = GUN_RELOAD_TIME; }
-    else if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo <= 0) { _emptyClipFlash = 8; shootCooldown = shootCooldownTime; } // V13
+    else if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && shootCooldown <= 0 && gunAmmo <= 0) { _emptyClipFlash = 8; shootCooldown = shootCooldownTime; _playEmptyClip(); } // V13 / A11
     plane.updateMatrixWorld(true);
     // Update player bounding boxes (§2.1 — applyMatrix4 avoids per-vertex iteration)
     corePlaneComponents.forEach((m, i) => planePartBoxes[i].copy(planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));
@@ -3345,6 +3345,21 @@ function _playMissileLaunch() {
     } catch(e) {}
 }
 
+function _playEmptyClip() { // A11
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const t = ctx.currentTime;
+        // Dry metallic tick — short noise transient, no tone
+        const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.025), ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3000;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.22, t);
+        src.connect(hp); hp.connect(g); g.connect(ctx.destination);
+        src.start(t); src.onended = () => ctx.close();
+    } catch(e) {}
+}
 function _playNapalmDrop() {
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();

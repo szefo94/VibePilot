@@ -53,7 +53,6 @@
 | A8 | **Explosion rumble** — low-frequency noise burst when bomb/missile detonates | High | Low |
 | A9 | **Level-up chime** — short rising arpeggio on level gain | Medium | Low |
 | A10 | **Base conquered fanfare** — brief chord burst on full base elimination | Medium | Low |
-| A11 | **Empty-clip click** — dry tick when spacebar is pressed with 0 gun ammo | Medium | Low |
 | A12 | **Flare deploy swoosh** — ascending noise arc on flare deployment | Low | Low |
 | A13 | **Missile proximity warning** — rising pulsed tone when an enemy missile is tracking the player | High | Medium |
 
@@ -106,7 +105,6 @@
 | A6  | **Engine hum** | Web Audio sine node tied to `speed`; already have audio infra |
 | A8  | **Explosion rumble** | Reuse bomb-drop synthesis pattern; ~10 lines |
 | A9  | **Level-up chime** | Rising arpeggio via Web Audio; pairs with G18 banner |
-| A11 | **Empty-clip click** | Dry tick when gun fires at 0 ammo; ~5 lines |
 | V2  | **Explosion scale by weapon** | Pass `scale` to `createExplosion`; bullets 1×, bombs 1.5×, missiles 2× |
 | V8  | **Screen shake** | `camera.position` jitter on hit/nearby explosion; ~15 lines |
 | F7  | **Fence colour by faction** | Material colour swap at spawn time; ~1 line per base type |

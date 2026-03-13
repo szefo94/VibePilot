@@ -99,6 +99,7 @@ All sounds are synthesized via the **Web Audio API** — no external files or li
 | Napalm dropped | Low rumble | Sawtooth sweep 90 → 30 Hz, 320 ms |
 | Bomb / missile / napalm hits enemy | Key-click | Fires once per detonation when ≥ 1 unit is in AoE range |
 | Enemy shoots (nearby) | Short sawtooth pew | Sawtooth sweep 400 → 80 Hz, 90 ms; only audible within 300 units |
+| Gun trigger on 0 ammo | Dry metallic tick | 25 ms high-passed white noise (> 3 kHz), sharp transient — fires once per cooldown so held trigger doesn't spam |
 
 ---
 
