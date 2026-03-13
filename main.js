@@ -1313,16 +1313,20 @@ function _damageFenceNear(pos, radius) {
         for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
             if (toRemove.has(reg.posts[pi].mesh)) {
                 const _dm = reg.posts[pi].mesh;
-                scene.remove(_dm);
                 if (_dm.isSpotLight) {
-                    scene.remove(_dm.target);
+                    // Do NOT scene.remove a SpotLight — Three.js recompiles all shaders
+                    // when the scene light count changes, causing a visible freeze.
+                    // Silencing intensity keeps the light in the scene (count unchanged)
+                    // so no shader recompile is triggered.
+                    _dm.intensity = 0;
                     const _slIdx = _searchlights.findIndex(sl => sl.spot === _dm);
                     if (_slIdx > -1) _searchlights.splice(_slIdx, 1);
+                } else {
+                    scene.remove(_dm);
+                    // Do NOT disposeGroup — fence meshes share geometries/materials
+                    // (towerBodyGeo, railMat, etc.). Disposing would corrupt remaining
+                    // towers next frame (GPU re-upload stall).
                 }
-                // Do NOT call disposeGroup here — fence/tower meshes share geometries
-                // (towerBodyGeo, towerPlatGeo, towerPoleGeo, postGeo, railMat, etc.)
-                // across all towers in the scene. Disposing them would corrupt every
-                // other tower next frame (GPU stall / re-upload = freeze).
                 reg.posts.splice(pi, 1);
             }
         }
