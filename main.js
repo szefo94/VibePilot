@@ -874,6 +874,13 @@ function disposeGroup(obj) {
 // ================================================================
 // --- Unit Creation & Spawning ---
 // ================================================================
+// Pre-baked tank part geometries
+const _tankLowerHullGeo = new THREE.BoxGeometry(4.4, 0.8, 5.5);
+const _tankUpperHullGeo = new THREE.BoxGeometry(3.5, 0.65, 4.8);
+const _tankTrackGeo     = new THREE.BoxGeometry(0.55, 0.65, 5.9);
+const _tankTurretGeo    = new THREE.CylinderGeometry(1.3, 1.55, 0.7, 8);
+const _tankHatchGeo     = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 8);
+const _tankBarrelGeo    = (() => { const g = new THREE.CylinderGeometry(0.18, 0.28, 4.8, 8); g.rotateX(Math.PI / 2); g.translate(0, 0, 2.4); return g; })();
 // Pre-baked truck part geometries (shared across all truck instances)
 const _truckChassisGeo    = new THREE.BoxGeometry(1.8, 0.25, 6.5);
 const _truckHoodGeo       = new THREE.BoxGeometry(1.6, 0.75, 1.4);
@@ -891,8 +898,17 @@ function createGroundUnit(type) {
         case 'tank':
             n = "Tank"; l = ~~randomRange(1, 4); hp = 20 * l; collR = 3.5 * 3; hpY = 1.5 * 3 + 5; xp = 35 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 6), unitMat));
-            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), tb); u.add(tp); turretPivotRef = tp; }
+            {
+                const lowerHull = new THREE.Mesh(_tankLowerHullGeo, unitMat);
+                const upperHull = new THREE.Mesh(_tankUpperHullGeo, unitMat); upperHull.position.y = 0.72;
+                const trackL    = new THREE.Mesh(_tankTrackGeo, unitMat); trackL.position.set(-2.5, -0.02, 0);
+                const trackR    = new THREE.Mesh(_tankTrackGeo, unitMat); trackR.position.set( 2.5, -0.02, 0);
+                u.add(lowerHull, upperHull, trackL, trackR);
+                const tp = new THREE.Group(); tp.position.y = 1.38;
+                const hatch = new THREE.Mesh(_tankHatchGeo, unitMat); hatch.position.set(-0.25, 0.46, -0.2);
+                tp.add(new THREE.Mesh(_tankTurretGeo, unitMat), hatch, new THREE.Mesh(_tankBarrelGeo, unitMat));
+                u.add(tp); turretPivotRef = tp;
+            }
             u.scale.set(3, 3, 3); break;
         case 'turret':
             n = "Turret"; l = ~~randomRange(2, 5); hp = 15 * l; collR = 2.5 * 3; hpY = 1.5 * 3 + 5; xp = 30 * l; hostile = true;
