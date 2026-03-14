@@ -52,6 +52,14 @@ const ISLET_ROUGHNESS     = 0.35; // A only — radial displacement scale (0.2 =
 
 const islets = [];
 const isletMaterial = new THREE.MeshStandardMaterial({ color: 0x556B2F });
+const _hillMat = new THREE.MeshStandardMaterial({ color: 0x4a5530, roughness: 0.95 });
+// Pre-baked hill shapes: wide-base cone, broad dome (squashed), narrow peak
+const _hillGeos = [
+    (() => { const g = new THREE.ConeGeometry(60, 45, 7); return g; })(),
+    (() => { const g = new THREE.ConeGeometry(85, 28, 8); return g; })(),
+    (() => { const g = new THREE.ConeGeometry(35, 60, 6); return g; })(),
+    (() => { const g = new THREE.ConeGeometry(50, 35, 9); return g; })(),
+];
 
 // Generate fractal polygon in world space, centred at (cx, cz) with given radius.
 // Returns array of { x, z } world-space points forming a closed polygon.
@@ -158,6 +166,18 @@ function createIslets(count) {
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(x, groundLevel + 1, z);
         scene.add(mesh);
+
+        // Scatter hills on this islet
+        const numHills = 3 + Math.floor(Math.random() * 5); // 3–7 per islet
+        for (let h = 0; h < numHills; h++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = Math.random() * radius * 0.72;
+            const geo = _hillGeos[Math.floor(Math.random() * _hillGeos.length)];
+            const hill = new THREE.Mesh(geo, _hillMat);
+            hill.position.set(x + Math.cos(a) * d, groundLevel + 1, z + Math.sin(a) * d);
+            hill.rotation.y = Math.random() * Math.PI * 2;
+            scene.add(hill);
+        }
     }
 }
 // --- Player Plane ---
@@ -854,6 +874,14 @@ function disposeGroup(obj) {
 // ================================================================
 // --- Unit Creation & Spawning ---
 // ================================================================
+// Pre-baked truck part geometries (shared across all truck instances)
+const _truckChassisGeo    = new THREE.BoxGeometry(1.8, 0.25, 6.5);
+const _truckHoodGeo       = new THREE.BoxGeometry(1.6, 0.75, 1.4);
+const _truckCabGeo        = new THREE.BoxGeometry(1.75, 1.4, 2.0);
+const _truckCargoFloorGeo = new THREE.BoxGeometry(1.75, 0.15, 3.2);
+const _truckCargoSideGeo  = new THREE.BoxGeometry(0.1,  0.7,  3.2);
+const _truckCargoWallGeo  = new THREE.BoxGeometry(1.75, 0.7,  0.1);
+const _truckWheelGeo      = (() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })();
 function createGroundUnit(type) {
     const u = new THREE.Group();
     let hp, collR, hpY, xp, n, turretPivotRef = null, hostile = false, l = 1;
@@ -875,8 +903,22 @@ function createGroundUnit(type) {
         case 'truck':
             n = "Truck"; l = 1; hp = 5; collR = 3 * 2.5; hpY = 2 * 2.5 + 4; xp = 10;
             u.position.y = groundLevel + 2 + 2 * 2.5 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 1.8, 5), unitMat));
-            u.children[0].position.z = 1.5; u.children[1].position.z = -1; u.scale.set(2.5, 2.5, 2.5); break;
+            { // --- truck body ---
+                const chassis    = new THREE.Mesh(_truckChassisGeo,    unitMat);
+                const hood       = new THREE.Mesh(_truckHoodGeo,       unitMat); hood.position.set(0, 0.5,  2.8);
+                const cab        = new THREE.Mesh(_truckCabGeo,        unitMat); cab.position.set( 0, 0.95, 1.2);
+                const cargoFloor = new THREE.Mesh(_truckCargoFloorGeo, unitMat); cargoFloor.position.set(0, 0.2, -1.4);
+                const cargoL     = new THREE.Mesh(_truckCargoSideGeo,  unitMat); cargoL.position.set(-0.85, 0.55, -1.4);
+                const cargoR     = new THREE.Mesh(_truckCargoSideGeo,  unitMat); cargoR.position.set( 0.85, 0.55, -1.4);
+                const cargoFront = new THREE.Mesh(_truckCargoWallGeo,  unitMat); cargoFront.position.set(0, 0.55,  0.25);
+                const cargoTail  = new THREE.Mesh(_truckCargoWallGeo,  unitMat); cargoTail.position.set( 0, 0.55, -3.05);
+                const wFL = new THREE.Mesh(_truckWheelGeo, unitMat); wFL.position.set(-1.05, 0,  2.5);
+                const wFR = new THREE.Mesh(_truckWheelGeo, unitMat); wFR.position.set( 1.05, 0,  2.5);
+                const wRL = new THREE.Mesh(_truckWheelGeo, unitMat); wRL.position.set(-1.05, 0, -1.8);
+                const wRR = new THREE.Mesh(_truckWheelGeo, unitMat); wRR.position.set( 1.05, 0, -1.8);
+                u.add(chassis, hood, cab, cargoFloor, cargoL, cargoR, cargoFront, cargoTail, wFL, wFR, wRL, wRR);
+            }
+            u.scale.set(2.5, 2.5, 2.5); break;
         case 'airport':
             n = "Airbase"; l = 5; hp = 150; collR = 100; hpY = 25; xp = 200; u.position.y = groundLevel + 2;
             const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), unitMat);
