@@ -955,8 +955,8 @@ function createGroundUnit(type) {
             u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat));
             u.children[1].position.set(0, 2, -2);
             { const tp = new THREE.Group(); tp.position.set(0, 1.5, 5);
-              const tb = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 4, 8), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2;
-              tp.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), tb); u.add(tp); turretPivotRef = tp; }
+              const bp = new THREE.Group(); const tb = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 4, 8), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; bp.add(tb);
+              tp.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
             u.scale.set(5, 5, 5); break;
         case 'carrier':
             n = "Carrier"; l = 10; hp = 200; collR = 18 * 8; hpY = 6 * 8; xp = 300; u.position.y = waterLevel;
