@@ -891,7 +891,7 @@ const _truckCargoWallGeo  = new THREE.BoxGeometry(1.75, 0.7,  0.1);
 const _truckWheelGeo      = (() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })();
 function createGroundUnit(type) {
     const u = new THREE.Group();
-    let hp, collR, hpY, xp, n, turretPivotRef = null, hostile = false, l = 1;
+    let hp, collR, hpY, xp, n, turretPivotRef = null, barrelPivotRef = null, hostile = false, l = 1;
     const UNIT_MAT_COLORS = { tank: 4957216, truck: 8388608, airport: 6710886, destroyer: 5592422, carrier: 4473925, turret: 3355443 };
     const unitMat = new THREE.MeshStandardMaterial({ color: UNIT_MAT_COLORS[type] }); // one material per call, not 6
     switch (type) {
@@ -906,15 +906,19 @@ function createGroundUnit(type) {
                 u.add(lowerHull, upperHull, trackL, trackR);
                 const tp = new THREE.Group(); tp.position.y = 1.38;
                 const hatch = new THREE.Mesh(_tankHatchGeo, unitMat); hatch.position.set(-0.25, 0.46, -0.2);
-                tp.add(new THREE.Mesh(_tankTurretGeo, unitMat), hatch, new THREE.Mesh(_tankBarrelGeo, unitMat));
-                u.add(tp); turretPivotRef = tp;
+                const bp = new THREE.Group();
+                bp.add(new THREE.Mesh(_tankBarrelGeo, unitMat));
+                tp.add(new THREE.Mesh(_tankTurretGeo, unitMat), hatch, bp);
+                u.add(tp); turretPivotRef = tp; barrelPivotRef = bp;
             }
             u.scale.set(3, 3, 3); break;
         case 'turret':
             n = "Turret"; l = ~~randomRange(2, 5); hp = 15 * l; collR = 2.5 * 3; hpY = 1.5 * 3 + 5; xp = 30 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4), unitMat));
-            { const tp = new THREE.Group(); tp.position.y = 1.25; const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), tb); u.add(tp); turretPivotRef = tp; }
+            { const tp = new THREE.Group(); tp.position.y = 1.25;
+              const bp = new THREE.Group(); const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; bp.add(tb);
+              tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
             u.scale.set(3, 3, 3); break;
         case 'truck':
             n = "Truck"; l = 1; hp = 5; collR = 3 * 2.5; hpY = 2 * 2.5 + 4; xp = 10;
@@ -960,7 +964,7 @@ function createGroundUnit(type) {
             u.children[1].position.y = 1.75; u.children[2].position.set(5, 3.5, -2); u.scale.set(8, 8, 8); break;
     }
     const label = createUnitLabel(n, l, hp, hp); scene.add(label.sprite);
-    u.userData = { type, hp, maxHp: hp, collisionRadius: collR, label, hpOffsetY: hpY, isHostile: hostile, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, dependents: [] };
+    u.userData = { type, hp, maxHp: hp, collisionRadius: collR, label, hpOffsetY: hpY, isHostile: hostile, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, barrelPivot: barrelPivotRef, dependents: [] };
     // Populate dependents for units with protected children (§2.5)
     for (const child of u.children) { if (child.userData?.type === 'turret') u.userData.dependents.push(child); }
     return u;
@@ -2402,11 +2406,12 @@ function updateAI(dt) {
             const _tp = u.userData.turretPivot;
             _tp.getWorldPosition(_wp);
             const _tpDx = plane.position.x - _wp.x, _tpDz = plane.position.z - _wp.z;
-            const _tpHorizDist = Math.sqrt(_tpDx * _tpDx + _tpDz * _tpDz);
-            _tp.rotation.order = 'YXZ';
-            _tp.rotation.y = Math.atan2(_tpDx, _tpDz) - u.rotation.y;
-            const _tpRawPitch = Math.atan2(plane.position.y - _wp.y, Math.max(1, _tpHorizDist));
-            _tp.rotation.x = -Math.max(-Math.PI / 12, Math.min(Math.PI / 4, _tpRawPitch));
+            _tp.rotation.y = Math.atan2(_tpDx, _tpDz) - u.rotation.y; // yaw only
+            if (u.userData.barrelPivot) {
+                const _tpHorizDist = Math.sqrt(_tpDx * _tpDx + _tpDz * _tpDz);
+                const _tpRawPitch = Math.atan2(plane.position.y - _wp.y, Math.max(1, _tpHorizDist));
+                u.userData.barrelPivot.rotation.x = -Math.max(-Math.PI / 12, Math.min(Math.PI / 4, _tpRawPitch));
+            }
         }
         if (u.userData.isHostile && u.userData.hp > 0) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
