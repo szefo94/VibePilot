@@ -360,6 +360,10 @@ const napalmDamage = 15, napalmRadius = 55;
 let score = 0, planeHP = 100, level = 1, xp = 0, xpToNextLevel = 100, playerDamageMultiplier = 1;
 // Control flow
 let isGameOver = false, isPaused = false;
+// Interceptor event
+let _gameElapsed = 0; // seconds-equivalent (frame units at 60 fps)
+let _interceptorTimer = (60 + Math.random() * 60) * TARGET_FPS; // first wave: 1–2 min
+let _interceptorWave  = 0;
 // Game-over free-look orbit
 const _gameOverPos = new THREE.Vector3();
 let _goOrbitYaw = 0, _goOrbitPitch = 0.3;
@@ -1617,6 +1621,33 @@ function createAllUnits() {
     for (let i = 0; i < numHoverWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x += 500; p.z += 500; } spawnHoverWing(p.x, p.z); }
     for (let i = 0; i < numStrikeWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x -= 500; p.z -= 500; } spawnStrikeWing(p.x, p.z); }
 }
+function spawnInterceptors() {
+    _interceptorWave++;
+    const count = Math.min(2 + _interceptorWave, 6); // 3, 4, 5, 6 … cap at 6
+    const warnEl = document.createElement('div');
+    warnEl.style.cssText = 'position:fixed;top:22%;left:50%;transform:translateX(-50%);color:#ff4455;font:bold 18px monospace;letter-spacing:3px;z-index:500;pointer-events:none;text-shadow:0 0 12px #ff0000;';
+    warnEl.textContent = `⚠ INTERCEPTORS INBOUND — WAVE ${_interceptorWave} (${count} fighters)`;
+    document.body.appendChild(warnEl);
+    setTimeout(() => warnEl.remove(), 4000);
+    for (let _ii = 0; _ii < count; _ii++) {
+        // Spawn from a random map-edge position, well above ground
+        const _iedge = Math.random() * Math.PI * 2;
+        const _iex = Math.cos(_iedge) * MAP_BOUNDARY * 0.88;
+        const _iez = Math.sin(_iedge) * MAP_BOUNDARY * 0.88;
+        const _iey = randomRange(groundLevel + 80, groundLevel + 200);
+        const au = createAirUnit('fighter', _iex, _iey, _iez);
+        // Velocity initially toward player with slight spread
+        const _ispd = randomRange(0.16, 0.22 + _interceptorWave * 0.01);
+        _sv1.copy(plane.position).sub(au.group.position);
+        _sv1.y = 0; _sv1.normalize().multiplyScalar(_ispd);
+        _sv1.x += (Math.random() - 0.5) * 0.05;
+        _sv1.z += (Math.random() - 0.5) * 0.05;
+        au.velocity = _sv1.clone();
+        au.isInterceptor = true;
+        au.interceptSpeed = _ispd;
+        airUnits.push(au);
+    }
+}
 function spawnSingleEnemy() {
     const l = { id: THREE.MathUtils.generateUUID(), parts: [], velocity: new THREE.Vector3(), label: null, hpOffsetY: defaultEnemyHpOffsetY, type: "unknown", boundingBox: new THREE.Box3(), partLocalBoxes: null };
     const c = enemyColors[~~(Math.random() * enemyColors.length)], mat = new THREE.MeshStandardMaterial({ color: c }), lvl = ~~randomRange(1, 4);
@@ -2361,6 +2392,14 @@ function updateAI(dt) {
         const au = airUnits[i];
         if (au.hp <= 0) continue;
         if (au.velocity) {
+            // Interceptor: steer toward player, track altitude
+            if (au.isInterceptor && !isGameOver) {
+                _sv1.copy(plane.position).sub(au.group.position);
+                const _iTargetY = Math.max(groundLevel + 30, Math.min(ceilingLevel - 20, plane.position.y));
+                _sv1.y = (_iTargetY - au.group.position.y) * 0.05;
+                _sv1.normalize().multiplyScalar(au.interceptSpeed);
+                au.velocity.lerp(_sv1, 0.025 * dt);
+            }
             au.group.position.addScaledVector(au.velocity, dt);
             _sv3.addVectors(au.group.position, au.velocity); au.group.lookAt(_sv3);
             if (Math.abs(au.group.position.x) > MAP_BOUNDARY * 0.85 || Math.abs(au.group.position.z) > MAP_BOUNDARY * 0.85) {
@@ -3088,6 +3127,17 @@ function animate() {
     if (!isGameOver && !isPaused) {
         _statTimer -= dt;
         if (_statTimer <= 0) { _statTimer = 60; _statHp.push(Math.max(0, planeHP)); _statScore.push(score); _statXp.push(xp); _statLvl.push(level); }
+    }
+    // Interceptor event timer
+    if (!isGameOver && !isPaused) {
+        _gameElapsed += dt;
+        if (_gameElapsed >= 60 * TARGET_FPS) { // arm after 1 minute
+            _interceptorTimer -= dt;
+            if (_interceptorTimer <= 0) {
+                spawnInterceptors();
+                _interceptorTimer = (90 + Math.random() * 60) * TARGET_FPS; // next wave 90–150 s
+            }
+        }
     }
     if (!isGameOver && !isPaused) {
         updatePhysics(dt);
