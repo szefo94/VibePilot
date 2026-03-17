@@ -653,6 +653,7 @@ document.addEventListener('keydown', e => {
     else if (k === 'r') { if (missileAmmo > 0) { fireMissile(); if (--missileAmmo <= 0) missileReloadTimer = MISSILE_RELOAD_TIME; } }
     else if (k === 'q') { if (flareAmmo > 0) { flareTimer = FLARE_DURATION; deployFlareEffect(); if (--flareAmmo <= 0) flareReloadTimer = FLARE_RELOAD_TIME; } }
     else if (k === 'x') { if (napalmAmmo > 0) { dropNapalm(); if (--napalmAmmo <= 0) napalmReloadTimer = NAPALM_RELOAD_TIME; } }
+    else if (k === 'i') { spawnInterceptors(); } // debug: instant interceptor wave
     else if (keys.hasOwnProperty(k)) keys[k] = true;
     else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
 });
