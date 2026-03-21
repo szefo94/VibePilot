@@ -2305,6 +2305,12 @@ function updatePhysics(dt) {
     if (keys.w || _gpAxes.throttleUp > 0) speed = Math.min(maxSpeed, speed + acceleration * dt * Math.max(1, _gpAxes.throttleUp));
     else if (keys.s || _gpAxes.throttleDown > 0) speed = Math.max(minSpeed, speed - deceleration * dt * Math.max(1, _gpAxes.throttleDown));
     else speed = Math.max(minSpeed, speed - naturalDeceleration * dt);
+    // Dive boost: forward vector Y < 0 means nose-down — gravity adds speed up to +80 % of maxSpeed
+    _sv2.set(0, 0, 1).applyQuaternion(plane.quaternion);
+    const _diveY = -_sv2.y; // positive = diving, negative = climbing
+    const _effectiveMax = maxSpeed + Math.max(0, _diveY) * maxSpeed * 0.8;
+    if (_diveY > 0.05 && speed < _effectiveMax) speed = Math.min(_effectiveMax, speed + acceleration * _diveY * 2 * dt);
+    else if (speed > maxSpeed) speed = Math.max(maxSpeed, speed - naturalDeceleration * 6 * dt); // bleed excess on level-out
     // ── Mouse-cursor quaternion steering (War Thunder style) ────────────
     if (MOUSE_STEERING) {
         // Pre-check manual roll/pitch keys so corrections can be suppressed during manoeuvres
