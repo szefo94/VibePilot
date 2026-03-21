@@ -171,7 +171,7 @@ function createIslets(count) {
         const numHills = 3 + Math.floor(Math.random() * 5); // 3–7 per islet
         for (let h = 0; h < numHills; h++) {
             const a = Math.random() * Math.PI * 2;
-            const d = Math.random() * radius * 0.72;
+            const d = radius * 0.55 + Math.random() * radius * 0.35; // start at 55 % to stay outside fence perimeter
             const geo = _hillGeos[Math.floor(Math.random() * _hillGeos.length)];
             const hill = new THREE.Mesh(geo, _hillMat);
             hill.position.set(x + Math.cos(a) * d, groundLevel + 1, z + Math.sin(a) * d);
