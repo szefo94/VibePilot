@@ -44,6 +44,7 @@
 | `M` | Toggle memory debug panel |
 | `C` | Toggle color lines mode (all meshes → vibrant HSL wireframe on black) |
 | `Esc` | Pause / Resume |
+| `I` | Spawn interceptor wave immediately (debug) |
 
 ### Gamepad (Xbox / PS5 DualSense)
 
@@ -225,6 +226,7 @@ Two particle trails rendered as `THREE.Points` with `vertexColors`, one per wing
 - Marker arrow — yellow cone indicator (wing-mounted)
 - Ground target arrow — green cone indicator
 - Enemy arrow — white cone indicator
+- **Lock-on reticle (G20)** — full-screen canvas overlay drawn after each frame. Finds the nearest hostile target (ground, air, enemy fighters) and projects it to screen coordinates. Four corner brackets in **orange** when tracking; turn **green** and show `LOCK` when the target is within ~45° of the plane's forward vector. Reticle is hidden when missile ammo is 0 or on game over. Target refreshes every 3 frames.
 
 ---
 
@@ -395,11 +397,11 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 
 | Type | HP | Scale | Hostile | Shoots | Notes |
 |---|---|---|---|---|---|
-| `tank` | 20 – 60 | 3 | yes | yes | Turret pivots to aim |
-| `turret` | 30 – 75 | 3 | yes | yes | Fixed base, rotating head |
+| `tank` | 20 – 60 | 3 | yes | yes | Turret yaws + barrel elevates [−15°, +45°] |
+| `turret` | 30 – 75 | 3 | yes | yes | Fixed base; pivot yaws + barrel elevates |
 | `truck` | 5 | 2.5 | no | no | — |
 | `airport` | 150 | 1 | yes | no | Contains child turrets; must be destroyed first to expose turrets |
-| `destroyer` | 120 – 300 | 5 | yes | yes | At water level |
+| `destroyer` | 120 – 300 | 5 | yes | yes | At water level; turret yaws + barrel elevates |
 | `carrier` | 200 | 8 | no | no | At water level |
 | `hangar (arch)` | 200 | 1 | no | no | Bomb damage only |
 | `hangar (box)` | 200 | 1 | no | no | Bomb damage only |
@@ -425,6 +427,21 @@ Each land base (airbase and forward base) is enclosed by a perimeter fence that 
 ---
 
 ## Airborne Squadrons
+
+### Interceptor Waves (dynamic event)
+
+After 1 minute of gameplay a random timer fires every 90 – 150 s, spawning a wave of interceptor fighters that actively hunt the player.
+
+| Property | Value |
+|---|---|
+| Arm delay | 1 minute from game start |
+| Repeat interval | 90 – 150 s |
+| Wave count | Wave 1 = 3 fighters, +1 per wave, cap 6 |
+| Spawn position | Random map-edge point at 80 – 200 m altitude |
+| Speed | 0.16 – 0.22 (vs patrol fighters 0.10 – 0.14) |
+| Steering | Velocity lerps toward player position each frame (factor 0.025 × dt); tracks player altitude clamped to `[groundLevel + 30, ceilingLevel − 20]` |
+| HUD warning | Red `⚠ INTERCEPTORS INBOUND — WAVE N (X fighters)` banner for 4 s |
+| Debug spawn | `I` key instantly triggers `spawnInterceptors()` |
 
 ### Hover Wing
 

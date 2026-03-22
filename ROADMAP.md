@@ -55,7 +55,6 @@ The best arcade flying games (Ace Combat, Luftrausers, Sky Force, StarFox) conve
 | G17 | **Terrain collision damage** — hills (once added) damage on impact rather than instant kill | Medium | Low |
 | G18 | **Named boss aircraft** — unique high-HP enemy with named label, escorted by fighters, drops a special collectible on death | High | High |
 | G19 | **Risk/reward score multiplier** — gun kills close range / strafe passes multiply score | High | Low |
-| G20 | **Lock-on reticle** — HUD circle that snaps to nearest valid missile target | Medium | Low |
 
 ---
 
@@ -118,7 +117,6 @@ The best arcade flying games (Ace Combat, Luftrausers, Sky Force, StarFox) conve
 |---|---|---|
 | G3  | **Invincibility frames** | 30-frame guard on `takeDamage`; stops frustrating chain deaths |
 | G19 | **Close-range score multiplier** | ~5 lines in bullet hit handler; immediately rewards aggressive flying |
-| G20 | **Lock-on reticle** | HUD canvas circle; uses existing missile target logic |
 | A6  | **Engine hum** | Web Audio sine node tied to `speed`; audio infra already exists |
 | A8  | **Explosion rumble** | Reuse bomb-drop synthesis pattern; ~10 lines |
 | A9  | **Level-up chime** | Rising arpeggio; pairs with level banner |
