@@ -3385,11 +3385,11 @@ function updateMinimap() {
 }
 
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);
-window.onload = () => {
-    animate();
-    // runSplash(); // uncomment to re-enable splash screen (also uncomment HTML in Index.html)
-    if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
-};
+// Start rendering immediately — script is at end of <body> so DOM is ready.
+// window.onload would block until fonts finish loading, causing a blank screen.
+animate();
+// runSplash(); // uncomment to re-enable splash screen (also uncomment HTML in Index.html)
+if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
 
 // Green heart collectible — warm ascending C-E-G arpeggio (life gain feel)
 function _playCollectGreen() {
