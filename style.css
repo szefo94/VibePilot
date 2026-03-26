@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap');
+/* Google Fonts loaded via <link> in Index.html to avoid render-blocking @import */
 
 :root {
     --hud-primary: #00ff88;

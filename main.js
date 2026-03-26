@@ -3387,9 +3387,7 @@ function updateMinimap() {
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);
 window.onload = () => {
     animate();
-    // splash disabled for testing
-    const splash = document.getElementById('splash-screen');
-    if (splash) splash.remove();
+    // runSplash(); // uncomment to re-enable splash screen (also uncomment HTML in Index.html)
     if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
 };
 
