@@ -1087,11 +1087,10 @@ function spawnAirbase(cx, cz, islet) {
     // Searchlight on control tower (local pos 25, 34, -25 rotated by heading)
     const _cth = Math.cos(heading), _sth = Math.sin(heading);
     const _slTx = cx + 25 * _cth - (-25) * _sth, _slTy = groundLevel + 38, _slTz = cz + 25 * (-_sth) + (-25) * _cth;
-    const _slAb = new THREE.SpotLight(0xffffaa, 2.0, 180, Math.PI / 8, 0.25);
-    _slAb.position.set(_slTx, _slTy, _slTz); scene.add(_slAb); scene.add(_slAb.target);
+    const _slAb = new THREE.PointLight(0xffffaa, 1.5, 200);
+    _slAb.position.set(_slTx, _slTy, _slTz); scene.add(_slAb);
+    _slAb.target = { position: new THREE.Vector3(), updateMatrixWorld: () => {} }; // stub target
     const _slAbInitA = Math.random() * Math.PI * 2;
-    _slAb.target.position.set(_slTx + Math.cos(_slAbInitA) * 140 * 0.75, groundLevel, _slTz + Math.sin(_slAbInitA) * 140 * 0.75);
-    _slAb.target.updateMatrixWorld();
     _searchlights.push({ spot: _slAb, worldPos: new THREE.Vector3(_slTx, _slTy, _slTz),
         angle: _slAbInitA, speed: (0.003 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1),
         range: 140, halfAngle: Math.PI / 8, baseIds: [bm.id] });
@@ -1260,12 +1259,11 @@ function buildBaseFences() {
             _flagMeshes.push({ mesh: fp });
             // Searchlight on tower platform
             const slY = groundLevel + 12;
-            const slSpot = new THREE.SpotLight(0xffffaa, 1.5, 110, Math.PI / 7, 0.3);
+            const slSpot = new THREE.PointLight(0xffffaa, 1.2, 120);
             slSpot.position.set(px, slY, pz);
-            scene.add(slSpot); scene.add(slSpot.target);
+            scene.add(slSpot);
+            slSpot.target = { position: new THREE.Vector3(), updateMatrixWorld: () => {} }; // stub target
             const _slInitA = Math.random() * Math.PI * 2;
-            slSpot.target.position.set(px + Math.cos(_slInitA) * 90 * 0.75, groundLevel, pz + Math.sin(_slInitA) * 90 * 0.75);
-            slSpot.target.updateMatrixWorld();
             _searchlights.push({ spot: slSpot, worldPos: new THREE.Vector3(px, slY, pz),
                 angle: _slInitA,
                 speed: (0.004 + Math.random() * 0.004) * (Math.random() > 0.5 ? 1 : -1),
@@ -2304,7 +2302,9 @@ function spawnPlaneDebris() {
 // ================================================================
 // --- Initialization ---
 // ================================================================
-hpElement.textContent = planeHP; updateDamageUI(); createAllUnits(); buildBaseFences();
+hpElement.textContent = planeHP; updateDamageUI();
+// Defer heavy world init to after the first frame renders — avoids blocking the splash screen
+requestAnimationFrame(() => requestAnimationFrame(() => { createAllUnits(); buildBaseFences(); }));
 
 // ================================================================
 // --- Sub-System Functions (§1.2) ---
@@ -3237,10 +3237,7 @@ function animate() {
     if (!isPaused && !isGameOver && _searchlights.length > 0) {
         for (const sl of _searchlights) {
             sl.angle += sl.speed * rawDelta * TARGET_FPS;
-            const tx = sl.worldPos.x + Math.cos(sl.angle) * sl.range * 0.75;
-            const tz = sl.worldPos.z + Math.sin(sl.angle) * sl.range * 0.75;
-            sl.spot.target.position.set(tx, groundLevel, tz);
-            sl.spot.target.updateMatrixWorld();
+            // PointLights don't use a target — skip target update
             // Detect player in cone
             const dx = plane.position.x - sl.worldPos.x, dz = plane.position.z - sl.worldPos.z;
             const distXZ = Math.sqrt(dx * dx + dz * dz);
@@ -3254,7 +3251,7 @@ function animate() {
                     sl.spot.color.setHex(0xff4400); // turn red when alarmed
                 }
             }
-            if (sl.spot.color.r < 1) sl.spot.color.lerp(new THREE.Color(0xffffaa), 0.02); // fade back
+            if (sl.spot.color.r < 1) sl.spot.color.lerp(new THREE.Color(0xffffaa), 0.02 * rawDelta * TARGET_FPS); // fade back
         }
         // Decay alarm timers
         for (const reg of Object.values(_fenceRegistry)) {
