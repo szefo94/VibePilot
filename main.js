@@ -3387,7 +3387,10 @@ function updateMinimap() {
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);
 window.onload = () => {
     animate();
-    runSplash();
+    // splash disabled for testing
+    const splash = document.getElementById('splash-screen');
+    if (splash) splash.remove();
+    if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
 };
 
 // Green heart collectible — warm ascending C-E-G arpeggio (life gain feel)
