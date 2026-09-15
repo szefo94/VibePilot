@@ -26,6 +26,66 @@ const probes = {
             return { ground: groundUnits.length, air: airUnits.length, fighters: enemies.length, pass: groundUnits.length > 20 && enemies.length > 0 && !!document.querySelector('canvas') };
         });
     },
+    // #19 start menu holds the game until Start; Esc opens a focused pause menu with a visible cursor
+    menus: Object.assign(async page => {
+        await worldReady(page);
+        const read = () => page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            return {
+                awaiting: state.awaitingStart, paused: state.isPaused, elapsed: state._gameElapsed, missiles: state.missileAmmo,
+                startVisible: !document.getElementById('start-menu').hidden,
+                pauseVisible: getComputedStyle(document.getElementById('paused')).display !== 'none',
+                focused: document.activeElement?.dataset?.action ?? document.activeElement?.tagName,
+                cursor: getComputedStyle(document.body).cursor,
+            };
+        });
+        const menu = await read();
+        await page.keyboard.press('r'); await wait(400);
+        const blocked = await read();
+        await page.keyboard.press('Enter'); await wait(400);
+        const started = await read(); await wait(400);
+        const running = await read();
+        await page.keyboard.press('Escape'); await wait(300);
+        const paused = await read();
+        await page.keyboard.press('Escape'); await wait(300);
+        const resumed = await read();
+        const pass = menu.awaiting && menu.startVisible && menu.cursor === 'auto'
+            && blocked.elapsed === menu.elapsed && blocked.missiles === menu.missiles
+            && !started.awaiting && !started.startVisible && running.elapsed > started.elapsed
+            && paused.paused && paused.pauseVisible && paused.focused === 'resume' && paused.cursor === 'auto'
+            && !resumed.paused && !resumed.pauseVisible && resumed.cursor === 'none';
+        return { menu, blocked, started, paused, resumed, pass };
+    }, { query: '' }),
+    // #19 settings apply immediately and persist
+    async settings(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { openSettings, closeSettings } = await import('./src/game/session.js');
+            const { settings } = await import('./src/core/settings.js');
+            openSettings();
+            document.querySelector('[data-setting="invertPitch"]').click();
+            const volume = document.querySelector('[data-setting="volume"]');
+            volume.value = '0.3'; volume.dispatchEvent(new Event('input', { bubbles: true }));
+            document.querySelector('[data-setting="showReferencePanels"]').click();
+            const stored = JSON.parse(localStorage.getItem('vibepilot_settings'));
+            const panelsHidden = getComputedStyle(document.getElementById('instructions')).display === 'none';
+            closeSettings();
+            return { stored, panelsHidden, invertPitch: settings.invertPitch, pass: stored.invertPitch === true && stored.volume === 0.3 && stored.showReferencePanels === false && panelsHidden && document.getElementById('settings-dialog').hidden };
+        });
+    },
+    // #19 / section 5: "Replay this map" reloads the same seed (identical islets) and skips the start menu
+    async replay(page) {
+        await worldReady(page);
+        const islets = () => page.evaluate(async () => (await import('./src/world/world.js')).islets.map(i => [Math.round(i.x), Math.round(i.z), Math.round(i.radius)]).join(';'));
+        const before = await islets();
+        const seed = await page.evaluate(async () => { (await import('./src/game/gameOver.js')).triggerGameOver(); return window.__vpSeed; });
+        const focused = await page.evaluate(() => document.activeElement?.dataset?.action);
+        await Promise.all([page.waitForNavigation(), page.click('#game-over [data-action="replay"]')]);
+        await worldReady(page);
+        const after = await page.evaluate(async () => ({ search: location.search, seed: window.__vpSeed, awaiting: (await import('./src/state.js')).state.awaitingStart }));
+        const sameMap = (await islets()) === before;
+        return { seed, focused, after, sameMap, pass: after.seed === seed && sameMap && after.search.includes('autostart') && !after.awaiting && focused === 'restart' };
+    },
     // #1 spawn protection counts down in simulated seconds (independent of how slow the headless frames are)
     async grace(page) {
         await worldReady(page);
@@ -334,7 +394,7 @@ try {
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
         if (probe.init) await page.addInitScript(probe.init);
-        await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+        await page.goto(`${base}/index.html${probe.query ?? '?autostart'}`, { waitUntil: 'load' }); // most probes skip the start menu
         await page.waitForTimeout(1200);
         let result;
         try { result = await probe(page); } catch (e) { result = { error: e.message, pass: false }; }

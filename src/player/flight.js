@@ -1,5 +1,5 @@
 /** Player flight physics: throttle, rotation rates, mouse steering, boundaries. */
-import { GUN_RELOAD_TIME, MAP_BOUNDARY, MOUSE_STEERING, STEER_AUTO_BANK_K, STEER_BANK_SMOOTH, STEER_CURSOR_RADIUS, STEER_DEADZONE, STEER_LEVEL_RATE, STEER_MAX_ANGLE, STEER_MAX_TURN_RATE, STEER_SMOOTHING, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, naturalDeceleration, rotAccel, rotDamping, shootCooldownTime } from '../config.js';
+import { GUN_RELOAD_TIME, MAP_BOUNDARY, STEER_AUTO_BANK_K, STEER_BANK_SMOOTH, STEER_CURSOR_RADIUS, STEER_DEADZONE, STEER_LEVEL_RATE, STEER_MAX_ANGLE, STEER_MAX_TURN_RATE, STEER_SMOOTHING, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, naturalDeceleration, rotAccel, rotDamping, shootCooldownTime } from '../config.js';
 import { state } from '../state.js';
 import { _sq1, _sq2, _sv1, _sv2, _sv3 } from '../core/scratch.js';
 import { _playEmptyClip } from '../audio.js';
@@ -8,6 +8,7 @@ import { _wingTipL, _wingTipR, updateWingTrail, wingTrailL, wingTrailR } from '.
 import { triggerGameOver } from '../game/gameOver.js';
 import { fireBullet } from '../combat/weapons.js';
 import { _gpAxes, _mouseLMB, keys } from '../input.js';
+import { settings } from '../core/settings.js';
 
 // --- Sub-System Functions (§1.2) ---
 export function updatePhysics(dt) {
@@ -24,7 +25,7 @@ export function updatePhysics(dt) {
     if (_diveY > 0.05 && state.speed < _effectiveMax) state.speed = Math.min(_effectiveMax, state.speed + acceleration * _diveY * 2 * dt);
     else if (state.speed > maxSpeed) state.speed = Math.max(maxSpeed, state.speed - naturalDeceleration * 6 * dt); // bleed excess on level-out
     // ── Mouse-cursor quaternion steering (War Thunder style) ────────────
-    if (MOUSE_STEERING) {
+    if (settings.mouseSteering) {
         // Pre-check manual roll/pitch keys so corrections can be suppressed during manoeuvres
         const _rollKeyHeld  = keys.ArrowLeft || keys.ArrowRight || Math.abs(_gpAxes.roll)  > 0.1;
         const _pitchKeyHeld = keys.ArrowUp   || keys.ArrowDown  || Math.abs(_gpAxes.pitch) > 0.1;
@@ -39,7 +40,7 @@ export function updatePhysics(dt) {
             // Build desired direction in plane-local space (cursor center = plane forward, no camera bias)
             // Negate cx so left→left, cy positive so up→up
             const yawAng   = -(cx / STEER_CURSOR_RADIUS) * STEER_MAX_ANGLE;
-            const pitchAng =  (cy / STEER_CURSOR_RADIUS) * STEER_MAX_ANGLE;
+            const pitchAng =  (cy / STEER_CURSOR_RADIUS) * STEER_MAX_ANGLE * (settings.invertPitch ? -1 : 1);
             _sv2.set(Math.sin(yawAng) * Math.cos(pitchAng), Math.sin(pitchAng), Math.cos(yawAng) * Math.cos(pitchAng));
             _sv2.applyQuaternion(plane.quaternion).normalize();
             // Angle between current forward and desired direction
@@ -70,7 +71,7 @@ export function updatePhysics(dt) {
         }
     }
     // ── Keyboard / gamepad fine-control (pitch, roll, yaw added on top) ──
-    const pitchIn = Math.max(-1, Math.min(1, (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0) + _gpAxes.pitch));
+    const pitchIn = Math.max(-1, Math.min(1, (keys.ArrowUp ? -1 : 0) + (keys.ArrowDown ? 1 : 0) + _gpAxes.pitch)) * (settings.invertPitch ? -1 : 1);
     const rollIn  = Math.max(-1, Math.min(1, (keys.ArrowLeft ? -1 : 0) + (keys.ArrowRight ? 1 : 0) + _gpAxes.roll));
     const yawIn   = Math.max(-1, Math.min(1, (keys.a ? 1 : 0) + (keys.d ? -1 : 0) + _gpAxes.yaw));
     if (pitchIn !== 0) state.pitchRate = Math.max(-maxPitchRate, Math.min(maxPitchRate, state.pitchRate + pitchIn * rotAccel * dt));

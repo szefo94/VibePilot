@@ -1,6 +1,6 @@
-/** Keyboard, mouse and gamepad input. */
+/** Keyboard, mouse and gamepad input. Menus and session changes live in game/session.js. */
 import { state } from './state.js';
-import { memDebugEl, pausedElement } from './ui/dom.js';
+import { memDebugEl } from './ui/dom.js';
 import { aimingLaser } from './player/plane.js';
 import { wingTrailL, wingTrailR } from './player/wingTrails.js';
 import { _toggleColorMode } from './effects/colorMode.js';
@@ -9,6 +9,7 @@ import { spawnInterceptors } from './entities/airUnits.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
 import { toggleMute } from './audio.js';
 import { showNotification } from './ui/notifications.js';
+import { closeSettings, menuActivate, menuNavigate, menuOpen, onInputRelease, restart, settingsOpen, startGame, togglePause } from './game/session.js';
 
 // --- Input Handling ---
 export const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
@@ -16,7 +17,9 @@ export let _mouseLMB = false; // left mouse button held — machinegun
 
 const splashActive = () => !!document.getElementById('splash-screen');
 // Gameplay actions (weapons, spawns) are only accepted while actually flying
-const canAct = () => !state.isGameOver && !state.isPaused && !splashActive();
+const canAct = () => !state.isGameOver && !state.isPaused && !state.awaitingStart && !splashActive() && !settingsOpen();
+// Enter/Space on a focused button or form control belong to that control, not to global shortcuts
+const onControl = e => !!e.target.closest?.('button, input, select, textarea');
 
 /** Release every held input (keys, mouse gun, rotation rates). */
 function clearHeldInput() {
@@ -24,11 +27,7 @@ function clearHeldInput() {
     _mouseLMB = false;
     state.pitchRate = state.rollRate = state.yawRate = 0;
 }
-function togglePause() {
-    state.isPaused = !state.isPaused;
-    pausedElement.style.display = state.isPaused ? 'block' : 'none';
-    if (state.isPaused) clearHeldInput();
-}
+onInputRelease(clearHeldInput);
 const heldKey = e => Object.hasOwn(keys, e.key.toLowerCase()) ? e.key.toLowerCase() : Object.hasOwn(keys, e.key) ? e.key : null;
 
 window.addEventListener('contextmenu', e => e.preventDefault()); // suppress right-click menu
@@ -49,10 +48,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) clear
 document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     const held = heldKey(e);
+    if (settingsOpen()) { if (e.key === 'Escape' && !e.repeat) closeSettings(); return; }
+    if (e.key === ' ' && menuOpen() && !onControl(e)) e.preventDefault(); // no page scroll behind menus
+    if (state.awaitingStart) {
+        if (e.key === 'Enter' && !e.repeat && !onControl(e)) startGame();
+        return;
+    }
     if (state.isGameOver) {
         if (held) keys[held] = true; // orbit controls during game-over free-look
         if (k === 'g' && !e.repeat) _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none';
-        if (e.key === 'Enter' && !e.repeat) location.reload(); // restart
+        if (e.key === 'Enter' && !e.repeat && !onControl(e)) restart();
         return;
     }
     if (splashActive()) return;
@@ -104,9 +109,14 @@ export function pollGamepad() {
     // One-shot actions — fire only on button press (not while held)
     const pressed = b => !!gp.buttons[b]?.pressed && !_gpPrev[b];
     if (!splashActive()) {
-        // Start → pause/unpause during play, reload on game over
-        if (pressed(9)) { if (state.isGameOver) location.reload(); else togglePause(); }
-        if (canAct()) {
+        // Start → begin / pause / resume / restart after game over
+        if (pressed(9)) { if (state.awaitingStart) startGame(); else if (state.isGameOver) restart(); else if (!settingsOpen()) togglePause(); }
+        if (menuOpen()) {
+            if (pressed(12)) menuNavigate(-1);                        // D-pad up
+            if (pressed(13)) menuNavigate(1);                         // D-pad down
+            if (pressed(0)) menuActivate();                           // A → select
+            if (pressed(1) && settingsOpen()) closeSettings();        // B → back
+        } else if (canAct()) {
             if (pressed(0) || pressed(1)) tryDropBomb();              // A / B → bomb
             if (pressed(2)) tryFireMissile();                         // X → missile
             if (pressed(3)) tryDeployFlares();                        // Y → flares

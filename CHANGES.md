@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Session flow & settings (review #19, #7, #14)
+- **Start menu:** the simulation and weapons wait until Start. It lists the controls and the best score.
+- **Pause menu:** Resume · Restart · Settings.
+- **Game-over and debrief buttons:** Restart · Replay this map. Menus work with mouse, keyboard and gamepad (D-pad, A, B, Start), with focus handling and a visible cursor.
+- **Settings**, saved in the browser: volume, mute, mouse steering, invert pitch, reference panels.
+- **Every map is seeded;** the debrief shows the seed, and `?seed=N` or Replay rebuilds the identical world. The debrief also gains a text summary.
+- `prefers-reduced-motion` is respected. `?autostart` skips the start menu.
+- **Bounded simulation sub-steps** (`src/game/simulation.js`): the same inputs give the same flight at 60, 20 and 10 fps.
+
 > **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
 ### Performance

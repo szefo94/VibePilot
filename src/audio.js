@@ -3,13 +3,12 @@
  * gesture (browser autoplay policy); every sound routes through a master gain with a persisted mute,
  * noise buffers are generated once and reused, and simultaneous voices are capped.
  */
-import { storageGetInt, storageSet } from './core/storage.js';
+import { onSettingChange, setSetting, settings } from './core/settings.js';
 
-const MASTER_VOLUME = 0.9;
 const MAX_VOICES = 24;
 
 let ctx = null, master = null, activeVoices = 0;
-let muted = storageGetInt('vibepilot_muted') === 1;
+const masterGain = () => (settings.muted ? 0 : settings.volume);
 const noiseBuffers = new Map(); // `${duration}|${decay}` → AudioBuffer
 
 function unlock() {
@@ -18,25 +17,26 @@ function unlock() {
         if (!AudioCtx) return;
         ctx = new AudioCtx();
         master = ctx.createGain();
-        master.gain.value = muted ? 0 : MASTER_VOLUME;
+        master.gain.value = masterGain();
         master.connect(ctx.destination);
     }
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 }
 for (const type of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(type, unlock, { capture: true, passive: true });
 
-/** Toggle mute (persisted). Returns the new muted state. */
+/** Toggle mute (persisted in settings). Returns the new muted state. */
 export function toggleMute() {
-    muted = !muted;
-    storageSet('vibepilot_muted', muted ? 1 : 0);
-    if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER_VOLUME, ctx.currentTime, 0.02);
-    return muted;
+    setSetting('muted', !settings.muted);
+    return settings.muted;
 }
+onSettingChange(key => {
+    if ((key === 'muted' || key === 'volume') && master) master.gain.setTargetAtTime(masterGain(), ctx.currentTime, 0.02);
+});
 
 // Run a sound builder with the start time; skipped before unlock, while muted, or over the voice budget.
 // The builder returns the node that ends last, which releases the voice.
 function play(build) {
-    if (!ctx || ctx.state !== 'running' || muted || activeVoices >= MAX_VOICES) return;
+    if (!ctx || ctx.state !== 'running' || masterGain() === 0 || activeVoices >= MAX_VOICES) return;
     try {
         const last = build(ctx.currentTime);
         activeVoices++;

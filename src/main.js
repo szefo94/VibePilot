@@ -1,5 +1,6 @@
 /** Entry point: world initialisation and the per-frame update loop. */
-import { MINIMAP_REFRESH_S, MOUSE_STEERING, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS } from './config.js';
+import { MINIMAP_REFRESH_S, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS } from './config.js';
+import { settings } from './core/settings.js';
 import { state } from './state.js';
 import { camera, renderer, scene } from './core/scene.js';
 import { _sv1 } from './core/scratch.js';
@@ -50,12 +51,12 @@ function animate() {
     const dt = Math.min(rawDelta * TARGET_FPS, 6); // cap at 6 frames — prevents spiral-of-death on tab switch
 
     // Stat sampling (~1 s interval) for death debrief
-    if (!state.isGameOver && !state.isPaused && !splashActive) {
+    if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         state._statTimer -= dt;
         if (state._statTimer <= 0) { state._statTimer = 60; _statHp.push(Math.max(0, state.planeHP)); _statScore.push(state.score); _statXp.push(state.xp); _statLvl.push(state.level); }
     }
     // Interceptor event timer
-    if (!state.isGameOver && !state.isPaused && !splashActive) {
+    if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         state._gameElapsed += dt;
         if (state._gameElapsed >= 60 * TARGET_FPS) { // arm after 1 minute
             state._interceptorTimer -= dt;
@@ -65,7 +66,7 @@ function animate() {
             }
         }
     }
-    if (!state.isGameOver && !state.isPaused && !splashActive) {
+    if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         perf.markSimulated();
         simulate(dt); // bounded sub-steps: game/simulation.js
         perf.begin('hud'); updateHUD(); perf.end('hud');
@@ -80,7 +81,7 @@ function animate() {
     perf.begin('camera'); updateCamera(dt); perf.end('camera');
     perf.begin('cursor');
     // Decay steering cursor toward center when mouse is idle
-    if (MOUSE_STEERING) {
+    if (settings.mouseSteering) {
         const _decay = Math.pow(1 - STEER_RETURN_DECAY, dt);
         state._mouseNDC.x *= _decay;
         state._mouseNDC.y *= _decay;
@@ -161,5 +162,4 @@ function animate() {
 // Start rendering immediately — script is at end of <body> so DOM is ready.
 // window.onload would block until fonts finish loading, causing a blank screen.
 animate();
-if (SPLASH_ENABLED) runSplash(); // shows the steering cursor itself when dismissed
-else if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
+if (SPLASH_ENABLED && !DEBUG_PARAMS.autostart) runSplash(); // game/session.js manages menus and the steering cursor

@@ -104,13 +104,46 @@
             <span id="napalm-status" class="ammo-status">2/2</span>
         </div>
     </div>
-    <div id="paused">
-        PAUSED<br>
-        <span style="font-size: 18px;">Press ESC to resume</span>
+    <div id="paused" role="dialog" aria-modal="true" aria-labelledby="paused-title">
+        <div id="paused-title">PAUSED</div>
+        <div class="menu-buttons">
+            <button type="button" data-action="resume">Resume</button>
+            <button type="button" data-action="restart">Restart</button>
+            <button type="button" data-action="settings">Settings</button>
+        </div>
+        <div class="menu-hint">Esc resume · Tab / D-pad move · Enter / A select</div>
     </div>
-    <div id="game-over">
-        GAME OVER!<br>
-        <span style="font-size: 18px;">Press Enter to restart</span>
+    <div id="game-over" role="dialog" aria-modal="true">
+        GAME OVER!
+    </div>
+
+    <!-- Start menu: the simulation waits here (skipped with ?autostart) -->
+    <div id="start-menu" class="menu-screen" role="dialog" aria-modal="true" aria-labelledby="start-title" hidden>
+        <h1 id="start-title">Vibe Pilot</h1>
+        <p class="menu-sub">Destroy hostile bases · collect constellations · fly the tubes</p>
+        <div class="menu-buttons">
+            <button type="button" data-action="start">Start</button>
+            <button type="button" data-action="settings">Settings</button>
+        </div>
+        <details class="menu-controls">
+            <summary>Controls</summary>
+            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · Esc pause · V mute</p>
+            <p><b>Mouse</b>: move to steer · left button gun · right button missiles</p>
+            <p><b>Gamepad</b>: left stick yaw/throttle · right stick roll/pitch · RT gun · A/B bomb · X missiles · Y flares · LB napalm · RB laser · Start pause</p>
+        </details>
+        <p class="menu-hint">Best score <span id="start-best">0</span> · Enter / Start to fly</p>
+    </div>
+
+    <!-- Settings (persisted) -->
+    <div id="settings-dialog" class="menu-screen" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+        <h2 id="settings-title">Settings</h2>
+        <label>Volume <input type="range" min="0" max="1" step="0.05" data-setting="volume"></label>
+        <label>Mute (V) <input type="checkbox" data-setting="muted"></label>
+        <label>Mouse steering <input type="checkbox" data-setting="mouseSteering"></label>
+        <label>Invert pitch <input type="checkbox" data-setting="invertPitch"></label>
+        <label>Show controls &amp; debug panels <input type="checkbox" data-setting="showReferencePanels"></label>
+        <div class="menu-buttons"><button type="button" data-action="close-settings">Done</button></div>
+        <div class="menu-hint">Esc / B back</div>
     </div>
 
     <!-- Steering cursor reticle (mouse-aim) -->

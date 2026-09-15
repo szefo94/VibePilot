@@ -17,6 +17,7 @@ export const state = {
     // Control flow
     isGameOver: false,
     isPaused: false,
+    awaitingStart: true, // start menu showing; game/session.js clears it (or ?autostart)
     // Interceptor event
     _gameElapsed: 0, // seconds-equivalent (frame units at 60 fps)
     _interceptorTimer: (60 + Math.random() * 60) * TARGET_FPS, // first wave: 1–2 min

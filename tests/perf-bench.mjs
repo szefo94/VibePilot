@@ -163,7 +163,7 @@ async function runTarget(browser, target) {
     page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(instrument, opt.seed);
     try {
-        await page.goto(`http://127.0.0.1:${server.address().port}/${entry}?perf=quiet&invulnerable${target.query ? '&' + target.query : ''}`, { waitUntil: 'load' });
+        await page.goto(`http://127.0.0.1:${server.address().port}/${entry}?perf=quiet&invulnerable&autostart&seed=${opt.seed}${target.query ? '&' + target.query : ''}`, { waitUntil: 'load' });
         // World ready = the populated scene is being drawn
         await page.waitForFunction(() => { const d = window.__bench.draws; return d.length > 5 && d[d.length - 1] > 150; }, null, { timeout: 60000 });
         const info = await page.evaluate(() => {

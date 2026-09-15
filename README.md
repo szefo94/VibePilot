@@ -68,7 +68,8 @@ Scripts can read it all via `window.__vpPerf.snapshot()`.
 
 | Parameter | Effect |
 |---|---|
-| `?seed=N` | Deterministic `Math.random` — the same world layout every load |
+| `?seed=N` | Load a specific map. Every run is seeded (`window.__vpSeed`, shown in the debrief); **Replay this map** reuses the seed |
+| `?autostart` | Skip the start menu (used by Restart, tests and the benchmark) |
 | `?invulnerable` | The run never ends (no game over, enemy bullets deflected) |
 | `?disable=searchlights,fences,labels` | Switch features off to measure their cost (`searchlights` hides the pooled real lights) |
 
@@ -131,13 +132,13 @@ Modules import what they use explicitly; values that several systems reassign li
 | `N` | Toggle wing trails |
 | `M` | Toggle memory debug panel |
 | `C` | Toggle color lines mode (all meshes → vibrant HSL wireframe on black) |
-| `Esc` | Pause / Resume |
+| `Esc` | Pause menu (Resume · Restart · Settings) · close Settings |
 | `I` | Spawn interceptor wave immediately (debug) |
 | `V` | Mute / unmute sound (remembered between sessions) |
 | Mouse move | Steer toward the cursor |
 | Left / right mouse button | Shoot / fire missiles |
 | `G` | Toggle mission debrief (after game over) |
-| `Enter` | Restart (after game over) |
+| `Enter` | Start (start menu) · Restart (after game over) |
 
 ### Gamepad (Xbox / PS5 DualSense)
 
@@ -156,9 +157,19 @@ Both controllers use the browser standard gamepad mapping — button indices are
 | Y | Triangle △ | Deploy flares |
 | LB | L1 | Drop napalm |
 | RB | R1 | Toggle aiming laser |
-| Start | Options | Pause / Resume · Reload on game over |
+| Start | Options | Start · Pause / Resume · Restart on game over |
+| D-pad ↑/↓ · A · B | D-pad · Cross · Circle | In menus: move focus · select · back (Settings) |
 
 Gamepad is polled every frame via the browser Gamepad API. Stick deflection is analog — partial stick input scales acceleration proportionally. Keyboard and controller work simultaneously.
+
+### Menus & Settings
+
+- **Start menu:** the world is generated behind it, but nothing moves or fires until **Start**. It also lists the controls and your best score.
+- **Pause menu** (`Esc` / Start): Resume · Restart · Settings.
+- **Game over and debrief:** Restart (a new map) · **Replay this map** (same seed). The debrief summary shows the map seed.
+- **Settings** (saved in the browser): volume, mute, mouse steering, invert pitch, and show/hide the controls/debug/coordinates panels.
+
+All menus work with mouse, keyboard (Tab, Enter/Space, Esc) and gamepad. Animations are reduced when the OS asks for reduced motion.
 
 ---
 

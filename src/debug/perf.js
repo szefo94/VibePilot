@@ -126,7 +126,7 @@ export function snapshot() {
     const interval = frameInterval.stats(), sim = simulated.stats();
     return {
         enabled,
-        gameState: state.isGameOver ? 'game over' : state.isPaused ? 'paused' : splashActive ? 'splash' : 'flying',
+        gameState: state.isGameOver ? 'game over' : state.awaitingStart ? 'ready (start menu)' : state.isPaused ? 'paused' : splashActive ? 'splash' : 'flying',
         simulatedPct: sim ? Math.round(sim.avg * 100) : null, // share of the window's frames that ran gameplay
         frames: frameInterval.count,
         fps: interval ? Math.round(10000 / interval.avg) / 10 : null,

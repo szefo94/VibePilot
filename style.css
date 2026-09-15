@@ -603,3 +603,69 @@ canvas {
     #minimap-container { width: min(400px, 38vmin); height: min(400px, 38vmin); }
     #ammo-hud { left: auto; right: 10px; transform: scale(0.72); transform-origin: bottom right; }
 }
+
+/* ── Menus: start, pause, game over, settings ─────────────────── */
+[hidden] { display: none !important; }
+body.menu-open, body.menu-open * { cursor: auto; }
+body.menu-open button, body.menu-open summary, body.menu-open input { cursor: pointer; }
+.menu-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 800;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 20px;
+    background: rgba(0, 8, 4, 0.8);
+    color: var(--hud-primary);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    text-align: center;
+    text-shadow: var(--text-glow);
+}
+#settings-dialog { z-index: 900; background: rgba(0, 8, 4, 0.92); }
+#start-title {
+    margin: 0;
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2rem, 7vw, 4.5rem);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+#settings-title { margin: 0 0 6px; letter-spacing: 0.15em; text-transform: uppercase; }
+.menu-sub { margin: 0; color: var(--hud-amber); font-size: 14px; }
+.menu-buttons { display: flex; flex-direction: column; gap: 10px; min-width: 220px; margin-top: 12px; }
+.menu-buttons.menu-row { flex-direction: row; justify-content: center; }
+.menu-buttons button {
+    font-family: inherit;
+    font-size: 18px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--hud-primary);
+    background: rgba(0, 30, 16, 0.9);
+    border: 1px solid var(--hud-border-bright);
+    padding: 10px 18px;
+    text-shadow: var(--text-glow);
+}
+.menu-buttons button:hover, .menu-buttons button:focus-visible,
+.menu-screen input:focus-visible, .menu-controls summary:focus-visible {
+    background: rgba(0, 255, 136, 0.18);
+    outline: 2px solid var(--hud-amber);
+    outline-offset: 2px;
+}
+.menu-hint { margin-top: 8px; font-size: 12px; letter-spacing: 0.05em; opacity: 0.75; text-transform: none; }
+.menu-controls { max-width: min(600px, 92vw); font-size: 13px; text-align: left; line-height: 1.6; }
+.menu-controls summary { text-align: center; font-size: 15px; }
+#settings-dialog label { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: min(340px, 90vw); font-size: 15px; }
+#settings-dialog input[type="range"] { width: 160px; accent-color: #00ff88; }
+#settings-dialog input[type="checkbox"] { width: 18px; height: 18px; accent-color: #00ff88; }
+
+/* Settings → hide the reference panels */
+body.hide-reference #instructions, body.hide-reference #debug-info, body.hide-reference #map-constraints { display: none; }
+
+/* Respect reduced-motion preferences: no scrolling tickers, banner slides or splash fades */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+/* Settings opened from the pause menu: hide the panel underneath instead of showing it through */
+body:has(#settings-dialog:not([hidden])) #paused { visibility: hidden; }

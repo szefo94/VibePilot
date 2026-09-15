@@ -1,5 +1,6 @@
 /** Typewriter splash screen, enabled with SPLASH_ENABLED in config.js. */
-import { MOUSE_STEERING, maxSpeed } from '../config.js';
+import { maxSpeed } from '../config.js';
+import { settings } from '../core/settings.js';
 import { state } from '../state.js';
 import { _playKeyClick } from '../audio.js';
 import { _steerCursorEl } from './dom.js';
@@ -56,7 +57,7 @@ export function runSplash() {
             splash.style.opacity   = '0';
             state.speed = maxSpeed * 0.5;
             splashActive = false;
-            setTimeout(() => { splash.remove(); if (MOUSE_STEERING) _steerCursorEl.style.display = 'block'; }, 500);
+            setTimeout(() => { splash.remove(); if (settings.mouseSteering && !state.awaitingStart) _steerCursorEl.style.display = 'block'; }, 500);
         }
         function onEscapeKey(e) { if (e.key === 'Escape') dismiss(); }
         document.addEventListener('keydown', onEscapeKey);
