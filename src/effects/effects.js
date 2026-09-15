@@ -17,6 +17,7 @@ export const _tracerMat = new THREE.LineBasicMaterial({ color: 0xffcc44, transpa
 export const _muzzleFlashes = [];
 export const _muzzleFlashGeo = new THREE.SphereGeometry(0.5, 5, 4);
 export const _muzzleFlashMat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true });
+let _graceBlinking = false; // plane emissive currently driven by the spawn-grace blink
 // --- Visual effects (ideas 1-6) ---
 export const collectibleBursts = []; // green burst particles on collectible pickup (idea 1)
 export const _dyingMarkers   = []; // torus rings blink-out after marker pickup (idea 2)
@@ -125,12 +126,14 @@ export function updateEffects(dt) {
             scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.dispose(); _planeDebris.splice(i, 1);
         }
     }
-    // ── Spawn grace period — white blink while invincible ─────────
+    // ── Spawn grace period — white blink while invincible (timer ticks in main.js) ──
     if (state._graceTimer > 0) {
-        state._graceTimer = Math.max(0, state._graceTimer - dt);
-        const glow = Math.floor(state._graceTimer * 8) % 2 === 0; // ~8 Hz blink
+        const glow = Math.floor(state._graceTimer * 8) % 2 === 0; // 4 Hz blink
         _planeMaterials.forEach(m => m.emissive.setHex(glow ? 0xffffff : 0x000000));
-        if (state._graceTimer <= 0) _planeMaterials.forEach(m => m.emissive.setHex(0x000000));
+        _graceBlinking = true;
+    } else if (_graceBlinking) {
+        _planeMaterials.forEach(m => m.emissive.setHex(0x000000));
+        _graceBlinking = false;
     }
     // ── Idea 3: Player blink-on-damage ───────────────────────────
     if (state._playerBlinkTimer > 0) {

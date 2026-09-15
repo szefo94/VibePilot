@@ -1,5 +1,5 @@
 /** Player weapon actions: gun, bombs, missiles, napalm, flares. */
-import { FLARE_DURATION, MISSILE_DROP_PHASE, MISSILE_INITIAL_SPEED, bombAoERadius, bombDamage, bulletDamage, bulletLife, bulletSpeed, missileLife } from '../config.js';
+import { BOMB_RELOAD_TIME, FLARE_DURATION, FLARE_RELOAD_TIME, MISSILE_DROP_PHASE, MISSILE_INITIAL_SPEED, MISSILE_RELOAD_TIME, NAPALM_RELOAD_TIME, bombAoERadius, bombCooldownTime, bombDamage, bulletDamage, bulletLife, bulletSpeed, missileLife } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _bombDroop, _bombOffset, _missileLTip, _missileRTip, _sv1, _sv2, _sv3, _up3, _wv1 } from '../core/scratch.js';
@@ -13,6 +13,29 @@ import { _tracerMat } from '../effects/effects.js';
 const _playerBulletGeo = new THREE.SphereGeometry(.3, 8, 8);
 const _playerBulletMat = new THREE.MeshBasicMaterial({ color: 0xffa500 });
 export const _playerBulletPool = [];
+
+// --- Single-press weapon actions (shared by keyboard, mouse and gamepad) ---
+// Each checks ammo/cooldown, fires, and starts the reload when the magazine empties.
+export function tryDropBomb() {
+    if (state.bombCooldown > 0 || state.bombAmmo <= 0) return;
+    dropBomb(); state.bombCooldown = bombCooldownTime;
+    if (--state.bombAmmo <= 0) state.bombReloadTimer = BOMB_RELOAD_TIME;
+}
+export function tryFireMissile() {
+    if (state.missileAmmo <= 0) return;
+    fireMissile();
+    if (--state.missileAmmo <= 0) state.missileReloadTimer = MISSILE_RELOAD_TIME;
+}
+export function tryDeployFlares() {
+    if (state.flareAmmo <= 0) return;
+    state.flareTimer = FLARE_DURATION; deployFlareEffect();
+    if (--state.flareAmmo <= 0) state.flareReloadTimer = FLARE_RELOAD_TIME;
+}
+export function tryDropNapalm() {
+    if (state.napalmAmmo <= 0) return;
+    dropNapalm();
+    if (--state.napalmAmmo <= 0) state.napalmReloadTimer = NAPALM_RELOAD_TIME;
+}
 
 // --- Actions & Events ---
 export function fireBullet() {

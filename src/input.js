@@ -1,5 +1,4 @@
 /** Keyboard, mouse and gamepad input. */
-import { BOMB_RELOAD_TIME, FLARE_DURATION, FLARE_RELOAD_TIME, MISSILE_RELOAD_TIME, NAPALM_RELOAD_TIME, bombCooldownTime } from './config.js';
 import { state } from './state.js';
 import { memDebugEl, pausedElement } from './ui/dom.js';
 import { aimingLaser } from './player/plane.js';
@@ -7,58 +6,74 @@ import { wingTrailL, wingTrailR } from './player/wingTrails.js';
 import { _toggleColorMode } from './effects/colorMode.js';
 import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
-import { deployFlareEffect, dropBomb, dropNapalm, fireMissile } from './combat/weapons.js';
+import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
 
 // --- Input Handling ---
 export const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
 export let _mouseLMB = false; // left mouse button held — machinegun
+
+const splashActive = () => !!document.getElementById('splash-screen');
+// Gameplay actions (weapons, spawns) are only accepted while actually flying
+const canAct = () => !state.isGameOver && !state.isPaused && !splashActive();
+
+/** Release every held input (keys, mouse gun, rotation rates). */
+function clearHeldInput() {
+    Object.keys(keys).forEach(k => keys[k] = false);
+    _mouseLMB = false;
+    state.pitchRate = state.rollRate = state.yawRate = 0;
+}
+function togglePause() {
+    state.isPaused = !state.isPaused;
+    pausedElement.style.display = state.isPaused ? 'block' : 'none';
+    if (state.isPaused) clearHeldInput();
+}
+const heldKey = e => keys.hasOwnProperty(e.key.toLowerCase()) ? e.key.toLowerCase() : keys.hasOwnProperty(e.key) ? e.key : null;
+
 window.addEventListener('contextmenu', e => e.preventDefault()); // suppress right-click menu
 window.addEventListener('mousedown', e => {
-    if (state.isGameOver || state.isPaused) return;
-    if (document.getElementById('splash-screen')) return;
+    if (!canAct()) return;
     if (e.button === 0) _mouseLMB = true;
-    if (e.button === 2 && state.missileAmmo > 0) { fireMissile(); if (--state.missileAmmo <= 0) state.missileReloadTimer = MISSILE_RELOAD_TIME; }
+    if (e.button === 2) tryFireMissile();
 });
 window.addEventListener('mouseup', e => { if (e.button === 0) _mouseLMB = false; });
 window.addEventListener('mousemove', e => {
     state._mouseNDC.x = (e.clientX / window.innerWidth)  * 2 - 1;
     state._mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
 });
+// Losing focus never delivers keyup/mouseup — clear held input so nothing sticks
+window.addEventListener('blur', clearHeldInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearHeldInput(); });
+
 document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    const held = heldKey(e);
     if (state.isGameOver) {
-        // Allow orbit controls during game-over free-look
-        if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-        const _k = e.key.toLowerCase();
-        if (keys.hasOwnProperty(_k)) keys[_k] = true;
+        if (held) keys[held] = true; // orbit controls during game-over free-look
+        if (k === 'g' && !e.repeat) _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none';
         return;
     }
-    if (document.getElementById('splash-screen')) return;
-    const k = e.key.toLowerCase();
+    if (splashActive()) return;
+    if (e.key === 'Escape') { if (!e.repeat) togglePause(); return; }
+    // Display toggles work any time; ignore auto-repeat so holding a key doesn't flicker
+    if (!e.repeat) {
+        if (k === 'b') state.debugCollision = !state.debugCollision;
+        else if (k === 'm') { memDebugEl.classList.toggle('active'); state._memDebugTimer = 0; }
+        else if (k === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
+        else if (k === 'c') _toggleColorMode();
+    }
+    if (state.isPaused) return;
+    if (held) { keys[held] = true; return; }
+    if (e.repeat) return;
     if (k === 'f') aimingLaser.visible = !aimingLaser.visible;
-    else if (k === 'e') { if (state.bombCooldown <= 0 && state.bombAmmo > 0) { dropBomb(); state.bombCooldown = bombCooldownTime; if (--state.bombAmmo <= 0) state.bombReloadTimer = BOMB_RELOAD_TIME; } }
-    else if (k === 'r') { if (state.missileAmmo > 0) { fireMissile(); if (--state.missileAmmo <= 0) state.missileReloadTimer = MISSILE_RELOAD_TIME; } }
-    else if (k === 'q') { if (state.flareAmmo > 0) { state.flareTimer = FLARE_DURATION; deployFlareEffect(); if (--state.flareAmmo <= 0) state.flareReloadTimer = FLARE_RELOAD_TIME; } }
-    else if (k === 'x') { if (state.napalmAmmo > 0) { dropNapalm(); if (--state.napalmAmmo <= 0) state.napalmReloadTimer = NAPALM_RELOAD_TIME; } }
-    else if (k === 'i') { spawnInterceptors(); } // debug: instant interceptor wave
-    else if (keys.hasOwnProperty(k)) keys[k] = true;
-    else if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+    else if (k === 'e') tryDropBomb();
+    else if (k === 'r') tryFireMissile();
+    else if (k === 'q') tryDeployFlares();
+    else if (k === 'x') tryDropNapalm();
+    else if (k === 'i') spawnInterceptors(); // debug: instant interceptor wave
 });
 document.addEventListener('keyup', e => {
-    const k = e.key.toLowerCase();
-    if (keys.hasOwnProperty(k)) keys[k] = false;
-    else if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-});
-document.addEventListener('keydown', e => {
-    if (e.key.toLowerCase() === 'b') state.debugCollision = !state.debugCollision;
-    if (e.key.toLowerCase() === 'm') { memDebugEl.classList.toggle('active'); state._memDebugTimer = 0; }
-    if (e.key.toLowerCase() === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
-    if (e.key.toLowerCase() === 'c') _toggleColorMode();
-    if (e.key.toLowerCase() === 'g' && state.isGameOver) { _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none'; }
-    if (e.key === 'Escape' && !state.isGameOver && !document.getElementById('splash-screen')) {
-        state.isPaused = !state.isPaused;
-        pausedElement.style.display = state.isPaused ? 'block' : 'none';
-        if (state.isPaused) { Object.keys(keys).forEach(k => keys[k] = false); state.pitchRate = state.rollRate = state.yawRate = 0; _mouseLMB = false; }
-    }
+    const held = heldKey(e);
+    if (held) keys[held] = false;
 });
 
 // --- Gamepad (Xbox controller) support ---
@@ -83,20 +98,16 @@ export function pollGamepad() {
     // RT (button 7) → shoot (continuous while held)
     _gpAxes.shoot = (gp.buttons[7]?.value ?? 0) > 0.1;
     // One-shot actions — fire only on button press (not while held)
-    const p = b => !!gp.buttons[b]?.pressed;
-    if (!document.getElementById('splash-screen')) {
+    const pressed = b => !!gp.buttons[b]?.pressed && !_gpPrev[b];
+    if (!splashActive()) {
         // Start → pause/unpause during play, reload on game over
-        if (p(9) && !_gpPrev[9]) {
-            if (state.isGameOver) { location.reload(); }
-            else { state.isPaused = !state.isPaused; pausedElement.style.display = state.isPaused ? 'block' : 'none'; if (state.isPaused) { Object.keys(keys).forEach(k => keys[k] = false); state.pitchRate = state.rollRate = state.yawRate = 0; _mouseLMB = false; } }
-        }
-        if (!state.isGameOver && !state.isPaused) {
-            if (p(1) && !_gpPrev[1]) { if (state.bombCooldown <= 0 && state.bombAmmo > 0) { dropBomb(); state.bombCooldown = bombCooldownTime; if (--state.bombAmmo <= 0) state.bombReloadTimer = BOMB_RELOAD_TIME; } }    // B → bomb
-            if (p(2) && !_gpPrev[2]) { if (state.missileAmmo > 0) { fireMissile(); if (--state.missileAmmo <= 0) state.missileReloadTimer = MISSILE_RELOAD_TIME; } }                                             // X → missile
-            if (p(3) && !_gpPrev[3]) { if (state.flareAmmo > 0) { state.flareTimer = FLARE_DURATION; deployFlareEffect(); if (--state.flareAmmo <= 0) state.flareReloadTimer = FLARE_RELOAD_TIME; } }                  // Y → flares
-            if (p(4) && !_gpPrev[4]) { if (state.napalmAmmo > 0) { dropNapalm(); if (--state.napalmAmmo <= 0) state.napalmReloadTimer = NAPALM_RELOAD_TIME; } }                                                  // LB → napalm
-            if (p(5) && !_gpPrev[5]) { aimingLaser.visible = !aimingLaser.visible; }                                                                                                           // RB → laser
-            if (p(0) && !_gpPrev[0]) { if (state.bombCooldown <= 0 && state.bombAmmo > 0) { dropBomb(); state.bombCooldown = bombCooldownTime; if (--state.bombAmmo <= 0) state.bombReloadTimer = BOMB_RELOAD_TIME; } }    // A → bomb (alt)
+        if (pressed(9)) { if (state.isGameOver) location.reload(); else togglePause(); }
+        if (canAct()) {
+            if (pressed(0) || pressed(1)) tryDropBomb();              // A / B → bomb
+            if (pressed(2)) tryFireMissile();                         // X → missile
+            if (pressed(3)) tryDeployFlares();                        // Y → flares
+            if (pressed(4)) tryDropNapalm();                          // LB → napalm
+            if (pressed(5)) aimingLaser.visible = !aimingLaser.visible; // RB → laser
         }
     }
     // Save button states for next frame edge detection

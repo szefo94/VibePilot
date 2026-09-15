@@ -52,6 +52,8 @@ function animate() {
         }
     }
     if (!state.isGameOver && !state.isPaused) {
+        // Spawn protection is simulation state in seconds; dt is in 60 fps frame units
+        if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - dt / TARGET_FPS);
         updatePhysics(dt);
         updateAI(dt);
         resolveCollisions();
