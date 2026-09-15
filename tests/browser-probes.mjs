@@ -1,0 +1,293 @@
+// Focused browser regression probes (see PROJECT_REVIEW.md). Each probe loads the game in a fresh page,
+// imports the live ES modules with dynamic import() and checks one behaviour.
+//
+//   npm run test:browser                  # all probes
+//   npm run test:browser -- pause grace   # selected probes
+//
+// Browser: set BROWSER_PATH to a Chromium-based executable (Chrome, Brave, Edge), or install
+// Playwright's Chromium once with `npx playwright-core install chromium`.
+import { chromium } from 'playwright-core';
+import { startServer } from '../scripts/serve.mjs';
+
+const only = process.argv.slice(2);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+const worldReady = page => page.waitForFunction(async () => {
+    const { groundUnits } = await import('./src/entities/registry.js');
+    return groundUnits.length > 20;
+}, null, { timeout: 60000 });
+
+const probes = {
+    // Startup: no uncaught errors, world populated, HUD attached
+    async startup(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { groundUnits, airUnits, enemies } = await import('./src/entities/registry.js');
+            return { ground: groundUnits.length, air: airUnits.length, fighters: enemies.length, pass: groundUnits.length > 20 && enemies.length > 0 && !!document.querySelector('canvas') };
+        });
+    },
+    // #1 spawn protection lasts ~5 s of simulated time
+    async grace(page) {
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const t0 = state._graceTimer;
+            await new Promise(r => setTimeout(r, 1500));
+            return { start: +t0.toFixed(2), after1500ms: +state._graceTimer.toFixed(2), pass: state._graceTimer > 2.5 && state._graceTimer < 4.5 };
+        });
+    },
+    // #2 paused keyboard/mouse actions do not consume ammo; unpaused still works
+    async pause(page) {
+        const ammo = () => page.evaluate(async () => { const { state } = await import('./src/state.js'); return { paused: state.isPaused, m: state.missileAmmo, b: state.bombAmmo, f: state.flareAmmo, n: state.napalmAmmo }; });
+        await page.keyboard.press('Escape');
+        const before = await ammo();
+        for (const k of ['r', 'e', 'q', 'x']) await page.keyboard.press(k);
+        await page.mouse.click(700, 400, { button: 'right' });
+        const during = await ammo();
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('r');
+        const after = await ammo();
+        return { before, during, after, pass: before.paused && ['m', 'b', 'f', 'n'].every(k => during[k] === before[k]) && !after.paused && after.m === before.m - 1 };
+    },
+    // #3 parented airport turrets use world coordinates; #8/#11 airport death exposes turrets in the world
+    async turrets(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { groundUnits } = await import('./src/entities/registry.js');
+            const { groundUnitWorldPos, canDamageGround } = await import('./src/combat/damage.js');
+            const { killGroundUnit } = await import('./src/entities/groundUnits.js');
+            const { scene } = await import('./src/core/scene.js');
+            await new Promise(r => setTimeout(r, 500)); // let updateAI refresh caches
+            state.isPaused = true;
+            const airport = groundUnits.find(u => u.userData.type === 'airport' && u.userData.dependents?.length);
+            if (!airport) return { pass: false, error: 'no airport' };
+            const t = airport.userData.dependents[0];
+            const expected = t.getWorldPosition(new THREE.Vector3());
+            const cachedErr = groundUnitWorldPos(t).distanceTo(expected);
+            const localDiffers = t.position.distanceTo(expected) > 1;
+            const protectedBefore = !canDamageGround(t, 'bullet') && !canDamageGround(t, 'missile');
+            airport.userData._alive = true; airport.userData.hp = 0;
+            killGroundUnit(airport);
+            const after = { parentIsScene: t.parent === scene, inRegistry: groundUnits.includes(t), exposed: canDamageGround(t, 'bullet'), worldPosKept: groundUnitWorldPos(t).distanceTo(expected) < 0.01 };
+            return { cachedErr, localDiffers, protectedBefore, after, pass: cachedErr < 0.01 && localDiffers && protectedBefore && Object.values(after).every(Boolean) };
+        });
+    },
+    // #4 direct missile hit on a large unit deals damage; #5 one blast damages every original victim
+    async missileSplash(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { enemies, missiles, groundUnits } = await import('./src/entities/registry.js');
+            const { updateProjectiles } = await import('./src/combat/projectiles.js');
+            const { createGroundUnit } = await import('./src/entities/groundUnits.js');
+            const { scene } = await import('./src/core/scene.js');
+            const { groundLevel } = await import('./src/config.js');
+            state.isPaused = true;
+            const [e1, e2] = enemies;
+            const place = (e, x) => e.parts.forEach(p => { p.position.set(x, 60, 900); p.userData.hp = 10; });
+            place(e1, 900); place(e2, 901);
+            const missile = (x, y, z) => { const m = new THREE.Object3D(); m.position.set(x, y, z); m.velocity = new THREE.Vector3(); m.life = 100; m.speed = 0; m.dropPhase = 1; m.trailTimer = 99; m.target = null; scene.add(m); missiles.push(m); };
+            missile(900.5, 60, 900);
+            updateProjectiles(0);
+            const splash = { e1Alive: enemies.includes(e1), e2Alive: enemies.includes(e2) };
+            const d = createGroundUnit('destroyer'); d.position.set(-900, groundLevel + 1, -900); d.userData.hp = 100; scene.add(d); groundUnits.push(d);
+            missile(-900 + 51, groundLevel + 6, -900); // inside the 50-radius collision sphere, 51 units from the centre
+            updateProjectiles(0);
+            return { splash, destroyerHp: d.userData.hp, pass: !splash.e1Alive && !splash.e2Alive && d.userData.hp < 100 };
+        });
+    },
+    // #6 enemies leaving the map are recycled without score/XP
+    async outOfBounds(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { enemies } = await import('./src/entities/registry.js');
+            const { updateAI } = await import('./src/ai.js');
+            state.isPaused = true;
+            const before = { score: state.score, xp: state.xp, n: enemies.length };
+            const [a, b] = enemies; // two at once also exercises deferred removal
+            for (const e of [a, b]) e.parts.forEach(p => { p.position.x += 5000; });
+            updateAI(0);
+            const after = { score: state.score, xp: state.xp, n: enemies.length, gone: !enemies.includes(a) && !enemies.includes(b) };
+            return { before, after, pass: after.score === before.score && after.xp === before.xp && after.n === before.n && after.gone };
+        });
+    },
+    // #7 gun cadence independent of frame rate
+    async cadence(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { keys } = await import('./src/input.js');
+            const { updatePhysics } = await import('./src/player/flight.js');
+            state.isPaused = true;
+            const shotsAt = (dt, frameUnits) => {
+                state.gunAmmo = 1e6; state.shootCooldown = 0; keys[' '] = true;
+                const before = state.gunAmmo;
+                for (let f = 0; f < frameUnits / dt; f++) updatePhysics(dt);
+                keys[' '] = false;
+                return before - state.gunAmmo;
+            };
+            const r = { fps144: shotsAt(60 / 144, 240), fps60: shotsAt(1, 240), fps20: shotsAt(3, 240), fps10: shotsAt(6, 240) };
+            return { ...r, pass: Math.max(...Object.values(r)) - Math.min(...Object.values(r)) <= 1 };
+        });
+    },
+    // #7 swept bullets hit a target crossed between two samples
+    async sweptBullet(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { enemies, bullets } = await import('./src/entities/registry.js');
+            const { resolveCollisions } = await import('./src/combat/collision.js');
+            const { scene } = await import('./src/core/scene.js');
+            state.isPaused = true;
+            const e = enemies[0];
+            e.parts.forEach((p, i) => { p.position.set(1500 + i * 50, 100, 1500); p.userData.hp = 5; });
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial());
+            b.userData = { type: 'bullet', collisionRadius: 0.3, damage: 1 }; b.life = 100; b.velocity = new THREE.Vector3(10.8, 0, 0);
+            b.prevPosition = new THREE.Vector3(1494.6, 100, 1500); b.position.set(1505.4, 100, 1500);
+            scene.add(b); bullets.push(b);
+            resolveCollisions();
+            return { partHp: e.parts[0].userData.hp, bulletRemoved: !bullets.includes(b), pass: e.parts[0].userData.hp === 4 && !bullets.includes(b) };
+        });
+    },
+    // #10 debug helpers are not recreated every frame and are released when toggled off
+    async debugLeak(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { scene } = await import('./src/core/scene.js');
+            const Original = THREE.Box3Helper; let made = 0, disposed = 0;
+            THREE.Box3Helper = class extends Original { constructor(...args) { super(...args); made++; this.geometry.addEventListener('dispose', () => disposed++); } };
+            const pause = ms => new Promise(r => setTimeout(r, ms));
+            state.isPaused = true;
+            state.debugCollision = true; await pause(600);
+            const afterOn = made; await pause(1200);
+            const afterMore = made;
+            state.debugCollision = false; await pause(400);
+            let helpersLeft = 0; scene.traverse(o => { if (o.userData.debugHelper) helpersLeft++; });
+            THREE.Box3Helper = Original;
+            return { afterOn, afterMore, disposed, helpersLeft, pass: afterOn > 0 && afterMore === afterOn && helpersLeft === 0 && disposed === made };
+        });
+    },
+    // #11 destroying one tank must not dispose geometry shared with other tanks
+    async sharedGeometry(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { groundUnits } = await import('./src/entities/registry.js');
+            const { killGroundUnit } = await import('./src/entities/groundUnits.js');
+            const { updateEffects } = await import('./src/effects/effects.js');
+            state.isPaused = true;
+            const tanks = groundUnits.filter(u => u.userData.type === 'tank');
+            if (tanks.length < 2) return { pass: false, error: 'need two tanks' };
+            const used = new Set(); tanks[1].traverse(c => { if (c.geometry) used.add(c.geometry); });
+            const shared = []; tanks[0].traverse(c => { if (c.geometry && used.has(c.geometry) && !shared.includes(c.geometry)) shared.push(c.geometry); });
+            let sharedDisposed = 0;
+            shared.forEach(g => g.addEventListener('dispose', () => sharedDisposed++));
+            tanks[0].userData._alive = true;
+            killGroundUnit(tanks[0]);
+            for (let i = 0; i < 80; i++) updateEffects(1);
+            return { sharedGeometries: shared.length, sharedDisposed, removed: !tanks[0].parent, pass: shared.length > 0 && sharedDisposed === 0 && !tanks[0].parent };
+        });
+    },
+    // #12 destroyed fence searchlights stop detecting; alarm colour fades back
+    async searchlight(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { _searchlights, _damageFenceNear } = await import('./src/entities/fences.js');
+            for (let i = 0; i < 100 && !_searchlights.some(sl => sl.range === 90); i++) await new Promise(r => setTimeout(r, 100));
+            const towerLight = _searchlights.find(sl => sl.range === 90); // watchtower lights (airport lights use 140)
+            if (!towerLight) return { pass: false, error: 'no fence searchlight' };
+            _damageFenceNear(towerLight.worldPos, 2);
+            const destroyed = { registered: _searchlights.includes(towerLight), intensity: towerLight.spot.intensity };
+            const sl = _searchlights[0];
+            sl.idleColor = sl.spot.color.clone(); sl.spot.color.setHex(0xff4400); sl.alarmed = true;
+            await new Promise(r => setTimeout(r, 4000));
+            const faded = { alarmed: sl.alarmed, color: sl.spot.color.getHexString(), idle: sl.idleColor.getHexString() };
+            return { destroyed, faded, pass: !destroyed.registered && destroyed.intensity === 0 && !faded.alarmed && faded.color === faded.idle };
+        });
+    },
+    // #13 islet meshes match their polygons (not mirrored) and face up
+    async islets(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { islets } = await import('./src/world/world.js');
+            let worst = 0, facesUp = true;
+            for (const isl of islets) {
+                isl.mesh.updateMatrixWorld(true);
+                const pos = isl.mesh.geometry.attributes.position, v = new THREE.Vector3(), pts = [];
+                for (let i = 0; i < pos.count; i++) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(isl.mesh.matrixWorld).clone());
+                for (const p of isl.polygon) worst = Math.max(worst, Math.min(...pts.map(q => Math.hypot(q.x - p.x, q.z - p.z))));
+                facesUp = facesUp && new THREE.Vector3(0, 0, 1).applyQuaternion(isl.mesh.quaternion).y > 0.99;
+            }
+            return { islets: islets.length, worstVertexErr: +worst.toFixed(4), facesUp, pass: islets.length > 0 && worst < 0.01 && facesUp };
+        });
+    },
+    // #17 denied storage must not break startup or game over
+    storageDenied: Object.assign(async page => {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { triggerGameOver } = await import('./src/game/gameOver.js');
+            state.score = 1234;
+            triggerGameOver();
+            const shown = getComputedStyle(document.getElementById('game-over')).display;
+            return { highScore: state._highScore, shown, pass: state.isGameOver && shown === 'block' && state._highScore === 1234 };
+        });
+    }, { init: () => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError'); } }) }),
+    // #21 an enabled splash holds the simulation until dismissed
+    async splash(page) {
+        await worldReady(page);
+        const during = await page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const splash = await import('./src/ui/splash.js');
+            splash.runSplash();
+            const t0 = state._gameElapsed;
+            await new Promise(r => setTimeout(r, 800));
+            return { active: splash.splashActive, held: state._gameElapsed === t0, heldAt: t0, overlay: !!document.getElementById('splash-screen') };
+        });
+        await page.keyboard.press('Escape'); // first input starts the type-out
+        await page.keyboard.press('Escape'); // second dismisses it
+        await wait(1200);
+        const after = await page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const splash = await import('./src/ui/splash.js');
+            // elapsed time vs. the held value (the random world may end the run soon after, which stops the clock)
+            return { active: splash.splashActive, overlay: !!document.getElementById('splash-screen'), paused: state.isPaused, gameOver: state.isGameOver, elapsed: state._gameElapsed };
+        });
+        return { during, after, pass: during.active && during.held && during.overlay && !after.active && !after.overlay && !after.paused && after.elapsed > during.heldAt };
+    },
+};
+
+const unknown = only.filter(name => !probes[name]);
+if (unknown.length) { console.error(`Unknown probe(s): ${unknown.join(', ')}. Available: ${Object.keys(probes).join(', ')}`); process.exit(2); }
+
+const server = await startServer(Number(process.env.PORT) || 0); // 0 = any free port
+const base = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch({
+    executablePath: process.env.BROWSER_PATH || undefined,
+    headless: true,
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+});
+let failed = 0;
+try {
+    for (const [name, probe] of Object.entries(probes)) {
+        if (only.length && !only.includes(name)) continue;
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        const errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        if (probe.init) await page.addInitScript(probe.init);
+        await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+        await page.waitForTimeout(1200);
+        let result;
+        try { result = await probe(page); } catch (e) { result = { error: e.message, pass: false }; }
+        if (errors.length) { result.pageErrors = errors; result.pass = false; }
+        if (!result.pass) failed++;
+        console.log(`${result.pass ? 'PASS' : 'FAIL'} ${name} ${JSON.stringify(result)}`);
+        await page.close();
+    }
+} finally {
+    await browser.close();
+    server.close();
+}
+process.exit(failed ? 1 : 0);

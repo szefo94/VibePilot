@@ -1,0 +1,19 @@
+{
+  "name": "vibepilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based 3D flight combat game (vendored Three.js r128, native ES modules, no build step)",
+  "type": "module",
+  "scripts": {
+    "serve": "node scripts/serve.mjs",
+    "check": "node scripts/check.mjs",
+    "lint": "eslint src scripts tests",
+    "test:browser": "node tests/browser-probes.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
+    "playwright-core": "^1.63.0"
+  }
+}
