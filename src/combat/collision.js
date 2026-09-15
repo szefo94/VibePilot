@@ -18,6 +18,7 @@ import { triggerGameOver } from '../game/gameOver.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
 import { disposeOwned } from '../core/utils.js';
+import { DEBUG_PARAMS } from '../debug/params.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
 import { TUBE_XP, _nearestTubeT, _tubeStatusEl, showTubeRibbon, tubes } from '../entities/tubes.js';
@@ -270,7 +271,7 @@ export function resolveCollisions() {
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
                 createExplosion(b.position);
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
-                if (state.flareTimer > 0 || state._graceTimer > 0) continue; // deflect: flares or spawn grace period
+                if (state.flareTimer > 0 || state._graceTimer > 0 || DEBUG_PARAMS.invulnerable) continue; // deflect: flares, spawn grace, ?invulnerable
                 state.planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, state.planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
                 state._playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage

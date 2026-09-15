@@ -9,6 +9,7 @@
 ## Table of Contents
 
 - [Running Locally](#running-locally)
+- [Performance Tooling](#performance-tooling)
 - [Project Structure](#project-structure)
 - [Controls](#controls)
 - [Splash Screen](#splash-screen)
@@ -46,7 +47,40 @@ Development checks (Node 18+, run `npm install` once for ESLint and the browser 
 |---|---|
 | `npm run check` | Syntax-checks every module and verifies that relative imports resolve |
 | `npm run lint` | ESLint over `src/`, `scripts/`, `tests/` |
+| `npm run bench` | Performance benchmark in a real browser (see [Performance Tooling](#performance-tooling)) |
 | `npm run test:browser` | Headless regression probes for the review fixes (`tests/browser-probes.mjs`). Set `BROWSER_PATH` to a Chrome/Brave/Edge executable, or run `npx playwright-core install chromium` once. Pass probe names to run a subset. |
+
+## Performance Tooling
+
+**In-game profiler** — press `P`, or open the game with `?perf` (`?perf=quiet` collects without the overlay). Over the last 600 frames it shows:
+
+- frame-time percentiles
+- CPU time per system (physics, AI, collisions, HUD, projectiles, effects, render, …)
+- GPU render time, where the browser exposes WebGL timer queries
+- draw calls, triangles and shader programs
+- scene size and lights in shaders
+- GPU resources and JS heap
+
+Scripts can read it all via `window.__vpPerf.snapshot()`.
+
+**Debug URL parameters** (combine with `&`):
+
+| Parameter | Effect |
+|---|---|
+| `?seed=N` | Deterministic `Math.random` — the same world layout every load |
+| `?invulnerable` | The run never ends (no game over, enemy bullets deflected) |
+| `?disable=searchlights,fences,labels` | Switch features off to measure their cost |
+
+**Benchmark** — `npm run bench` flies a scripted scenario in a real browser (GPU, uncapped frame rate by default). It reports frame timing, long tasks, draw calls, triangles and live GL resources for any build. For builds that include the profiler it also reports per-system CPU time, GPU time and scene statistics.
+
+```sh
+npm run bench                                                    # working tree, hover scenario
+npm run bench -- --compare edc4f4b,WORKTREE                      # any git refs side by side
+npm run bench -- --compare "WORKTREE,WORKTREE?disable=searchlights"   # cost of one feature
+npm run bench -- --scenario combat --cpuprofile run.cpuprofile   # + V8 CPU profile and top functions
+```
+
+Scenarios: `hover` (no input; most comparable), `circle` (steady turn), `combat` (turn + every weapon). Other options: `--seed`, `--warmup`, `--duration`, `--json FILE`, `--headed`, `--swiftshader`, `--vsync`. Save a `.cpuprofile` and load it in Chrome DevTools → Performance.
 
 ## Project Structure
 
@@ -55,7 +89,7 @@ index.html            HUD markup, loads three.min.js then src/main.js
 style.css             HUD / overlay styling
 three.min.js          vendored Three.js r128 (global THREE)
 scripts/              serve.mjs (static server), check.mjs (syntax / import check)
-tests/                browser-probes.mjs (headless regression probes)
+tests/                browser-probes.mjs (headless regression probes), perf-bench.mjs (benchmark)
 src/
   main.js             entry: world init + per-frame loop (animate)
   config.js           tuning constants (world, flight, weapons, enemies)
@@ -71,6 +105,7 @@ src/
   effects/            explosions & effects, colour-lines mode, debug boxes
   game/               progression (score/XP/streaks), game over
   ui/                 HUD, notifications, labels, minimap, reticle, debrief, splash
+  debug/              profiler (perf.js), debug URL parameters, seeded Math.random
 ```
 
 Modules import what they use explicitly; values that several systems reassign live on the `state` object in `src/state.js`.

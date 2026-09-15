@@ -17,14 +17,14 @@ const TYPES = {
     '.svg': 'image/svg+xml',
 };
 
-/** Serve the project root; resolves with the listening http.Server. */
-export function startServer(port = 8000, host = '127.0.0.1') {
+/** Serve `root` (default: the project root); resolves with the listening http.Server. */
+export function startServer(port = 8000, host = '127.0.0.1', root = ROOT) {
     const server = createServer(async (req, res) => {
         try {
             let path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
             if (path.endsWith('/')) path += 'index.html';
-            const file = normalize(join(ROOT, path));
-            if (file !== ROOT && !file.startsWith(ROOT + sep)) { res.writeHead(403).end(); return; }
+            const file = normalize(join(root, path));
+            if (file !== root && !file.startsWith(root + sep)) { res.writeHead(403).end(); return; }
             if (!(await stat(file)).isFile()) throw new Error('not a file');
             res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
             res.end(await readFile(file));

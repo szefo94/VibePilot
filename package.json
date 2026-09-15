@@ -8,7 +8,8 @@
     "serve": "node scripts/serve.mjs",
     "check": "node scripts/check.mjs",
     "lint": "eslint src scripts tests",
-    "test:browser": "node tests/browser-probes.mjs"
+    "test:browser": "node tests/browser-probes.mjs",
+    "bench": "node tests/perf-bench.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,6 +1,7 @@
 /** Game-over sequence. */
 import { state } from '../state.js';
 import { storageSet } from '../core/storage.js';
+import { DEBUG_PARAMS } from '../debug/params.js';
 import { _steerCursorEl, gameOverElement } from '../ui/dom.js';
 import { plane } from '../player/plane.js';
 import { enemies, groundUnits } from '../entities/registry.js';
@@ -9,7 +10,8 @@ import { _deathGraphEl, _drawDeathGraph, _statHp, _statLvl, _statScore, _statXp 
 import { _gameOverPos } from '../player/camera.js';
 
 export function triggerGameOver() {
-    if (state.isGameOver) return; state.isGameOver = true; state.speed = 0;
+    if (state.isGameOver || DEBUG_PARAMS.invulnerable) return; // ?invulnerable: profiling flights never end
+    state.isGameOver = true; state.speed = 0;
     _gameOverPos.copy(plane.position);
     state._goOrbitYaw = 0; state._goOrbitPitch = 0.3;
     _steerCursorEl.style.display = 'none';

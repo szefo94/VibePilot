@@ -26,13 +26,17 @@ const probes = {
             return { ground: groundUnits.length, air: airUnits.length, fighters: enemies.length, pass: groundUnits.length > 20 && enemies.length > 0 && !!document.querySelector('canvas') };
         });
     },
-    // #1 spawn protection lasts ~5 s of simulated time
+    // #1 spawn protection counts down in simulated seconds (independent of how slow the headless frames are)
     async grace(page) {
+        await worldReady(page);
         return page.evaluate(async () => {
             const { state } = await import('./src/state.js');
-            const t0 = state._graceTimer;
-            await new Promise(r => setTimeout(r, 1500));
-            return { start: +t0.toFixed(2), after1500ms: +state._graceTimer.toFixed(2), pass: state._graceTimer > 2.5 && state._graceTimer < 4.5 };
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            state._graceTimer = 5;
+            const g0 = state._graceTimer, e0 = state._gameElapsed;
+            await frames(30);
+            const simSeconds = (state._gameElapsed - e0) / 60, graceUsed = g0 - state._graceTimer;
+            return { simSeconds: +simSeconds.toFixed(3), graceUsed: +graceUsed.toFixed(3), pass: simSeconds > 0 && Math.abs(graceUsed - simSeconds) < 0.02 };
         });
     },
     // #2 paused keyboard/mouse actions do not consume ammo; unpaused still works
@@ -57,7 +61,7 @@ const probes = {
             const { groundUnitWorldPos, canDamageGround } = await import('./src/combat/damage.js');
             const { killGroundUnit } = await import('./src/entities/groundUnits.js');
             const { scene } = await import('./src/core/scene.js');
-            await new Promise(r => setTimeout(r, 500)); // let updateAI refresh caches
+            await new Promise(r => { let i = 0; const f = () => (++i >= 3 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }); // let updateAI refresh caches
             state.isPaused = true;
             const airport = groundUnits.find(u => u.userData.type === 'airport' && u.userData.dependents?.length);
             if (!airport) return { pass: false, error: 'no airport' };
@@ -158,12 +162,12 @@ const probes = {
             const { scene } = await import('./src/core/scene.js');
             const Original = THREE.Box3Helper; let made = 0, disposed = 0;
             THREE.Box3Helper = class extends Original { constructor(...args) { super(...args); made++; this.geometry.addEventListener('dispose', () => disposed++); } };
-            const pause = ms => new Promise(r => setTimeout(r, ms));
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
             state.isPaused = true;
-            state.debugCollision = true; await pause(600);
-            const afterOn = made; await pause(1200);
+            state.debugCollision = true; await frames(3);
+            const afterOn = made; await frames(30);
             const afterMore = made;
-            state.debugCollision = false; await pause(400);
+            state.debugCollision = false; await frames(3);
             let helpersLeft = 0; scene.traverse(o => { if (o.userData.debugHelper) helpersLeft++; });
             THREE.Box3Helper = Original;
             return { afterOn, afterMore, disposed, helpersLeft, pass: afterOn > 0 && afterMore === afterOn && helpersLeft === 0 && disposed === made };

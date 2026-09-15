@@ -22,6 +22,8 @@ import { updatePhysics } from './player/flight.js';
 import { updateCamera } from './player/camera.js';
 import { updateAI } from './ai.js';
 import { pollGamepad } from './input.js';
+import * as perf from './debug/perf.js';
+import { DEBUG_PARAMS } from './debug/params.js';
 
 // --- THREE.Clock for delta-time (§3.6) ---
 const clock = new THREE.Clock();
@@ -29,10 +31,23 @@ const clock = new THREE.Clock();
 // --- Initialization ---
 hpElement.textContent = state.planeHP; updateDamageUI();
 // Defer heavy world init to after the first frame renders — avoids blocking the splash screen
-requestAnimationFrame(() => requestAnimationFrame(() => { createAllUnits(); buildBaseFences(); }));
+requestAnimationFrame(() => requestAnimationFrame(() => {
+    const t0 = performance.now();
+    createAllUnits();
+    const t1 = performance.now();
+    if (!DEBUG_PARAMS.disable.has('fences')) buildBaseFences();
+    perf.record('init.createAllUnits', t1 - t0);
+    perf.record('init.buildBaseFences', performance.now() - t1);
+    // ?disable=… cost experiments: hidden lights drop out of every lit shader; hidden sprites skip their draws
+    if (DEBUG_PARAMS.disable.has('searchlights')) _searchlights.forEach(sl => { sl.spot.visible = false; });
+    if (DEBUG_PARAMS.disable.has('labels')) scene.traverse(o => { if (o.isSprite) o.visible = false; });
+}));
+let firstFrame = true;
 function animate() {
     requestAnimationFrame(animate);
-    pollGamepad();
+    if (firstFrame) { firstFrame = false; perf.record('startup.firstFrameAt', performance.now()); }
+    perf.frameBegin();
+    perf.begin('gamepad'); pollGamepad(); perf.end('gamepad');
     const rawDelta = clock.getDelta();
     const dt = Math.min(rawDelta * TARGET_FPS, 6); // cap at 6 frames — prevents spiral-of-death on tab switch
 
@@ -55,21 +70,22 @@ function animate() {
     if (!state.isGameOver && !state.isPaused && !splashActive) {
         // Spawn protection is simulation state in seconds; dt is in 60 fps frame units
         if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - dt / TARGET_FPS);
-        updatePhysics(dt);
-        updateAI(dt);
-        resolveCollisions();
-        updateHUD();
-        updateProjectiles(dt);
-        updateEffects(dt); // ideas 1-6, 10
+        perf.begin('physics'); updatePhysics(dt); perf.end('physics');
+        perf.begin('ai'); updateAI(dt); perf.end('ai');
+        perf.begin('collisions'); resolveCollisions(); perf.end('collisions');
+        perf.begin('hud'); updateHUD(); perf.end('hud');
+        perf.begin('projectiles'); updateProjectiles(dt); perf.end('projectiles');
+        perf.begin('effects'); updateEffects(dt); perf.end('effects'); // ideas 1-6, 10
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';
         posXElement.textContent = '-'; posYElement.textContent = '-'; posZElement.textContent = '-';
         rotHdgElement.textContent = '-'; rotPchElement.textContent = '-'; rotBnkElement.textContent = '-';
-        updateEffects(dt); // debris physics still runs on game over
+        perf.begin('effects'); updateEffects(dt); perf.end('effects'); // debris physics still runs on game over
     }
-    updateDebugBoxes();
-    updateCamera(dt);
+    perf.begin('debugBoxes'); updateDebugBoxes(); perf.end('debugBoxes');
+    perf.begin('camera'); updateCamera(dt); perf.end('camera');
+    perf.begin('cursor');
     // Decay steering cursor toward center when mouse is idle
     if (MOUSE_STEERING) {
         const _decay = Math.pow(1 - STEER_RETURN_DECAY, dt);
@@ -84,7 +100,9 @@ function animate() {
         _steerCursorEl.style.left = ((cx + 1) * 0.5 * window.innerWidth)  + 'px';
         _steerCursorEl.style.top  = ((-cy + 1) * 0.5 * window.innerHeight) + 'px';
     }
+    perf.end('cursor');
     // F6: searchlight sweep + alarm state detection
+    perf.begin('searchlights');
     if (!state.isPaused && !state.isGameOver && _searchlights.length > 0) {
         for (const sl of _searchlights) {
             sl.angle += sl.speed * rawDelta * TARGET_FPS;
@@ -115,6 +133,7 @@ function animate() {
             if (reg.alarmState) { reg.alarmTimer = (reg.alarmTimer || 0) - rawDelta * TARGET_FPS; if (reg.alarmTimer <= 0) { reg.alarmState = false; } }
         }
     }
+    perf.end('searchlights');
     // F9: flag animation — pivot Group rotates to face wind direction; flag extends sideways from pole tip
     if (_flagMeshes.length > 0) {
         _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
@@ -127,6 +146,7 @@ function animate() {
         }
     }
     // Radar cycle — one full sweep per 3 s; snapshot taken at each revolution end (pauses when game is paused)
+    perf.begin('minimap');
     if (!state.isPaused && !state.isGameOver) {
         state._radarSweepAngle += rawDelta * (Math.PI * 2 / 3);
         state._radarCycleTimer += rawDelta;
@@ -139,8 +159,10 @@ function animate() {
     // Throttled minimap redraw — 15 fps regardless of game frame rate (§2.5)
     state._minimapTimer += rawDelta;
     if (state._minimapTimer >= MINIMAP_REFRESH_S) { updateMinimap(); state._minimapTimer = 0; }
-    renderer.render(scene, camera);
-    _drawReticle();
+    perf.end('minimap');
+    perf.renderBegin(); renderer.render(scene, camera); perf.renderEnd();
+    perf.begin('reticle'); _drawReticle(); perf.end('reticle');
+    perf.frameEnd();
 }
 // Start rendering immediately — script is at end of <body> so DOM is ready.
 // window.onload would block until fonts finish loading, causing a blank screen.

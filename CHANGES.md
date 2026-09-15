@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+> **Prompts:** "game works quite slow now, prepare some tools that you can later work with to optimise performance"
+
+### Performance tooling
+- **In-game profiler** (`src/debug/perf.js`, `P` key or `?perf`): frame-time percentiles, CPU time per system, GPU render time (timer queries), draw calls, scene size, lights in shaders, heap. `window.__vpPerf` API for automation.
+- **Debug URL parameters**: `?seed=N` (deterministic world), `?invulnerable`, `?disable=searchlights,fences,labels`.
+- **`npm run bench`** (`tests/perf-bench.mjs`): scripted flight (`hover` / `circle` / `combat`) in a real browser. Compares git refs and URL variants side by side, and can save a V8 CPU profile with a top-functions summary. Works on the original single-file build too.
+
+### Findings (Apple M4, ANGLE Metal, uncapped, hover scenario, seed 1)
+- The modular build is **not slower** than the original `edc4f4b`: 26.6 fps against 23.0, and long-task time is down 95%.
+- The bottleneck is the ~47 searchlight PointLights compiled into every lit shader: 26.8 fps with them, **254 fps** with `?disable=searchlights`. GPU render time drops from 70.7 to 3.7 ms and CPU render submission from 36 to 3 ms. Game logic is under 1 ms per frame.
+
+---
+
 > **Prompts:** "split the large JavaScript file into modules, publish the game to GitHub Pages, add the live link to the README, then implement reasonable changes from PROJECT_REVIEW.md"
 
 ### Architecture & deployment
