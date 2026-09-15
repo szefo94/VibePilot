@@ -16,12 +16,9 @@ import { updateMinimap, updateRadarSnapshot } from './ui/minimap.js';
 import { _searchlights, buildBaseFences } from './entities/fences.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { createAllUnits } from './world/populate.js';
-import { resolveCollisions } from './combat/collision.js';
-import { updateProjectiles } from './combat/projectiles.js';
-import { updatePhysics } from './player/flight.js';
 import { updateCamera } from './player/camera.js';
-import { updateAI } from './ai.js';
 import { pollGamepad } from './input.js';
+import { simulate } from './game/simulation.js';
 import * as perf from './debug/perf.js';
 import { DEBUG_PARAMS } from './debug/params.js';
 import { disableRealLights, updateLightBudget } from './effects/lightBudget.js';
@@ -69,15 +66,9 @@ function animate() {
         }
     }
     if (!state.isGameOver && !state.isPaused && !splashActive) {
-        // Spawn protection is simulation state in seconds; dt is in 60 fps frame units
-        if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - dt / TARGET_FPS);
         perf.markSimulated();
-        perf.begin('physics'); updatePhysics(dt); perf.end('physics');
-        perf.begin('ai'); updateAI(dt); perf.end('ai');
-        perf.begin('collisions'); resolveCollisions(); perf.end('collisions');
+        simulate(dt); // bounded sub-steps: game/simulation.js
         perf.begin('hud'); updateHUD(); perf.end('hud');
-        perf.begin('projectiles'); updateProjectiles(dt); perf.end('projectiles');
-        perf.begin('effects'); updateEffects(dt); perf.end('effects'); // ideas 1-6, 10
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';

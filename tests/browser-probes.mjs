@@ -135,6 +135,32 @@ const probes = {
             return { ...r, pass: Math.max(...Object.values(r)) - Math.min(...Object.values(r)) <= 1 };
         });
     },
+    // #7 bounded sub-steps: the same flight gives the same result at 60, 20 and 10 fps
+    async fixedStep(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { simulate } = await import('./src/game/simulation.js');
+            const { updatePhysics } = await import('./src/player/flight.js');
+            const { plane } = await import('./src/player/plane.js');
+            const { keys } = await import('./src/input.js');
+            state.isPaused = true; // freeze the real loop; drive the simulation directly
+            const start = { pos: plane.position.clone().setY(10), quat: plane.quaternion.clone() };
+            const fly = (step, frames, stepFn) => {
+                plane.position.copy(start.pos); plane.quaternion.copy(start.quat);
+                Object.assign(state, { speed: 0.5, pitchRate: 0, rollRate: 0, yawRate: 0, _graceTimer: 1000 });
+                state._mouseNDC.x = state._mouseNDC.y = 0;
+                keys.w = keys.ArrowLeft = keys.a = true;
+                for (let i = 0; i < frames; i++) stepFn(step);
+                keys.w = keys.ArrowLeft = keys.a = false;
+                return plane.position.clone();
+            };
+            const p60 = fly(1, 120, simulate), p20 = fly(3, 40, simulate), p10 = fly(6, 20, simulate);
+            const unstepped10 = fly(6, 20, updatePhysics); // the old behaviour: one big integration per frame
+            const r = v => +v.toFixed(4);
+            return { at20: r(p20.distanceTo(p60)), at10: r(p10.distanceTo(p60)), unsteppedAt10: r(unstepped10.distanceTo(p60)), pass: p20.distanceTo(p60) < 1e-6 && p10.distanceTo(p60) < 1e-6 && !state.isGameOver };
+        });
+    },
     // #7 swept bullets hit a target crossed between two samples
     async sweptBullet(page) {
         await worldReady(page);
