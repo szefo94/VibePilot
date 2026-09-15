@@ -34,11 +34,19 @@
 The game is plain static files using native ES modules, so it must be served over HTTP (opening `index.html` via `file://` will not load modules):
 
 ```sh
-python3 -m http.server 8000
+npm run serve            # or: python3 -m http.server 8000
 # then open http://localhost:8000/
 ```
 
-The `master` branch is deployed to GitHub Pages as-is; there is no build step.
+The `master` branch is deployed to GitHub Pages as-is; there is no build step. Three.js is vendored as `three.min.js` (r128) and is not an npm dependency.
+
+Development checks (Node 18+, run `npm install` once for ESLint and the browser test driver):
+
+| Command | What it does |
+|---|---|
+| `npm run check` | Syntax-checks every module and verifies that relative imports resolve |
+| `npm run lint` | ESLint over `src/`, `scripts/`, `tests/` |
+| `npm run test:browser` | Headless regression probes for the review fixes (`tests/browser-probes.mjs`). Set `BROWSER_PATH` to a Chrome/Brave/Edge executable, or run `npx playwright-core install chromium` once. Pass probe names to run a subset. |
 
 ## Project Structure
 
@@ -46,6 +54,8 @@ The `master` branch is deployed to GitHub Pages as-is; there is no build step.
 index.html            HUD markup, loads three.min.js then src/main.js
 style.css             HUD / overlay styling
 three.min.js          vendored Three.js r128 (global THREE)
+scripts/              serve.mjs (static server), check.mjs (syntax / import check)
+tests/                browser-probes.mjs (headless regression probes)
 src/
   main.js             entry: world init + per-frame loop (animate)
   config.js           tuning constants (world, flight, weapons, enemies)
@@ -87,6 +97,11 @@ Modules import what they use explicitly; values that several systems reassign li
 | `C` | Toggle color lines mode (all meshes → vibrant HSL wireframe on black) |
 | `Esc` | Pause / Resume |
 | `I` | Spawn interceptor wave immediately (debug) |
+| `V` | Mute / unmute sound (remembered between sessions) |
+| Mouse move | Steer toward the cursor |
+| Left / right mouse button | Shoot / fire missiles |
+| `G` | Toggle mission debrief (after game over) |
+| `Enter` | Restart (after game over) |
 
 ### Gamepad (Xbox / PS5 DualSense)
 
@@ -113,7 +128,7 @@ Gamepad is polled every frame via the browser Gamepad API. Stick deflection is a
 
 ## Splash Screen
 
-On game load a full-screen intro sequence plays. A blinking `— press any key —` prompt appears first; the first keydown or click starts the animation (this also satisfies the browser AudioContext autoplay policy so sounds work immediately).
+Disabled by default — set `SPLASH_ENABLED = true` in `src/config.js`. When enabled, a full-screen intro sequence plays and the simulation holds until it is dismissed. A blinking `— press any key —` prompt appears first; the first keydown or click starts the animation.
 
 | Phase | Detail |
 |---|---|
@@ -130,7 +145,7 @@ On game load a full-screen intro sequence plays. A blinking `— press any key �
 
 ## Sound
 
-All sounds are synthesized via the **Web Audio API** — no external files or libraries are required. Sounds only play after the first user gesture (handled by the splash "press any key" prompt).
+All sounds are synthesized via the **Web Audio API** — no external files or libraries are required. One shared audio context is created on the first key press, click or touch (browser autoplay policy); sounds route through a master gain (`V` mutes), noise buffers are generated once and reused, and at most 24 voices play at once.
 
 | Event | Sound | Synthesis |
 |---|---|---|
@@ -210,10 +225,10 @@ Islet shapes are generated procedurally at world init via a fractal polygon algo
 | Constant | Default | Description |
 |---|---|---|
 | `ISLET_MODE` | `'A'` | `'A'` = midpoint displacement (organic) · `'B'` = Koch snowflake (geometric) |
-| `ISLET_ITERATIONS` | `3` | Subdivision iterations — higher = more detail and more polygon points |
-| `ISLET_ROUGHNESS` | `0.40` | Mode A only — radial displacement amplitude (0.2 subtle → 0.5 jagged) |
+| `ISLET_ITERATIONS` | `4` | Subdivision iterations — higher = more detail and more polygon points |
+| `ISLET_ROUGHNESS` | `0.35` | Mode A only — radial displacement amplitude (0.2 subtle → 0.5 jagged) |
 
-**Mode A — Midpoint displacement**: Starts with 8 equally-spaced points on a circle. Each iteration bisects every edge and displaces the midpoint radially by a random amount (amplitude halves each iteration). 3 iterations → 64 points per islet.
+**Mode A — Midpoint displacement**: Starts with 8 equally-spaced points on a circle. Each iteration bisects every edge and displaces the midpoint radially by a random amount (amplitude halves each iteration). 4 iterations (default) → 128 points per islet.
 
 **Mode B — Koch snowflake**: Starts with an equilateral triangle inscribed in the bounding circle. Each iteration replaces every edge with a 4-segment bump. 3 iterations → 192 points per islet.
 
@@ -735,6 +750,8 @@ The minimap operates as a real radar:
 
 ## Functions Reference
 
+Functions live in the ES modules under `src/` (see [Project Structure](#project-structure)); search the tree for a name to find its module.
+
 ### Utility
 
 | Function | Signature | Description |
@@ -794,7 +811,7 @@ The minimap operates as a real radar:
 
 | Function | Signature | Description |
 |---|---|---|
-| `createIslets` | `(count) → void` | Generates flat cylinder platforms at random positions. |
+| `createIslets` | `(count) → void` | Generates fractal-polygon islets (mesh, polygon and bounding radius) and scatters hills on them. |
 | `createObstacles` | `() → void` | Populates world with pillars, stalactites, and hoop chains. |
 | `createAllUnits` | `() → void` | Master init: calls every spawner in order. |
 | `spawnSingleEnemy` | `() → void` | Spawns one enemy fighter; called again immediately on kill. |
@@ -815,8 +832,8 @@ The minimap operates as a real radar:
 
 | Function | Signature | Description |
 |---|---|---|
-| `clampToIslet` | `(px, pz, islet) → {x, z}` | Nearest point on islet disc to `(px, pz)`. |
-| `isOnAnyIslet` | `(px, pz) → boolean` | Whether XZ position lies within any islet radius. |
+| `clampToIslet` | `(px, pz, islet) → {x, z}` | `(px, pz)` if inside the islet polygon, otherwise the nearest point on its coastline. |
+| `isOnAnyIslet` | `(px, pz) → boolean` | Whether XZ position lies inside any islet polygon. |
 | `getNearestIslet` | `(x, z) → Islet` | Islet whose centre is closest to `(x, z)`. |
 
 ### Collision Math
@@ -832,9 +849,10 @@ The minimap operates as a real radar:
 |---|---|---|
 | `fireBullet` | `() → void` | Spawns a bullet at the plane's nose with damage multiplied by `playerDamageMultiplier`. |
 | `dropBomb` | `() → void` | Spawns a bomb with forward velocity; AoE + explosion on ground impact. |
-| `fireHomingMissiles` | `() → void` | Fires two missiles from wingtip launchers with two-phase flight (drop then home). |
-| `deployFlares` | `() → void` | Spawns angel-wing particle burst; deflects enemy bullets for `FLARE_DURATION`. |
-| `dropNapalmBomb` | `() → void` | Spawns napalm bomb; creates burn patch on ground impact with fire particles. |
+| `fireMissile` | `() → void` | Fires two missiles from wingtip launchers with two-phase flight (drop then home). |
+| `deployFlareEffect` | `() → void` | Spawns angel-wing particle burst; deflects enemy bullets for `FLARE_DURATION`. |
+| `dropNapalm` | `() → void` | Scatters 50 napalm orbs; each landing orb leaves a small burn patch with fire particles. |
+| `tryDropBomb` / `tryFireMissile` / `tryDeployFlares` / `tryDropNapalm` | `() → void` | Single-press actions shared by keyboard, mouse and gamepad: check ammo/cooldown, fire, start reload. |
 | `fireHostileBullet` | `(unit) → void` | Enemy bullet from unit position directed toward player. |
 | `createExplosion` | `(position) → void` | Spawns a growing/fading explosion sphere tracked by `updateExplosions(dt)`. |
 
@@ -842,7 +860,7 @@ The minimap operates as a real radar:
 
 | Function | Signature | Description |
 |---|---|---|
-| `destroyLogicalEnemy` | `(id) → void` | Removes enemy mesh, awards XP, respawns immediately. |
+| `destroyLogicalEnemy` | `(id, { reward = true }?) → void` | Removes a legacy fighter and respawns one; awards score/XP/streak unless `reward: false` (out-of-bounds recycling). Mutates `enemies` — call after iterating. |
 | `triggerGameOver` | `() → void` | Sets `isGameOver`, stops plane, hides player mesh, spawns debris pieces, shows Game Over overlay. |
 | `spawnPlaneDebris` | `() → void` | Spawns 6 box debris pieces with random velocities and angular velocities, falling under gravity. |
 | `updateEffects` | `(dt) → void` | Central effects tick: burst particles, dying blink animations, debris physics, player damage blink, hit marker, memory debug update. |

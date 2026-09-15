@@ -1,5 +1,6 @@
 /** Game-over sequence. */
 import { state } from '../state.js';
+import { storageSet } from '../core/storage.js';
 import { _steerCursorEl, gameOverElement } from '../ui/dom.js';
 import { plane } from '../player/plane.js';
 import { enemies, groundUnits } from '../entities/registry.js';
@@ -12,9 +13,9 @@ export function triggerGameOver() {
     _gameOverPos.copy(plane.position);
     state._goOrbitYaw = 0; state._goOrbitPitch = 0.3;
     _steerCursorEl.style.display = 'none';
-    if (state.score > state._highScore) { state._highScore = state.score; localStorage.setItem('vibepilot_hs', state.score); } // G5
+    if (state.score > state._highScore) { state._highScore = state.score; storageSet('vibepilot_hs', state.score); } // G5 — never throws
     const _isNewBest = state.score >= state._highScore;
-    gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Score: ${state.score}${_isNewBest ? '  ★ NEW BEST' : ''}</span><br><span style="font-size:16px">Best: ${state._highScore}</span><br><span style="font-size:18px">Refresh to restart</span>`;
+    gameOverElement.innerHTML = `GAME OVER!<br><span style="font-size:24px">Score: ${state.score}${_isNewBest ? '  ★ NEW BEST' : ''}</span><br><span style="font-size:16px">Best: ${state._highScore}</span><br><span style="font-size:18px">Press Enter to restart</span>`;
     gameOverElement.style.display = 'block';
     enemies.forEach(e => { if (e.label) e.label.sprite.visible = false; });
     groundUnits.forEach(u => { if (u.userData.label) u.userData.label.sprite.visible = false; });

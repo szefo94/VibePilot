@@ -231,8 +231,8 @@ canvas {
     position: absolute;
     bottom: 10px;
     left: 10px;
-    width: 400px;
-    height: 400px;
+    width: min(400px, 42vmin);
+    height: min(400px, 42vmin);
     background-color: rgba(0, 20, 10, 0.75);
     border: 2px solid var(--hud-border-bright);
     border-radius: 50%;
@@ -588,4 +588,18 @@ canvas {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+}
+
+/* ── Narrow / short viewports: keep the essentials, drop reference panels ── */
+@media (max-width: 900px), (max-height: 620px) {
+    #instructions, #debug-info, #map-constraints { display: none; }
+    #conquered-panel { max-width: 60vw; }
+}
+@media (max-width: 900px) {
+    #player-stats { flex-wrap: wrap; white-space: normal; max-width: 50vw; row-gap: 2px; }
+    #score-display, #level-display, #xp-display { margin-left: 0; margin-right: 12px; }
+    #target-info { font-size: 10px; }
+    /* minimap takes the bottom-left corner; move ammo to the bottom-right */
+    #minimap-container { width: min(400px, 38vmin); height: min(400px, 38vmin); }
+    #ammo-hud { left: auto; right: 10px; transform: scale(0.72); transform-origin: bottom right; }
 }

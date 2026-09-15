@@ -1,5 +1,5 @@
 /** Per-frame projectile updates: bullets, bombs, missiles, napalm, flares. */
-import { MAP_BOUNDARY, MISSILE_ACCEL, MISSILE_FINAL_SPEED, NAPALM_DURATION, NAPALM_TICK_INTERVAL, gravity, groundLevel, missileAoERadius, missileDamage, missileHomingStr, napalmDamage, napalmRadius } from '../config.js';
+import { MAP_BOUNDARY, MISSILE_ACCEL, MISSILE_FINAL_SPEED, NAPALM_DURATION, NAPALM_TICK_INTERVAL, gravity, groundLevel, missileAoERadius, missileDamage, missileHomingStr, napalmDamage, napalmRadius, waterLevel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _sv1, _sv2, _up3 } from '../core/scratch.js';
@@ -10,6 +10,9 @@ import { _enemyBulletPool } from './enemyBullets.js';
 import { createExplosion, updateExplosions } from '../effects/effects.js';
 import { updateUnitLabel } from '../ui/labels.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
+import { canDamageGround, groundUnitWorldPos } from './damage.js';
+import { isOnAnyIslet } from '../world/world.js';
+import { disposeGroup } from '../core/utils.js';
 import { _damageFenceNear } from '../entities/fences.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
 import { _playerBulletPool } from './weapons.js';
@@ -18,6 +21,7 @@ export function updateProjectiles(dt) {
     // Player bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
+        (b.prevPosition || (b.prevPosition = new THREE.Vector3())).copy(b.position); // swept collision segment start
         b.position.addScaledVector(b.velocity, dt); b.life -= dt;
         // V5: update tracer endpoints
         if (b.tracer) {
@@ -31,7 +35,6 @@ export function updateProjectiles(dt) {
             scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1);
         }
     }
-    if (state.shootCooldown > 0) state.shootCooldown -= dt;
     // Bombs
     for (let i = bombs.length - 1; i >= 0; i--) {
         const b = bombs[i];
@@ -43,8 +46,8 @@ export function updateProjectiles(dt) {
             const _bombDestroy = [];
             let _bombAoeHit = false;
             for (const gu of groundUnits) {
-                if (gu.userData.protector && gu.userData.protector.userData.hp > 0) continue; // §4.1 protected
-                if (gu.userData.hp > 0 && gu.position.distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
+                if (!canDamageGround(gu, 'bomb')) continue; // dead or protected (§4.1)
+                if (groundUnitWorldPos(gu).distanceToSquared(b.position) < b.userData.aoERadius * b.userData.aoERadius) {
                     gu.userData.hp -= b.userData.damage; updateUnitLabel(gu.userData.label, gu.userData.hp);
                     state._hitMarkerTimer = 9; _bombAoeHit = true;
                     if (gu.userData.hp <= 0) _bombDestroy.push(gu);
@@ -126,53 +129,57 @@ export function updateProjectiles(dt) {
         }
         const expired = m.life <= 0 || Math.abs(m.position.x) > MAP_BOUNDARY || Math.abs(m.position.z) > MAP_BOUNDARY;
         const groundHit = m.position.y <= groundLevel + 3;
-        // Collision check vs ground, air, enemies
-        let hit = false;
+        // Collision check vs ground, air, enemies — remember the directly struck entity
+        let struck = null;
         for (const u of groundUnits) {
-            if (!hit && u.userData.hp > 0 && m.position.distanceToSquared(u.position) < (u.userData.collisionRadius + 2) ** 2) hit = true;
+            if (u.userData.hp > 0 && m.position.distanceToSquared(groundUnitWorldPos(u)) < (u.userData.collisionRadius + 2) ** 2) { struck = u; break; }
         }
-        if (!hit) for (const au of airUnits) {
-            if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < (au.collisionRadius + 2) ** 2) { hit = true; break; }
+        if (!struck) for (const au of airUnits) {
+            if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < (au.collisionRadius + 2) ** 2) { struck = au; break; }
         }
-        if (!hit) for (const en of enemies) {
-            if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < 12 * 12)) { hit = true; break; }
+        if (!struck) for (const en of enemies) {
+            if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < 12 * 12)) { struck = en; break; }
         }
-        if (hit || groundHit || expired) {
-            if (hit || groundHit) {
-                // AoE damage
+        if (struck || groundHit || expired) {
+            if (struck || groundHit) {
+                // AoE damage: the directly struck unit is always hit (large units detonate missiles far from
+                // their centre), others when their collision surface lies within missileAoERadius.
+                // Deaths are applied after all scans — removal mutates the arrays being scanned.
                 const dmg = Math.round(missileDamage * state.playerDamageMultiplier);
                 createExplosion(m.position); createExplosion(m.position); // double flash for missiles
-                const _mDestroy = [];
+                const inBlast = (pos, radius) => m.position.distanceTo(pos) - radius < missileAoERadius;
+                const _mDestroy = [], _mDeadAir = [], _mDeadEnemyIds = [];
                 let _missileAoeHit = false;
                 for (const gu of groundUnits) {
-                    if (gu.userData.hp > 0 && m.position.distanceToSquared(gu.position) < missileAoERadius * missileAoERadius) {
+                    if (!canDamageGround(gu, 'missile')) continue; // dead, protected or bomb-only
+                    if (gu === struck || inBlast(groundUnitWorldPos(gu), gu.userData.collisionRadius || 0)) {
                         gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
                         state._hitMarkerTimer = 9; _missileAoeHit = true;
                         if (gu.userData.hp <= 0) _mDestroy.push(gu);
                     }
                 }
-                _mDestroy.sort(a => a.userData.dependents?.length ? -1 : 1);
-                for (const gu of _mDestroy) killGroundUnit(gu); // (§2.3)
-                for (let ai = airUnits.length - 1; ai >= 0; ai--) {
-                    const au = airUnits[ai];
-                    if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < missileAoERadius * missileAoERadius) {
+                for (const au of airUnits) {
+                    if (au.hp > 0 && (au === struck || inBlast(au.group.position, au.collisionRadius || 0))) {
                         au.hp -= dmg; au.userData.hp = au.hp; updateUnitLabel(au.label, au.hp);
                         state._hitMarkerTimer = 9; _missileAoeHit = true;
-                        if (au.hp <= 0) destroyAirUnit(au, ai);
+                        if (au.hp <= 0) _mDeadAir.push(au);
                     }
                 }
                 for (const en of enemies) {
-                    if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < missileAoERadius * missileAoERadius)) {
+                    if (en === struck || en.parts.some(p => p.userData.hp > 0 && inBlast(p.position, p.userData.collisionRadius || 0))) {
                         en.parts.forEach(p => p.userData.hp -= dmg);
                         let th = 0; en.parts.forEach(p => th += Math.max(0, p.userData.hp));
                         state._hitMarkerTimer = 9; _missileAoeHit = true;
-                        updateUnitLabel(en.label, th); if (th <= 0) destroyLogicalEnemy(en.id);
+                        updateUnitLabel(en.label, th); if (th <= 0) _mDeadEnemyIds.push(en.id);
                     }
                 }
+                for (const gu of _mDestroy) killGroundUnit(gu); // (§2.3)
+                for (const au of _mDeadAir) destroyAirUnit(au);
+                for (const id of _mDeadEnemyIds) destroyLogicalEnemy(id);
                 if (_missileAoeHit) _playKeyClick();
                 _damageFenceNear(m.position, missileAoERadius * 0.5); // F5
             }
-            scene.remove(m); missiles.splice(i, 1);
+            scene.remove(m); disposeGroup(m); missiles.splice(i, 1); // frees the cloned exhaust material
         }
     }
     // Missile trail particles
@@ -188,7 +195,8 @@ export function updateProjectiles(dt) {
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
         if (b.position.y <= groundLevel + 0.8) {
             const pm = new THREE.Mesh(_napClusterPatchGeo, napalmPatchMat.clone());
-            pm.position.set(b.position.x, groundLevel + 0.2, b.position.z);
+            // Sit just above the surface the orb landed on (islet top or water), not below it
+            pm.position.set(b.position.x, (isOnAnyIslet(b.position.x, b.position.z) ? groundLevel + 1 : waterLevel) + 0.2, b.position.z);
             scene.add(pm);
             napalmPatches.push({ pos: pm.position, life: 90, maxLife: 90, tick: 0, vTick: 0, mesh: pm, patchR: _napClusterR });
             scene.remove(b); b.material.dispose(); napalmBombs.splice(i, 1);
@@ -209,7 +217,7 @@ export function updateProjectiles(dt) {
                 const angle = Math.random() * Math.PI * 2;
                 const r = Math.sqrt(Math.random()) * _pR;
                 const nfp = new THREE.Mesh(_napalmFireGeo, _napalmFireMat.clone());
-                nfp.position.set(p.pos.x + Math.cos(angle) * r, groundLevel + 0.5, p.pos.z + Math.sin(angle) * r);
+                nfp.position.set(p.pos.x + Math.cos(angle) * r, p.pos.y + 0.3, p.pos.z + Math.sin(angle) * r);
                 nfp.velocity = new THREE.Vector3(0, 0.07 + Math.random() * 0.09, 0);
                 nfp.life = nfp.maxLife = (p.patchR ? 10 : 18) + Math.random() * 12;
                 napalmFireParticles.push(nfp); scene.add(nfp);
@@ -222,7 +230,7 @@ export function updateProjectiles(dt) {
             const _napDestroy = [];
             let _napAoeHit = false;
             for (const gu of groundUnits) {
-                if (gu.userData.hp > 0 && gu.position.distanceToSquared(p.pos) < rSq) {
+                if (canDamageGround(gu, 'napalm') && groundUnitWorldPos(gu).distanceToSquared(p.pos) < rSq) {
                     gu.userData.hp -= dmg; updateUnitLabel(gu.userData.label, gu.userData.hp);
                     state._hitMarkerTimer = 9; _napAoeHit = true;
                     if (gu.userData.hp <= 0) _napDestroy.push(gu);

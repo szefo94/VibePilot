@@ -1,14 +1,13 @@
 /** Obstacle pillars and hoops. */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
-import { randomRange } from '../core/utils.js';
+import { markShared, randomRange } from '../core/utils.js';
 import { caveWallMaterial } from '../world/world.js';
 import { obstacles } from './registry.js';
 import { spawnSingleHoopWithMarker } from './collectibles.js';
 
 // --- Obstacle resources ---
-const greyObstacleMaterial = new THREE.MeshStandardMaterial({ color: 8947848, roughness: .8 });
-export const torusMaterial = new THREE.MeshStandardMaterial({ color: 16711680, roughness: .6 });
+export const torusMaterial = markShared(new THREE.MeshStandardMaterial({ color: 16711680, roughness: .6 }));
 export const numObstacles = 80, targetHoopCount = 0, numHoopChains = 8;
 export function createObstacles() {
     const pGeo = new THREE.CylinderGeometry(1, 1, 1, 12), rGeo = new THREE.ConeGeometry(1, 1, 8);

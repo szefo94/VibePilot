@@ -1,14 +1,22 @@
-/** Typewriter splash screen (currently disabled). */
+/** Typewriter splash screen, enabled with SPLASH_ENABLED in config.js. */
 import { MOUSE_STEERING, maxSpeed } from '../config.js';
 import { state } from '../state.js';
 import { _playKeyClick } from '../audio.js';
 import { _steerCursorEl } from './dom.js';
 
-function runSplash() {
-    const splash   = document.getElementById('splash-screen');
-    const titleEl  = document.getElementById('splash-title');
-    const subEl    = document.getElementById('splash-subtitle');
-    const cursor   = document.getElementById('splash-cursor');
+/** True from runSplash() until the overlay is dismissed; main.js holds the simulation meanwhile. */
+export let splashActive = false;
+
+/** Build the overlay and run the intro. While #splash-screen exists, input.js ignores gameplay input. */
+export function runSplash() {
+    splashActive = true;
+    const splash = document.createElement('div');
+    splash.id = 'splash-screen';
+    splash.innerHTML = '<div id="splash-title"><span id="splash-cursor"></span></div><div id="splash-subtitle"></div>';
+    document.body.prepend(splash);
+    const titleEl  = splash.querySelector('#splash-title');
+    const subEl    = splash.querySelector('#splash-subtitle');
+    const cursor   = splash.querySelector('#splash-cursor');
     const TITLE    = 'Vibe Pilot';
     const SUBTITLE = 'Objective: Crush enemies';
     const TITLE_SPEED    = 110; // ms per character
@@ -47,6 +55,7 @@ function runSplash() {
             cursor.style.opacity   = '0';
             splash.style.opacity   = '0';
             state.speed = maxSpeed * 0.5;
+            splashActive = false;
             setTimeout(() => { splash.remove(); if (MOUSE_STEERING) _steerCursorEl.style.display = 'block'; }, 500);
         }
         function onEscapeKey(e) { if (e.key === 'Escape') dismiss(); }

@@ -4,6 +4,7 @@ import { camera } from '../core/scene.js';
 import { _sv1, _sv2 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
 import { airUnits, enemies, groundUnits } from '../entities/registry.js';
+import { groundUnitWorldPos } from '../combat/damage.js';
 
 // G20: lock-on reticle overlay canvas
 const _reticleCanvas = document.createElement('canvas');
@@ -27,7 +28,7 @@ export function _drawReticle() {
         _reticleFrame = 0;
         let nearestSq = Infinity; _reticleTarget = null;
         const tryT = (pos, alive) => { const d = pos().distanceToSquared(plane.position); if (d < nearestSq) { nearestSq = d; _reticleTarget = { pos, alive }; } };
-        groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryT(() => u.position, () => u.userData.hp > 0); });
+        groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryT(() => groundUnitWorldPos(u), () => u.userData.hp > 0); });
         airUnits.forEach(au => { if (au.hp > 0) tryT(() => au.group.position, () => au.hp > 0); });
         enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryT(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
     }

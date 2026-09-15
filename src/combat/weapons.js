@@ -6,12 +6,14 @@ import { _bombDroop, _bombOffset, _missileLTip, _missileRTip, _sv1, _sv2, _sv3, 
 import { _playBombDrop, _playGunShot, _playMissileLaunch, _playNapalmDrop } from '../audio.js';
 import { _playerMuzzleLight, plane } from '../player/plane.js';
 import { airUnits, bombs, bullets, enemies, flareParticles, groundUnits, missiles, napalmBombs } from '../entities/registry.js';
+import { groundUnitWorldPos } from './damage.js';
 import { _bombBodyGeo, _bombFinGeo, _bombNoseGeo, _createMissileMesh, _flarePGeo, _flarePMatBase, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial, bombRadius } from './resources.js';
 import { _tracerMat } from '../effects/effects.js';
+import { markShared } from '../core/utils.js';
 
 // --- Shared player-bullet resources (avoids per-shot alloc) ---
-const _playerBulletGeo = new THREE.SphereGeometry(.3, 8, 8);
-const _playerBulletMat = new THREE.MeshBasicMaterial({ color: 0xffa500 });
+const _playerBulletGeo = markShared(new THREE.SphereGeometry(.3, 8, 8));
+const _playerBulletMat = markShared(new THREE.MeshBasicMaterial({ color: 0xffa500 }));
 export const _playerBulletPool = [];
 
 // --- Single-press weapon actions (shared by keyboard, mouse and gamepad) ---
@@ -43,6 +45,7 @@ export function fireBullet() {
     plane.getWorldDirection(_sv1);
     b.position.copy(plane.position).addScaledVector(_sv1, 3);
     b.velocity = _sv1.clone().multiplyScalar(bulletSpeed); // clone needed — velocity persists on bullet
+    (b.prevPosition || (b.prevPosition = new THREE.Vector3())).copy(b.position); // pooled bullets: reset swept segment
     b.life = bulletLife;
     b.userData = { type: 'bullet', collisionRadius: .3, damage: Math.round(bulletDamage * state.playerDamageMultiplier) };
     bullets.push(b); scene.add(b);
@@ -79,7 +82,7 @@ export function fireMissile() {
         const d = pos().distanceToSquared(plane.position);
         if (d < nearestSq) { nearestSq = d; target = { pos, alive }; }
     };
-    groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryTarget(() => u.position, () => u.userData.hp > 0); });
+    groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryTarget(() => groundUnitWorldPos(u), () => u.userData.hp > 0); });
     airUnits.forEach(au => { if (au.hp > 0) tryTarget(() => au.group.position, () => au.hp > 0); });
     enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryTarget(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
     plane.getWorldDirection(_sv1); // forward

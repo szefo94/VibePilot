@@ -7,6 +7,8 @@ import { _toggleColorMode } from './effects/colorMode.js';
 import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
+import { toggleMute } from './audio.js';
+import { showNotification } from './ui/notifications.js';
 
 // --- Input Handling ---
 export const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, w: false, s: false, a: false, d: false, ' ': false };
@@ -27,7 +29,7 @@ function togglePause() {
     pausedElement.style.display = state.isPaused ? 'block' : 'none';
     if (state.isPaused) clearHeldInput();
 }
-const heldKey = e => keys.hasOwnProperty(e.key.toLowerCase()) ? e.key.toLowerCase() : keys.hasOwnProperty(e.key) ? e.key : null;
+const heldKey = e => Object.hasOwn(keys, e.key.toLowerCase()) ? e.key.toLowerCase() : Object.hasOwn(keys, e.key) ? e.key : null;
 
 window.addEventListener('contextmenu', e => e.preventDefault()); // suppress right-click menu
 window.addEventListener('mousedown', e => {
@@ -50,6 +52,7 @@ document.addEventListener('keydown', e => {
     if (state.isGameOver) {
         if (held) keys[held] = true; // orbit controls during game-over free-look
         if (k === 'g' && !e.repeat) _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none';
+        if (e.key === 'Enter' && !e.repeat) location.reload(); // restart
         return;
     }
     if (splashActive()) return;
@@ -60,6 +63,7 @@ document.addEventListener('keydown', e => {
         else if (k === 'm') { memDebugEl.classList.toggle('active'); state._memDebugTimer = 0; }
         else if (k === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
         else if (k === 'c') _toggleColorMode();
+        else if (k === 'v') showNotification(toggleMute() ? 'Sound off (V)' : 'Sound on (V)');
     }
     if (state.isPaused) return;
     if (held) { keys[held] = true; return; }

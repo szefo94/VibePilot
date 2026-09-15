@@ -11,12 +11,6 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap"></noscript>
     <link rel="stylesheet" href="style.css">
 </head><body>
-    <!-- Splash screen — comment out to disable, uncomment to re-enable (also uncomment runSplash() in src/main.js)
-    <div id="splash-screen">
-        <div id="splash-title"><span id="splash-cursor"></span></div>
-        <div id="splash-subtitle"></div>
-    </div>
-    -->
     <div id="player-stats" class="ui-overlay">
         <span id="hp-display">HP: <span id="hp">100</span></span>
         <span id="score-display">Score: <span id="score">0</span></span>
@@ -36,6 +30,8 @@
         - Q: Deploy Flares<br>
         - X: Napalm Bomb<br>
         - F: Toggle Aiming Laser<br>
+        - Mouse: Steer · LMB Shoot · RMB Missile<br>
+        - Esc: Pause · V: Mute<br>
         <strong style="color: #ffcc00;">(Watch out! Enemies shoot back!)</strong>
     </div>
     <div id="conquered-panel" class="ui-overlay">
@@ -114,7 +110,7 @@
     </div>
     <div id="game-over">
         GAME OVER!<br>
-        <span style="font-size: 18px;">Refresh to restart</span>
+        <span style="font-size: 18px;">Press Enter to restart</span>
     </div>
 
     <!-- Steering cursor reticle (mouse-aim) -->
@@ -132,7 +128,7 @@
     </div>
 
     <!-- Memory / entity debug panel (idea 10) -->
-    <div id="memory-debug" class="ui-overlay active"></div>
+    <div id="memory-debug" class="ui-overlay"></div>
 
     <!-- External library for 3D graphics -->
     <script src="three.min.js"></script>

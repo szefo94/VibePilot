@@ -103,8 +103,8 @@ The best arcade flying games (Ace Combat, Luftrausers, Sky Force, StarFox) conve
 | # | Idea | Impact | Effort |
 |---|---|---|---|
 | T2 | **Unit-type constants** — `UNIT.AIRPORT` etc. instead of bare strings | Low | Low |
-| T3 | **Build step (Vite/esbuild)** — enables modules, tree-shaking, offline Three.js | Medium | High |
-| T4 | **ESLint + Prettier** — consistent style, catches implicit globals | Low | Low |
+| T3 | **Build step (Vite/esbuild)** — optional now that the game runs as native ES modules; would add tree-shaking and an npm-managed Three.js | Medium | High |
+| T4 | **Prettier** — consistent formatting (ESLint already runs via `npm run lint`) | Low | Low |
 | T5 | **Unit tests for pure functions** — `randomRange`, collision math, spawn helpers | Low | Medium |
 | T6 | **localStorage settings** — save keybindings, volume level, toggle states across sessions | Medium | Low |
 

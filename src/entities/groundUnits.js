@@ -2,30 +2,31 @@
 import { groundLevel, hostileUnitShootingCooldownTime, waterLevel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
-import { randomRange } from '../core/utils.js';
+import { markShared, randomRange } from '../core/utils.js';
 import { scoreElement } from '../ui/dom.js';
 import { groundUnits } from './registry.js';
 import { _dyingGround, createExplosion } from '../effects/effects.js';
 import { createUnitLabel, destroyLabel } from '../ui/labels.js';
 import { notifyBase } from '../ui/notifications.js';
 import { _addKill, addXP } from '../game/progression.js';
+import { groundUnitWorldPos, refreshGroundUnitWorldPos } from '../combat/damage.js';
 
 // --- Unit Creation & Spawning ---
 // Pre-baked tank part geometries
-const _tankLowerHullGeo = new THREE.BoxGeometry(4.4, 0.8, 5.5);
-const _tankUpperHullGeo = new THREE.BoxGeometry(3.5, 0.65, 4.8);
-const _tankTrackGeo     = new THREE.BoxGeometry(0.55, 0.65, 5.9);
-const _tankTurretGeo    = new THREE.CylinderGeometry(1.3, 1.55, 0.7, 8);
-const _tankHatchGeo     = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 8);
-const _tankBarrelGeo    = (() => { const g = new THREE.CylinderGeometry(0.18, 0.28, 4.8, 8); g.rotateX(Math.PI / 2); g.translate(0, 0, 2.4); return g; })();
+const _tankLowerHullGeo = markShared(new THREE.BoxGeometry(4.4, 0.8, 5.5));
+const _tankUpperHullGeo = markShared(new THREE.BoxGeometry(3.5, 0.65, 4.8));
+const _tankTrackGeo     = markShared(new THREE.BoxGeometry(0.55, 0.65, 5.9));
+const _tankTurretGeo    = markShared(new THREE.CylinderGeometry(1.3, 1.55, 0.7, 8));
+const _tankHatchGeo     = markShared(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 8));
+const _tankBarrelGeo    = markShared((() => { const g = new THREE.CylinderGeometry(0.18, 0.28, 4.8, 8); g.rotateX(Math.PI / 2); g.translate(0, 0, 2.4); return g; })());
 // Pre-baked truck part geometries (shared across all truck instances)
-const _truckChassisGeo    = new THREE.BoxGeometry(1.8, 0.25, 6.5);
-const _truckHoodGeo       = new THREE.BoxGeometry(1.6, 0.75, 1.4);
-const _truckCabGeo        = new THREE.BoxGeometry(1.75, 1.4, 2.0);
-const _truckCargoFloorGeo = new THREE.BoxGeometry(1.75, 0.15, 3.2);
-const _truckCargoSideGeo  = new THREE.BoxGeometry(0.1,  0.7,  3.2);
-const _truckCargoWallGeo  = new THREE.BoxGeometry(1.75, 0.7,  0.1);
-const _truckWheelGeo      = (() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })();
+const _truckChassisGeo    = markShared(new THREE.BoxGeometry(1.8, 0.25, 6.5));
+const _truckHoodGeo       = markShared(new THREE.BoxGeometry(1.6, 0.75, 1.4));
+const _truckCabGeo        = markShared(new THREE.BoxGeometry(1.75, 1.4, 2.0));
+const _truckCargoFloorGeo = markShared(new THREE.BoxGeometry(1.75, 0.15, 3.2));
+const _truckCargoSideGeo  = markShared(new THREE.BoxGeometry(0.1,  0.7,  3.2));
+const _truckCargoWallGeo  = markShared(new THREE.BoxGeometry(1.75, 0.7,  0.1));
+const _truckWheelGeo      = markShared((() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })());
 export function createGroundUnit(type) {
     const u = new THREE.Group();
     let hp, collR, hpY, xp, n, turretPivotRef = null, barrelPivotRef = null, hostile = false, l = 1;
@@ -76,7 +77,7 @@ export function createGroundUnit(type) {
                 u.add(chassis, hood, cab, cargoFloor, cargoL, cargoR, cargoFront, cargoTail, wFL, wFR, wRL, wRR);
             }
             u.scale.set(2.5, 2.5, 2.5); break;
-        case 'airport':
+        case 'airport': {
             n = "Airbase"; l = 5; hp = 150; collR = 100; hpY = 25; xp = 200; u.position.y = groundLevel + 2;
             const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), unitMat);
             const mainBuilding = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 10), unitMat); mainBuilding.position.set(25, 10, 0);
@@ -87,6 +88,7 @@ export function createGroundUnit(type) {
             const t1 = createGroundUnit('turret'); t1.position.set(30, 0, 60); t1.userData.protector = u; u.add(t1); groundUnits.push(t1);
             const t2 = createGroundUnit('turret'); t2.position.set(-30, 0, -60); t2.userData.protector = u; u.add(t2); groundUnits.push(t2);
             break;
+        }
         case 'destroyer':
             n = "Destroyer"; l = ~~randomRange(3, 6); hp = 40 * l; collR = 10 * 5; hpY = 4 * 5; xp = 75 * l; hostile = true; u.position.y = waterLevel;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat));
@@ -133,17 +135,17 @@ export function createHangar(variant = 'box') {
 export function killGroundUnit(gu) {
     if (!gu.userData._alive) return; // double-kill guard
     gu.userData._alive = false;
-    // Remove dependents first (e.g. airport child turrets) before removing parent (§2.5)
+    // Dependents (airport turrets) are exposed, not destroyed: move them into the world keeping their
+    // world transform, so the parent's disposal doesn't take them along, and drop their protection.
     if (gu.userData.dependents?.length) {
-        const depIdxs = [];
         for (const dep of gu.userData.dependents) {
-            dep.userData.hp = 0; dep.userData._alive = false; destroyLabel(dep.userData.label);
-            const ti = groundUnits.indexOf(dep); if (ti > -1) depIdxs.push(ti);
-            _dyingGround.push({ mesh: dep, timer: 50 }); // blink-out (idea 5)
+            scene.attach(dep);
+            dep.userData.protector = null;
+            refreshGroundUnitWorldPos(dep);
         }
-        depIdxs.sort((a, b) => b - a).forEach(ti => groundUnits.splice(ti, 1));
+        gu.userData.dependents.length = 0;
     }
-    createExplosion(gu.position);
+    createExplosion(groundUnitWorldPos(gu));
     destroyLabel(gu.userData.label);
     // Don't dispose immediately — blink animation (idea 5); dispose happens in updateEffects
     const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);

@@ -12,8 +12,10 @@ import { _gpAxes, _mouseLMB, keys } from '../input.js';
 // --- Sub-System Functions (§1.2) ---
 export function updatePhysics(dt) {
     // Speed control — keyboard OR gamepad left stick Y
-    if (keys.w || _gpAxes.throttleUp > 0) state.speed = Math.min(maxSpeed, state.speed + acceleration * dt * Math.max(1, _gpAxes.throttleUp));
-    else if (keys.s || _gpAxes.throttleDown > 0) state.speed = Math.max(minSpeed, state.speed - deceleration * dt * Math.max(1, _gpAxes.throttleDown));
+    // Keys are full strength; stick deflection scales proportionally
+    const throttleUp = keys.w ? 1 : _gpAxes.throttleUp, throttleDown = keys.s ? 1 : _gpAxes.throttleDown;
+    if (throttleUp > 0) state.speed = Math.min(maxSpeed, state.speed + acceleration * dt * throttleUp);
+    else if (throttleDown > 0) state.speed = Math.max(minSpeed, state.speed - deceleration * dt * throttleDown);
     else state.speed = Math.max(minSpeed, state.speed - naturalDeceleration * dt);
     // Dive boost: forward vector Y < 0 means nose-down — gravity adds speed up to +80 % of maxSpeed
     _sv2.set(0, 0, 1).applyQuaternion(plane.quaternion);
@@ -80,8 +82,17 @@ export function updatePhysics(dt) {
     plane.rotateX(state.pitchRate * dt); plane.rotateZ(state.rollRate * dt); plane.rotateY(state.yawRate * dt);
     _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);
     plane.position.addScaledVector(_sv1, state.speed * dt);
-    if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && state.shootCooldown <= 0 && state.gunAmmo > 0) { fireBullet(); state.shootCooldown = shootCooldownTime; if (--state.gunAmmo <= 0) state.gunReloadTimer = GUN_RELOAD_TIME; }
-    else if ((keys[' '] || _mouseLMB || _gpAxes.shoot) && state.shootCooldown <= 0 && state.gunAmmo <= 0) { state._emptyClipFlash = 8; state.shootCooldown = shootCooldownTime; _playEmptyClip(); } // V13 / A11
+    // Gun: the cooldown keeps its remainder, so the fire rate is the same at any frame rate (≤ 3 shots per frame)
+    const trigger = keys[' '] || _mouseLMB || _gpAxes.shoot;
+    state.shootCooldown -= dt;
+    if (!trigger) state.shootCooldown = Math.max(0, state.shootCooldown);
+    else {
+        for (let shots = 0; shots < 3 && state.shootCooldown <= 0; shots++) {
+            if (state.gunAmmo > 0) { fireBullet(); state.shootCooldown += shootCooldownTime; if (--state.gunAmmo <= 0) state.gunReloadTimer = GUN_RELOAD_TIME; }
+            else { state._emptyClipFlash = 8; state.shootCooldown = shootCooldownTime; _playEmptyClip(); break; } // V13 / A11
+        }
+        state.shootCooldown = Math.max(state.shootCooldown, -shootCooldownTime); // don't bank shots past the cap
+    }
     plane.updateMatrixWorld(true);
     // Update player bounding boxes (§2.1 — applyMatrix4 avoids per-vertex iteration)
     corePlaneComponents.forEach((m, i) => planePartBoxes[i].copy(planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));

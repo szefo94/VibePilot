@@ -3,9 +3,9 @@
 export const _statHp = [100], _statScore = [0], _statXp = [0], _statLvl = [1];
 export const _deathGraphEl = (() => {
     const div = document.createElement('div');
-    div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;min-width:640px;';
+    div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;width:min(640px, 94vw);box-sizing:border-box;';
     div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
-        '<canvas id="_deathCanvas" width="590" height="360"></canvas>' +
+        '<canvas id="_deathCanvas" width="590" height="360" style="max-width:100%;height:auto"></canvas>' +
         '<div style="text-align:center;font-size:11px;color:#556;margin-top:8px">[G] toggle debrief</div>';
     document.body.appendChild(div); return div;
 })();

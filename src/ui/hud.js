@@ -5,6 +5,7 @@ import { bombBarEl, bombStatusEl, bulletDamageValueElement, enemyDistanceElement
 import { enemyArrow, groundTargetArrow, markerArrow, plane } from '../player/plane.js';
 import { _rotFwd } from '../player/wingTrails.js';
 import { enemies, groundUnits, markers } from '../entities/registry.js';
+import { groundUnitWorldPos } from '../combat/damage.js';
 
 // HUD nearest-enemy cache — recomputed every 6 frames (~10 fps at 60 fps) (§3.1)
 let _hudEnemyFrame = 0, _hudNearestEnemy = null, _hudNearestEnemyDist = Infinity;
@@ -13,7 +14,7 @@ export function updateDamageUI() { bulletDamageValueElement.textContent = Math.r
 export function updateHUD() {
     let m = null, g = null, md = Infinity, gd = Infinity;
     markers.forEach(mk => { const d = plane.position.distanceToSquared(mk.position); if (d < md) { md = d; m = mk; } });
-    groundUnits.forEach(u => { if (u.userData.isHostile && u.userData.hp > 0) { const d = plane.position.distanceToSquared(u.position); if (d < gd) { gd = d; g = u; } } });
+    groundUnits.forEach(u => { if (u.userData.isHostile && u.userData.hp > 0) { const d = plane.position.distanceToSquared(groundUnitWorldPos(u)); if (d < gd) { gd = d; g = u; } } });
     // Nearest enemy — recomputed every 6 frames (§3.1: 40 distance checks/frame → ~7 on average)
     if (++_hudEnemyFrame >= 6) {
         _hudEnemyFrame = 0;

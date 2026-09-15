@@ -1,10 +1,10 @@
 /** Static environment (ground, water, ceiling) and procedural islets with polygon queries. */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, waterLevel } from '../config.js';
 import { scene } from '../core/scene.js';
-import { randomRange } from '../core/utils.js';
+import { markShared, randomRange } from '../core/utils.js';
 
 // --- Environment ---
-export const caveWallMaterial = new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.9 });
+export const caveWallMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.9 }));
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), caveWallMaterial);
 ground.rotation.x = -Math.PI / 2; ground.position.y = groundLevel; scene.add(ground);
 const water = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), new THREE.MeshStandardMaterial({ color: 0x001e3d, roughness: 0.2, metalness: 0.1 }));
@@ -18,8 +18,8 @@ const ISLET_ITERATIONS    = 4;    // A: 4 → 128 pts | B: 3 → 192 pts
 const ISLET_ROUGHNESS     = 0.35; // A only — radial displacement scale (0.2 = subtle, 0.5 = jagged)
 
 export const islets = [];
-const isletMaterial = new THREE.MeshStandardMaterial({ color: 0x556B2F });
-const _hillMat = new THREE.MeshStandardMaterial({ color: 0x4a5530, roughness: 0.95 });
+const isletMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x556B2F }));
+const _hillMat = markShared(new THREE.MeshStandardMaterial({ color: 0x4a5530, roughness: 0.95 }));
 // Pre-baked hill shapes: wide-base cone, broad dome (squashed), narrow peak
 const _hillGeos = [
     (() => { const g = new THREE.ConeGeometry(60, 45, 7); return g; })(),
@@ -121,18 +121,23 @@ export function createIslets(count) {
         const x = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
         const z = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
         const polygon = _generateIsletPolygon(x, z, radius);
-        islets.push({ x, z, radius, polygon });
 
-        // Build ShapeGeometry from polygon (Shape is in XY plane → rotate to XZ)
+        // Build ShapeGeometry from polygon. The Shape lives in local XY and is rotated -90° about X, which maps
+        // local (sx, sy) to world (x + sx, z - sy): shape Y must be the *negated* Z offset, otherwise the mesh is
+        // mirrored relative to the polygon used for placement, fences and the minimap.
+        // ShapeGeometry normalises the winding, so faces still point up.
         const shape = new THREE.Shape();
-        shape.moveTo(polygon[0].x - x, polygon[0].z - z);
-        for (let k = 1; k < polygon.length; k++) shape.lineTo(polygon[k].x - x, polygon[k].z - z);
+        shape.moveTo(polygon[0].x - x, -(polygon[0].z - z));
+        for (let k = 1; k < polygon.length; k++) shape.lineTo(polygon[k].x - x, -(polygon[k].z - z));
         shape.closePath();
         const geo = new THREE.ShapeGeometry(shape);
         const mesh = new THREE.Mesh(geo, isletMaterial);
         mesh.rotation.x = -Math.PI / 2;
         mesh.position.set(x, groundLevel + 1, z);
         scene.add(mesh);
+        // Displacement can push the coastline past the nominal radius; quick rejection tests use the true bound
+        const boundR = Math.max(...polygon.map(p => Math.hypot(p.x - x, p.z - z)));
+        islets.push({ x, z, radius, boundR, polygon, mesh });
 
         // Scatter hills on this islet
         const numHills = 3 + Math.floor(Math.random() * 5); // 3–7 per islet
@@ -154,7 +159,7 @@ export function clampToIslet(px, pz, islet) {
     return _nearestOnPolygon(px, pz, islet.polygon);
 }
 export function isOnAnyIslet(px, pz) {
-    return islets.some(i => (px - i.x) ** 2 + (pz - i.z) ** 2 < i.radius * i.radius && _pointInPolygon(px, pz, i.polygon));
+    return islets.some(i => (px - i.x) ** 2 + (pz - i.z) ** 2 < i.boundR * i.boundR && _pointInPolygon(px, pz, i.polygon));
 }
 export function getNearestIslet(x, z) {
     let best = null, bestDist = Infinity;

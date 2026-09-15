@@ -1,5 +1,5 @@
 /** Entry point: world initialisation and the per-frame update loop. */
-import { MINIMAP_REFRESH_S, MOUSE_STEERING, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS } from './config.js';
+import { MINIMAP_REFRESH_S, MOUSE_STEERING, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS } from './config.js';
 import { state } from './state.js';
 import { camera, renderer, scene } from './core/scene.js';
 import { _sv1 } from './core/scratch.js';
@@ -11,6 +11,7 @@ import { updateDebugBoxes } from './effects/debug.js';
 import { updateDamageUI, updateHUD } from './ui/hud.js';
 import { _statHp, _statLvl, _statScore, _statXp } from './ui/debrief.js';
 import { _drawReticle } from './ui/reticle.js';
+import { runSplash, splashActive } from './ui/splash.js';
 import { updateMinimap, updateRadarSnapshot } from './ui/minimap.js';
 import { _searchlights, buildBaseFences } from './entities/fences.js';
 import { spawnInterceptors } from './entities/airUnits.js';
@@ -36,12 +37,12 @@ function animate() {
     const dt = Math.min(rawDelta * TARGET_FPS, 6); // cap at 6 frames — prevents spiral-of-death on tab switch
 
     // Stat sampling (~1 s interval) for death debrief
-    if (!state.isGameOver && !state.isPaused) {
+    if (!state.isGameOver && !state.isPaused && !splashActive) {
         state._statTimer -= dt;
         if (state._statTimer <= 0) { state._statTimer = 60; _statHp.push(Math.max(0, state.planeHP)); _statScore.push(state.score); _statXp.push(state.xp); _statLvl.push(state.level); }
     }
     // Interceptor event timer
-    if (!state.isGameOver && !state.isPaused) {
+    if (!state.isGameOver && !state.isPaused && !splashActive) {
         state._gameElapsed += dt;
         if (state._gameElapsed >= 60 * TARGET_FPS) { // arm after 1 minute
             state._interceptorTimer -= dt;
@@ -51,7 +52,7 @@ function animate() {
             }
         }
     }
-    if (!state.isGameOver && !state.isPaused) {
+    if (!state.isGameOver && !state.isPaused && !splashActive) {
         // Spawn protection is simulation state in seconds; dt is in 60 fps frame units
         if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - dt / TARGET_FPS);
         updatePhysics(dt);
@@ -68,7 +69,7 @@ function animate() {
         updateEffects(dt); // debris physics still runs on game over
     }
     updateDebugBoxes();
-    updateCamera();
+    updateCamera(dt);
     // Decay steering cursor toward center when mouse is idle
     if (MOUSE_STEERING) {
         const _decay = Math.pow(1 - STEER_RETURN_DECAY, dt);
@@ -98,10 +99,16 @@ function animate() {
                         const reg = _fenceRegistry[bid];
                         if (reg) { reg.alarmState = true; reg.alarmTimer = 480; }
                     }
+                    if (!sl.idleColor) sl.idleColor = sl.spot.color.clone();
                     sl.spot.color.setHex(0xff4400); // turn red when alarmed
+                    sl.alarmed = true;
                 }
             }
-            if (sl.spot.color.r < 1) sl.spot.color.lerp(new THREE.Color(0xffffaa), 0.02 * rawDelta * TARGET_FPS); // fade back
+            // Fade back to the idle colour (tracked explicitly: the alarm red already has r = 1)
+            if (sl.alarmed) {
+                sl.spot.color.lerp(sl.idleColor, Math.min(1, 0.02 * rawDelta * TARGET_FPS));
+                if (Math.abs(sl.spot.color.g - sl.idleColor.g) + Math.abs(sl.spot.color.b - sl.idleColor.b) < 0.01) { sl.spot.color.copy(sl.idleColor); sl.alarmed = false; }
+            }
         }
         // Decay alarm timers
         for (const reg of Object.values(_fenceRegistry)) {
@@ -138,5 +145,5 @@ function animate() {
 // Start rendering immediately — script is at end of <body> so DOM is ready.
 // window.onload would block until fonts finish loading, causing a blank screen.
 animate();
-// runSplash(); // uncomment to re-enable splash screen (also uncomment HTML in index.html)
-if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';
+if (SPLASH_ENABLED) runSplash(); // shows the steering cursor itself when dismissed
+else if (MOUSE_STEERING) _steerCursorEl.style.display = 'block';

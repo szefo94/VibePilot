@@ -1,14 +1,14 @@
 /** Collectible heart chains, markers and hoop chains. */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
-import { randomRange, rng } from '../core/utils.js';
+import { markShared, randomRange, rng } from '../core/utils.js';
 import { collectibles, markers, obstacles } from './registry.js';
 import { CONSTELLATION_NAMES, CORRIDOR_NAMES, constellations, corridors } from './names.js';
 import { torusMaterial } from './obstacles.js';
 
 // --- Marker / collectible resources ---
-export const markerRadius = 5, markerGeometry = new THREE.SphereGeometry(markerRadius, 16, 16);
-const markerMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xccad00 });
+export const markerRadius = 5, markerGeometry = markShared(new THREE.SphereGeometry(markerRadius, 16, 16));
+const markerMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xccad00 }));
 export const collectibleRadius = 1.5, numCollectibleChains = 20;
 const _hhs = collectibleRadius / 47.5; // scale heart to fit within collectibleRadius
 const _hox = -25 * _hhs, _hoy = -47.5 * _hhs; // center heart at origin
@@ -20,8 +20,8 @@ _heartShape.bezierCurveTo(_hox-30*_hhs,_hoy+55*_hhs,  _hox-10*_hhs,_hoy+77*_hhs,
 _heartShape.bezierCurveTo(_hox+60*_hhs,_hoy+77*_hhs,  _hox+80*_hhs,_hoy+55*_hhs,  _hox+80*_hhs,_hoy+35*_hhs);
 _heartShape.bezierCurveTo(_hox+80*_hhs,_hoy+35*_hhs,  _hox+80*_hhs,_hoy,           _hox+50*_hhs,_hoy);
 _heartShape.bezierCurveTo(_hox+35*_hhs,_hoy,           _hox+25*_hhs,_hoy+25*_hhs,  _hox+25*_hhs,_hoy+25*_hhs);
-export const collectibleGeo = new THREE.ExtrudeGeometry(_heartShape, { depth: collectibleRadius * 0.45, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1, bevelSegments: 2 });
-export const collectibleMat = new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x006622 });
+export const collectibleGeo = markShared(new THREE.ExtrudeGeometry(_heartShape, { depth: collectibleRadius * 0.45, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1, bevelSegments: 2 }));
+export const collectibleMat = markShared(new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x006622 }));
 function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
     m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
@@ -65,7 +65,7 @@ export function spawnCollectibleChains(count) {
     }
 }
 // Dashed axis line through the hole of a torus — parented so it inherits rotation
-const _hoopAxisMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 3, gapSize: 3, opacity: 0.45, transparent: true });
+const _hoopAxisMat = markShared(new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 3, gapSize: 3, opacity: 0.45, transparent: true }));
 function _addHoopAxis(torusMesh, r) {
     const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -r * 1.3), new THREE.Vector3(0, 0, r * 1.3)]);
     const line = new THREE.Line(geo, _hoopAxisMat);

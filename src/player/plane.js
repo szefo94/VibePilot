@@ -34,7 +34,6 @@ export const _planeMaterials = [bodyMaterial, tailMaterial, attachMat]; // for p
 plane.position.set(0, groundLevel + 20, 0);
 scene.add(plane);
 export const planePartBoxes = corePlaneComponents.map(() => new THREE.Box3());
-const planeMarkerCollisionRadius = 2.0;
 export const planeSphereRadius = 2.5;
 // Local-space geometry bounding boxes — built once, updated via applyMatrix4 each frame (§2.1)
 corePlaneComponents.forEach(m => m.updateMatrix());

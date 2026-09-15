@@ -16,6 +16,8 @@ export const MINIMAP_REFRESH_S    = 1 / 15; // minimap refresh rate in seconds (
 export const ENEMY_BULLET_POOL_SIZE = 60;   // pre-allocated enemy bullet meshes (§2.4)
 // Spawn
 export const GRACE_PERIOD = 5.0;            // seconds of invincibility after game start
+// Intro
+export const SPLASH_ENABLED = false;      // typewriter intro (src/ui/splash.js); the simulation waits until it is dismissed
 
 // --- Flight Config (easy-edit tuning knobs) ---
 export const maxSpeed = .8, minSpeed = .02;

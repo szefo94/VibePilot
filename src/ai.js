@@ -6,10 +6,13 @@ import { plane } from './player/plane.js';
 import { _fenceRegistry, airUnits, enemies, groundUnits } from './entities/registry.js';
 import { fireHostileBullet, spawnEnemyBullet } from './combat/enemyBullets.js';
 import { destroyLogicalEnemy } from './entities/airUnits.js';
+import { refreshGroundUnitWorldPos } from './combat/damage.js';
 
 const _targetWorldPosition = new THREE.Vector3();
 export function updateAI(dt) {
-    // Enemy fighters
+    // Enemy fighters — out-of-bounds despawns are collected and removed after the loop
+    // (removal splices and respawns into `enemies`, which would skip the next fighter)
+    const _despawnIds = [];
     enemies.forEach(e => {
         e.parts.forEach(p => p.position.addScaledVector(e.velocity, dt));
         e.boundingBox.makeEmpty();
@@ -18,8 +21,9 @@ export function updateAI(dt) {
             e.parts[0].getWorldPosition(_targetWorldPosition);
             e.label.sprite.position.copy(_targetWorldPosition).add(_sv2.set(0, e.hpOffsetY || 5, 0));
         }
-        if (e.parts.length > 0 && (Math.abs(e.parts[0].position.x) > MAP_BOUNDARY || Math.abs(e.parts[0].position.z) > MAP_BOUNDARY)) destroyLogicalEnemy(e.id);
+        if (e.parts.length > 0 && (Math.abs(e.parts[0].position.x) > MAP_BOUNDARY || Math.abs(e.parts[0].position.z) > MAP_BOUNDARY)) _despawnIds.push(e.id);
     });
+    for (const id of _despawnIds) destroyLogicalEnemy(id, { reward: false }); // recycling, not a kill
     // Air units
     for (let i = airUnits.length - 1; i >= 0; i--) {
         const au = airUnits[i];
@@ -73,7 +77,8 @@ export function updateAI(dt) {
             });
             u.userData._alive = true;
         }
-        if (u.userData.label) { u.getWorldPosition(_targetWorldPosition); u.userData.label.sprite.position.copy(_targetWorldPosition).add(_sv3.set(0, u.userData.hpOffsetY, 0)); }
+        const _uwp = refreshGroundUnitWorldPos(u); // cached world position used by targeting/collision this frame
+        if (u.userData.label) u.userData.label.sprite.position.copy(_uwp).add(_sv3.set(0, u.userData.hpOffsetY, 0));
         if (u.userData.turretPivot && u.userData.hp > 0) {
             const _tp = u.userData.turretPivot;
             _tp.getWorldPosition(_wp);
@@ -87,7 +92,7 @@ export function updateAI(dt) {
         }
         if (u.userData.isHostile && u.userData.hp > 0) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
-            if (u.userData.shootCooldown <= 0 && u.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
+            if (u.userData.shootCooldown <= 0 && _uwp.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
                 const _reg = u.userData.baseId ? _fenceRegistry[u.userData.baseId] : null;
                 fireHostileBullet(u); u.userData.shootCooldown = (_reg?.alarmState ? hostileUnitShootingCooldownTime * 0.4 : hostileUnitShootingCooldownTime);
             }

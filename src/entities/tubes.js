@@ -33,9 +33,9 @@ export function _nearestTubeT(curve, pos) {
     return { t: bestT, d: bestD };
 }
 // Tubes are mathematical hollow tunnels; fly inside and collect all orbs for big XP
-export function spawnTube(cx, cy, cz, type = 'challenge') {
-    const labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
-    const name = `Tube ${labels[tubes.length % labels.length]}`;
+const MIN_TUBE_RADIUS = 12, MAX_TUBE_RADIUS = 20, TUBE_PATH_TRIES = 6;
+// Random helix / S-curve / corkscrew control points around (cx, cy, cz), clamped into valid airspace
+function buildTubePath(cx, cy, cz) {
     const patType = ~~(Math.random() * 3);
     const pts = [];
     if (patType === 0) { // Helix
@@ -60,9 +60,20 @@ export function spawnTube(cx, cy, cz, type = 'challenge') {
     }
     // Clamp Y into valid airspace
     pts.forEach(p => { p.y = Math.max(groundLevel + 30, Math.min(ceilingLevel - 30, p.y)); });
-    const curve = new THREE.CatmullRomCurve3(pts);
-    // Compute largest non-self-intersecting radius from actual curve geometry
-    const tubeRadius = Math.max(12, computeSafeTubeRadius(curve, 20));
+    return pts;
+}
+export function spawnTube(cx, cy, cz, type = 'challenge') {
+    const labels = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta'];
+    const name = `Tube ${labels[tubes.length % labels.length]}`;
+    // Regenerate the path until it can hold the minimum radius without self-intersecting,
+    // rather than forcing the radius up past the safe bound
+    let curve = null, tubeRadius = -Infinity;
+    for (let attempt = 0; attempt < TUBE_PATH_TRIES && tubeRadius < MIN_TUBE_RADIUS; attempt++) {
+        const candidate = new THREE.CatmullRomCurve3(buildTubePath(cx, cy, cz));
+        const safeRadius = computeSafeTubeRadius(candidate, MAX_TUBE_RADIUS);
+        if (safeRadius > tubeRadius) { curve = candidate; tubeRadius = safeRadius; }
+    }
+    if (tubeRadius < MIN_TUBE_RADIUS) { console.warn(`spawnTube: no self-intersection-free path near (${Math.round(cx)}, ${Math.round(cz)}); skipped`); return; }
     const tubeGeo = new THREE.TubeGeometry(curve, 48, tubeRadius, 8, false);
     const isChallenge = type === 'challenge';
     const tubeColor  = isChallenge ? 0x00ccff : 0xff8800; // cyan = challenge, orange = free

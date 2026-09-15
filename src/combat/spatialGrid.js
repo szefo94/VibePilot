@@ -1,5 +1,6 @@
 /** Uniform spatial hash grid for broad-phase bullet collision. */
 import { airUnits, groundUnits } from '../entities/registry.js';
+import { groundUnitWorldPos } from './damage.js';
 
 // --- Spatial Grid for bullet collision (§2.3) ---
 const _GRID_CELL = 120;
@@ -11,7 +12,7 @@ export function _gridBuild() {
         if (!_grid.has(k)) _grid.set(k, []);
         _grid.get(k).push(obj);
     };
-    groundUnits.forEach(u => { if (u.userData.hp > 0) add(u, u.position); });
+    groundUnits.forEach(u => { if (u.userData.hp > 0) add(u, groundUnitWorldPos(u)); });
     airUnits.forEach(au => { if (au.hp > 0) add(au, au.group.position); });
 }
 export function _gridQuery(x, z, r) {

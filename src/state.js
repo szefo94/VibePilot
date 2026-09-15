@@ -1,5 +1,6 @@
 /** Mutable session state shared between systems (player stats, flight rates, ammo, timers). */
 import { BOMB_MAX_AMMO, FLARE_MAX_AMMO, GRACE_PERIOD, GUN_MAX_AMMO, MISSILE_MAX_AMMO, NAPALM_MAX_AMMO, TARGET_FPS } from './config.js';
+import { storageGetInt } from './core/storage.js';
 
 export const state = {
     // Minimap / radar timers
@@ -51,7 +52,7 @@ export const state = {
     _scoreMulti: 1,
     _multiDisplayTimer: 0,
     // Persistent high score
-    _highScore: parseInt(localStorage.getItem('vibepilot_hs') || '0'),
+    _highScore: storageGetInt('vibepilot_hs'),
     // Empty-clip flash (frames)
     _emptyClipFlash: 0,
     // Debrief sampling and collectible pulse

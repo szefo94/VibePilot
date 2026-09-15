@@ -2,7 +2,7 @@
 import { explosionMaxSize, gravity, groundLevel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
-import { disposeGroup, randomRange } from '../core/utils.js';
+import { disposeGroup, markShared, randomRange } from '../core/utils.js';
 import { hitMarkerEl, memDebugEl } from '../ui/dom.js';
 import { _planeMaterials, _playerMuzzleLight, plane } from '../player/plane.js';
 import { _fenceRegistry, activeExplosions, airUnits, bullets, collectibles, enemies, enemyBullets, groundUnits, markers, missiles, napalmFireParticles } from '../entities/registry.js';
@@ -12,11 +12,11 @@ import { collectibleMat } from '../entities/collectibles.js';
 import { tubes } from '../entities/tubes.js';
 
 // V5: bullet tracer shared material
-export const _tracerMat = new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.55 });
+export const _tracerMat = markShared(new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.55 }));
 // V4: hostile muzzle flash small spheres
 export const _muzzleFlashes = [];
-export const _muzzleFlashGeo = new THREE.SphereGeometry(0.5, 5, 4);
-export const _muzzleFlashMat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true });
+export const _muzzleFlashGeo = markShared(new THREE.SphereGeometry(0.5, 5, 4));
+export const _muzzleFlashMat = markShared(new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true }));
 let _graceBlinking = false; // plane emissive currently driven by the spawn-grace blink
 // --- Visual effects (ideas 1-6) ---
 export const collectibleBursts = []; // green burst particles on collectible pickup (idea 1)
@@ -86,7 +86,7 @@ export function updateEffects(dt) {
         d.timer -= dt;
         const bp = Math.max(2, Math.round(d.timer * 0.22));
         d.mesh.visible = (Math.floor(d.timer) % (bp * 2)) < bp;
-        if (d.timer <= 0) { d.mesh.geometry.dispose(); scene.remove(d.mesh); _dyingMarkers.splice(i, 1); }
+        if (d.timer <= 0) { disposeGroup(d.mesh); scene.remove(d.mesh); _dyingMarkers.splice(i, 1); } // torus + its axis line
     }
     // ── Idea 5: Dying ground units (blink then dispose) ──────────
     for (let i = _dyingGround.length - 1; i >= 0; i--) {
@@ -94,7 +94,7 @@ export function updateEffects(dt) {
         d.timer -= dt;
         const bp = Math.max(2, Math.round(d.timer * 0.22));
         d.mesh.visible = (Math.floor(d.timer) % (bp * 2)) < bp;
-        if (d.timer <= 0) { disposeGroup(d.mesh); scene.remove(d.mesh); _dyingGround.splice(i, 1); }
+        if (d.timer <= 0) { disposeGroup(d.mesh); d.mesh.parent?.remove(d.mesh); _dyingGround.splice(i, 1); }
     }
     // ── Idea 5: Dying air units ───────────────────────────────────
     for (let i = _dyingAirUnits.length - 1; i >= 0; i--) {

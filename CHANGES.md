@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+> **Prompts:** "split the large JavaScript file into modules, publish the game to GitHub Pages, add the live link to the README, then implement reasonable changes from PROJECT_REVIEW.md"
+
+### Architecture & deployment
+- **Module split**: the 3,721-line `main.js` is now native ES modules under `src/` (`config`, `state`, `core/`, `world/`, `player/`, `entities/`, `combat/`, `effects/`, `game/`, `ui/`, `audio`, `input`, `ai`, `main`). No build step. Mutable values shared across systems live on `state`.
+- `Index.html` → `index.html`; deployed to GitHub Pages (live link at the top of the README).
+- Tooling: `package.json` with `serve`, `check`, `lint` (ESLint) and `test:browser` (headless regression probes in `tests/`).
+
+### Fixes (details and verification: PROJECT_REVIEW.md → Implementation progress)
+- Spawn protection lasts 5 s (was ~0.08 s). Weapons can't fire while paused. Held keys are cleared on blur.
+- Airport turrets use world positions for targeting, range and collision. When an airport dies its turrets are exposed rather than silently deleted.
+- Missiles damage the unit they strike. Splash kills no longer skip enemies. Fighters leaving the map give no reward.
+- One damage-eligibility rule for all weapons: protected turrets are immune, hangars are bomb-only.
+- Gun cadence is the same at any frame rate. Player bullets use swept collision. Camera smoothing is time-based.
+- Gamepad throttle is analog. Legacy fighter HP matches its label. Aborted tube runs keep collected orbs.
+- The collision debug overlay no longer leaks. Shared geometries survive unit removal, and owned resources are freed.
+- Destroyed searchlights stop detecting, and the alarm colour fades back.
+- Islet meshes are no longer mirrored. Placement loops are bounded. Tube paths regenerate instead of self-intersecting.
+- Fence damage tint stays per base group. Napalm patches sit on the surface.
+- High-score storage failures no longer break the game.
+
+### Audio & UX
+- One shared AudioContext with a master gain, `V` to mute (remembered), reused noise buffers and a voice cap. The player-hit sound is no longer cut short.
+- Responsive HUD for narrow screens. Mouse/V/G/Enter are listed in the controls. The memory panel is off by default. Enter restarts after game over.
+- The splash screen is a real option (`SPLASH_ENABLED`) that holds the simulation until dismissed. Dead declarations removed.
+
+---
+
 > **Prompts:** "update .mds and push to git"
 
 *(documentation only — no code changes)*

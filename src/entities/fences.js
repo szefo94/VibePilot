@@ -3,6 +3,7 @@ import { groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
 import { _pointInPolygon, _rayPolyIntersect, islets } from '../world/world.js';
 import { _fenceRegistry, _flagMeshes, baseMarkers } from './registry.js';
+import { disposeGroup, markShared } from '../core/utils.js';
 
 // F6: searchlight sweepers
 export const _searchlights = [];
@@ -14,16 +15,17 @@ export function buildBaseFences() {
     const MIN_INRADIUS = 40;               // must visually contain a hangar
     const MAX_INRADIUS = 90;               // cap — perimeter tanks outside the fence is realistic
 
+    // Prototypes (cloned, never attached) and resources shared by every fence
     const postMatProto  = new THREE.MeshStandardMaterial({ color: 0x6a6a5a, roughness: 0.9, metalness: 0.1 });
-    const railMat       = new THREE.MeshStandardMaterial({ color: 0x8a8a7a, roughness: 0.75, metalness: 0.15 });
-    const sandbagMat    = new THREE.MeshStandardMaterial({ color: 0xa09060, roughness: 0.95 });
+    const railMatProto  = new THREE.MeshStandardMaterial({ color: 0x8a8a7a, roughness: 0.75, metalness: 0.15 });
+    const sandbagMatProto = new THREE.MeshStandardMaterial({ color: 0xa09060, roughness: 0.95 });
     const flagMat       = new THREE.MeshBasicMaterial({ color: 0xcc2200, side: THREE.DoubleSide });
-    const barbMat       = new THREE.LineBasicMaterial({ color: 0x888877 });
-    const postGeo       = new THREE.CylinderGeometry(0.28, 0.28, POST_H, 6);
-    const towerBodyGeo  = new THREE.BoxGeometry(2.5, 10, 2.5);
-    const towerPlatGeo  = new THREE.CylinderGeometry(3.5, 3.5, 0.6, 8);
-    const towerPoleGeo  = new THREE.CylinderGeometry(0.12, 0.12, 7, 6);
-    const sandbagGeo    = new THREE.BoxGeometry(3, 1.2, 1.5);
+    const barbMat       = markShared(new THREE.LineBasicMaterial({ color: 0x888877 }));
+    const postGeo       = markShared(new THREE.CylinderGeometry(0.28, 0.28, POST_H, 6));
+    const towerBodyGeo  = markShared(new THREE.BoxGeometry(2.5, 10, 2.5));
+    const towerPlatGeo  = markShared(new THREE.CylinderGeometry(3.5, 3.5, 0.6, 8));
+    const towerPoleGeo  = markShared(new THREE.CylinderGeometry(0.12, 0.12, 7, 6));
+    const sandbagGeo    = markShared(new THREE.BoxGeometry(3, 1.2, 1.5));
 
     // --- Step 1: group land bases by islet so nearby bases share one hex ---
     const isletGroups = new Map(); // islet → { bases:[], islet }
@@ -31,7 +33,7 @@ export function buildBaseFences() {
     baseMarkers.forEach(bm => {
         if (bm.position.y < groundLevel + 1 || bm.position.y > groundLevel + 5) return;
         const isl = islets.find(i =>
-            (bm.position.x - i.x) ** 2 + (bm.position.z - i.z) ** 2 < i.radius * i.radius &&
+            (bm.position.x - i.x) ** 2 + (bm.position.z - i.z) ** 2 < (i.boundR || i.radius) ** 2 &&
             _pointInPolygon(bm.position.x, bm.position.z, i.polygon)
         );
         if (!isl) { soloGroups.push({ bases: [bm], islet: null }); return; }
@@ -97,6 +99,8 @@ export function buildBaseFences() {
         const reg = { posts: [], bases };
         for (const bm of bases) _fenceRegistry[bm.id] = reg;
         const cloneMat = () => postMatProto.clone();
+        // Rails and sandbags share one material per fence group: damage tint stays within the group
+        const railMat = markShared(railMatProto.clone()), sandbagMat = markShared(sandbagMatProto.clone());
 
         // F3/F9: watchtower at a hex corner
         const makeTower = (px, pz) => {
@@ -226,8 +230,8 @@ export function _damageFenceNear(pos, radius) {
         for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
             if (toRemove.has(reg.posts[pi].mesh)) {
                 const _dm = reg.posts[pi].mesh;
-                if (_dm.isSpotLight) {
-                    // Do NOT scene.remove a SpotLight — Three.js recompiles all shaders
+                if (_dm.isLight) {
+                    // Searchlights are PointLights. Do NOT scene.remove a light — Three.js recompiles all shaders
                     // when the scene light count changes, causing a visible freeze.
                     // Silencing intensity keeps the light in the scene (count unchanged)
                     // so no shader recompile is triggered.
@@ -236,9 +240,11 @@ export function _damageFenceNear(pos, radius) {
                     if (_slIdx > -1) _searchlights.splice(_slIdx, 1);
                 } else {
                     scene.remove(_dm);
-                    // Do NOT disposeGroup — fence meshes share geometries/materials
-                    // (towerBodyGeo, railMat, etc.). Disposing would corrupt remaining
-                    // towers next frame (GPU re-upload stall).
+                    // Frees only what this post owns (cloned materials, rail/wire/flag geometry);
+                    // shared fence geometries and group materials are marked shared and skipped
+                    disposeGroup(_dm);
+                    const _fi = _flagMeshes.findIndex(f => f.mesh === _dm);
+                    if (_fi > -1) _flagMeshes.splice(_fi, 1);
                 }
                 reg.posts.splice(pi, 1);
             }

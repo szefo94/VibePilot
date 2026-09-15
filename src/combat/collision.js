@@ -16,6 +16,8 @@ import { addToConqueredRow, showNotification } from '../ui/notifications.js';
 import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
+import { canDamageGround, groundUnitWorldPos } from './damage.js';
+import { disposeOwned } from '../core/utils.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
 import { TUBE_XP, _nearestTubeT, _tubeStatusEl, showTubeRibbon, tubes } from '../entities/tubes.js';
@@ -37,6 +39,17 @@ function coneHitsSphere(apex, base, baseR, center, sphereR) {
     const px = vx - t * dx, py = vy - t * dy, pz = vz - t * dz;
     return Math.sqrt(px * px + py * py + pz * pz) < baseR * tc / h + sphereR;
 }
+
+// Squared distance from point c to segment [a, b]
+function segmentDistSq(a, b, c) {
+    const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z;
+    const lenSq = abx * abx + aby * aby + abz * abz;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, ((c.x - a.x) * abx + (c.y - a.y) * aby + (c.z - a.z) * abz) / lenSq)) : 0;
+    const dx = a.x + abx * t - c.x, dy = a.y + aby * t - c.y, dz = a.z + abz * t - c.z;
+    return dx * dx + dy * dy + dz * dz;
+}
+// Swept bullet test: the segment travelled since the last update, so fast bullets can't skip thin targets
+const bulletDistSq = (b, c) => b.prevPosition ? segmentDistSq(b.prevPosition, b.position, c) : b.position.distanceToSquared(c);
 
 // Scratch Box3 for plane pickup AABB (covers full wingspan, recomputed each resolveCollisions call)
 const _planePickupBox = new THREE.Box3();
@@ -129,7 +142,7 @@ export function resolveCollisions() {
             const tc = tube.collectibles[i];
             if (_planePickupBox.containsPoint(tc.position)) {
                 const _bPos = tc.position.clone();
-                scene.remove(tc); tc.geometry.dispose(); tc.material.dispose();
+                scene.remove(tc); disposeOwned(tc.geometry); tc.material.dispose();
                 tube.collectibles.splice(i, 1);
                 const burstColor = tube.isChallenge ? 0x00ccff : 0xff8800;
                 for (let _b = 0; _b < 6; _b++) {
@@ -168,11 +181,12 @@ export function resolveCollisions() {
                 // Valid entry through a cap
                 tube.state    = 'entered';
                 tube.entryT   = t < 0.5 ? 0 : 1;
-                tube.inRunCollected = 0;
+                // Orbs collected on an earlier, aborted attempt stay collected and keep counting
+                tube.inRunCollected = tube.totalOrbs - tube.collectibles.length;
                 tube.wasInside = true;
                 _inAnyChallengeTube = true;
                 _tubeStatusEl.style.display = 'block';
-                _tubeStatusEl.textContent   = `${tube.name}  0 / ${tube.totalOrbs}`;
+                _tubeStatusEl.textContent   = `${tube.name}  ${tube.inRunCollected} / ${tube.totalOrbs}`;
             } else if (inside && !nearEnd) {
                 // Flew in through the wall from outside — fatal
                 triggerGameOver();
@@ -194,7 +208,7 @@ export function resolveCollisions() {
                         const xp    = Math.max(20, Math.round(TUBE_XP * ratio));
                         tube.state  = 'done'; tube.completed = true;
                         scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
-                        tube.collectibles.forEach(tc => { scene.remove(tc); tc.geometry.dispose(); tc.material.dispose(); });
+                        tube.collectibles.forEach(tc => { scene.remove(tc); disposeOwned(tc.geometry); tc.material.dispose(); });
                         tube.collectibles = [];
                         _tubeStatusEl.style.display = 'none';
                         if (!state.isGameOver) { addXP(xp); state.score += xp; scoreElement.textContent = state.score; _healPlayer(20); } // G6
@@ -272,12 +286,12 @@ export function resolveCollisions() {
         let hit = false;
         // vs Enemies (no grid — enemy fighters scattered with bounding boxes)
         for (const e of enemies) {
-            if (e.parts.some(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; })) {
+            if (e.parts.some(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && bulletDistSq(b, p.position) < _cr * _cr; })) {
                 if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                 scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
-                const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && b.position.distanceToSquared(p.position) < _cr * _cr; });
+                const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && bulletDistSq(b, p.position) < _cr * _cr; });
                 if (part) part.userData.hp -= b.userData.damage;
-                let totalHp = 0; e.parts.forEach(p => totalHp += p.userData.hp);
+                let totalHp = 0; e.parts.forEach(p => totalHp += Math.max(0, p.userData.hp)); // overkill on one part doesn't drain the others
                 updateUnitLabel(e.label, totalHp);
                 if (totalHp <= 0) destroyLogicalEnemy(e.id);
                 state._hitMarkerTimer = 9; // idea 4
@@ -295,7 +309,7 @@ export function resolveCollisions() {
                 const au = obj;
                 if (au.hp <= 0) continue;
                 // Main fuselage sphere check
-                let _auHit = b.position.distanceToSquared(au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2;
+                let _auHit = bulletDistSq(b, au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2;
                 // Wing/rotor sub-sphere checks (corrects for scale×3 models with large wingspans)
                 if (!_auHit && au.wingHalfSpan) {
                     let _wwx, _wwz;
@@ -318,9 +332,8 @@ export function resolveCollisions() {
             } else {
                 // Ground unit
                 const u = obj;
-                if (u.userData.bombOnly || u.userData.hp <= 0) continue;
-                if (u.userData.protector && u.userData.protector.userData.hp > 0) continue; // §4.1: immune while protector lives
-                if (b.position.distanceToSquared(u.position) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
+                if (!canDamageGround(u, 'bullet')) continue; // dead, protected (§4.1) or bomb-only
+                if (bulletDistSq(b, groundUnitWorldPos(u)) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
                     if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
                     scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
                     u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);

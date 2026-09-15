@@ -9,9 +9,9 @@ import { keys } from '../input.js';
 export const _gameOverPos = new THREE.Vector3();
 const _goOrbitDist = 35;
 
-export function updateCamera() {
+export function updateCamera(dt) {
     if (state.isGameOver) {
-        const ORBIT_SPEED = 0.025;
+        const ORBIT_SPEED = 0.025 * dt; // radians per 60 fps frame
         if (keys.ArrowLeft  || keys.a) state._goOrbitYaw   -= ORBIT_SPEED;
         if (keys.ArrowRight || keys.d) state._goOrbitYaw   += ORBIT_SPEED;
         if (keys.ArrowUp)              state._goOrbitPitch  = Math.min(state._goOrbitPitch + ORBIT_SPEED, Math.PI / 2 - 0.05);
@@ -28,6 +28,6 @@ export function updateCamera() {
     _camOffset.set(0, 8, -22).applyQuaternion(plane.quaternion);
     const camTarget = _sv1.copy(plane.position).add(_camOffset);
     _lookAt.set(0, 1, 20).applyQuaternion(plane.quaternion).add(plane.position);
-    if (!state.isPaused) camera.position.lerp(camTarget, .06);
+    if (!state.isPaused) camera.position.lerp(camTarget, 1 - Math.pow(1 - 0.06, dt)); // 6 % per 60 fps frame, frame-rate independent
     camera.lookAt(_lookAt);
 }

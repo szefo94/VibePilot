@@ -181,7 +181,6 @@ export function spawnInterceptors() {
 export function spawnSingleEnemy() {
     const l = { id: THREE.MathUtils.generateUUID(), parts: [], velocity: new THREE.Vector3(), label: null, hpOffsetY: defaultEnemyHpOffsetY, type: "unknown", boundingBox: new THREE.Box3(), partLocalBoxes: null };
     const c = enemyColors[~~(Math.random() * enemyColors.length)], mat = new THREE.MeshStandardMaterial({ color: c }), lvl = ~~randomRange(1, 4);
-    let totalHp = 0;
     l.parts = [
         new THREE.Mesh(new THREE.CylinderGeometry(.4, .5, 3, 10).rotateX(Math.PI / 2), mat),
         new THREE.Mesh(new THREE.BoxGeometry(5, .2, 1), mat),
@@ -189,13 +188,14 @@ export function spawnSingleEnemy() {
         new THREE.Mesh(new THREE.BoxGeometry(.2, 1.5, 1), mat),
     ];
     l.parts[1].position.x = -2.5; l.parts[2].position.x = 2.5; l.parts[3].position.set(0, .5, -1.3);
-    totalHp = Math.min(enemyPartHP * 4 * lvl, 5 * lvl);
+    const totalHp = Math.min(enemyPartHP * 4 * lvl, 5 * lvl);
     let sX, sZ, sY = randomRange(groundLevel + 20 + l.hpOffsetY, ceilingLevel - l.hpOffsetY);
     sX = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9); sZ = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
     const cP = new THREE.Vector3(sX, sY, sZ);
-    let cH = 0;
-    l.parts.forEach(p => {
-        const h = cH + enemyPartHP <= totalHp ? enemyPartHP : totalHp - cH; cH += h;
+    // Split the displayed total over the parts (remainder on the fuselage) so label HP equals actual HP
+    const perPartHp = Math.floor(totalHp / l.parts.length), extraHp = totalHp - perPartHp * l.parts.length;
+    l.parts.forEach((p, pi) => {
+        const h = perPartHp + (pi === 0 ? extraHp : 0);
         p.position.add(cP); p.scale.set(enemyScale, enemyScale, enemyScale);
         p.userData = { type: "enemy_part", hp: h, logicalEnemyId: l.id, collisionRadius: enemyScale };
         scene.add(p);
@@ -204,13 +204,18 @@ export function spawnSingleEnemy() {
     l.label = createUnitLabel("Fighter", lvl, totalHp, totalHp); scene.add(l.label.sprite);
     enemies.push(l);
 }
-export function destroyLogicalEnemy(id) {
+/**
+ * Remove a legacy fighter and spawn its replacement. Mutates `enemies` (splice + push),
+ * so callers iterating `enemies` must collect ids first and call this after the loop.
+ * `reward: false` is used for non-combat removal (e.g. leaving the map): no score, XP or streak.
+ */
+export function destroyLogicalEnemy(id, { reward = true } = {}) {
     const i = enemies.findIndex(e => e.id === id);
     if (i > -1) {
         const e = enemies[i];
         destroyLabel(e.label);
         enemies.splice(i, 1);
-        if (!state.isGameOver) { const _m = _addKill(); state.score += 25 * _m; scoreElement.textContent = state.score; addXP(25); }
+        if (reward && !state.isGameOver) { const _m = _addKill(); state.score += 25 * _m; scoreElement.textContent = state.score; addXP(25); }
         // Defer geometry disposal — blink animation (idea 5)
         _dyingEnemies.push({ parts: e.parts, mat: e.parts.length > 0 ? e.parts[0].material : null, timer: 50 });
         spawnSingleEnemy();
