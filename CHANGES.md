@@ -4,6 +4,13 @@
 
 > **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
+### Gameplay upgrades (review §5)
+- **Mission loop:** an objective panel for the nearest base (units left, distance, bearing) and **Mission complete** when every base is eliminated (+1000). The debrief records outcome, bases and difficulty.
+- **Readable threats:** a screen-edge arc toward each hit, PULL UP / CEILING / BOUNDARY / LOW HP warnings, and a blue "NON-HOSTILE" lock for tankers and balloons.
+- **Feedback:** an airspeed-linked engine hum and wind, a gold kill marker with a confirm sound, and weapon-sized explosions.
+- **Difficulty presets** (Settings): Easy / Normal / Hard scale enemy damage, fire rate and interceptor timing.
+- Probes `mission`, `threats`, `killFeedback`, `difficulty`. #16 closed as budget met.
+
 ### Base placement footprints (review #14)
 - Every base kind needs coast clearance matching its unit spread (land bases inland, fleets offshore). Base centres stay ≥ 300 apart; after half the attempts the rules relax instead of skipping a base.
 - Probe `placement` checks 8 fixture seeds: every base placed, 0 violations.

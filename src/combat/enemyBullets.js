@@ -1,5 +1,6 @@
 /** Pooled enemy bullets and hostile firing. */
 import { ENEMY_AIM_ACCURACY, ENEMY_BULLET_POOL_SIZE, enemyBulletDamage, enemyBulletLife, enemyBulletSpeed, hostileUnitShootingRange } from '../config.js';
+import { difficulty } from '../core/settings.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _sv1, _sv2, _up3 } from '../core/scratch.js';
@@ -41,7 +42,7 @@ export function spawnEnemyBullet(fromPos, targetPos) {
     b.quaternion.setFromUnitVectors(_up3, _sv1);
     b.velocity = _sv1.clone().multiplyScalar(enemyBulletSpeed);
     b.life = enemyBulletLife;
-    b.userData.damage = enemyBulletDamage;
+    b.userData.damage = Math.max(1, Math.round(enemyBulletDamage * difficulty().enemyDamage)); // Settings → Difficulty
     enemyBullets.push(b); scene.add(b);
     // V4: muzzle flash at barrel origin
     const _mf = new THREE.Mesh(_muzzleFlashGeo, _muzzleFlashMat.clone());

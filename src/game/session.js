@@ -34,7 +34,7 @@ export const menuOpen = () => !!activeMenu();
 export const settingsOpen = () => !settingsDialog.hidden;
 
 function focusables(container) {
-    return [...container.querySelectorAll('button, input')].filter(el => el.offsetParent !== null && !el.disabled);
+    return [...container.querySelectorAll('button, input, select')].filter(el => el.offsetParent !== null && !el.disabled);
 }
 function focusFirst(container) { if (container) focusables(container)[0]?.focus(); }
 
@@ -101,7 +101,7 @@ export function closeSettings() {
 }
 settingsDialog.addEventListener('input', e => {
     const el = e.target.closest('[data-setting]');
-    if (el) setSetting(el.dataset.setting, el.type === 'checkbox' ? el.checked : Number(el.value));
+    if (el) setSetting(el.dataset.setting, el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value));
 });
 const applyReferencePanels = () => document.body.classList.toggle('hide-reference', !settings.showReferencePanels);
 onSettingChange(key => {

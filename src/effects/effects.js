@@ -25,12 +25,12 @@ export const _dyingGround    = []; // ground units blink before final dispose (i
 export const _dyingAirUnits  = []; // air units blink before final dispose (idea 5)
 export const _dyingEnemies   = []; // enemy fighter parts blink before dispose (idea 5)
 const _planeDebris    = []; // debris pieces after player destruction (idea 6)
-export function createExplosion(p) { // §4.5: no setInterval/setTimeout — tracked by updateExplosions(dt)
+export function createExplosion(p, size = 1) { // §4.5: tracked by updateExplosions(dt); size scales the final radius per weapon
     const mat = _expMatPool.pop() || new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 0.8 });
     mat.opacity = 0.8; // reset in case recycled
     const e = new THREE.Mesh(explosionGeometry, mat);
     e.position.copy(p); e.scale.set(.1, .1, .1); scene.add(e);
-    activeExplosions.push({ mesh: e, scale: .1 });
+    activeExplosions.push({ mesh: e, scale: .1, maxSize: explosionMaxSize * size });
 }
 export function updateExplosions(dt) { // §4.5: frame-rate independent, no disposal race
     for (let i = activeExplosions.length - 1; i >= 0; i--) {
@@ -38,7 +38,7 @@ export function updateExplosions(dt) { // §4.5: frame-rate independent, no disp
         ex.scale *= Math.pow(1.15, dt);
         ex.mesh.scale.setScalar(ex.scale);
         ex.mesh.material.opacity *= Math.pow(0.96, dt);
-        if (ex.scale > explosionMaxSize || ex.mesh.material.opacity < .01) {
+        if (ex.scale > ex.maxSize || ex.mesh.material.opacity < .01) {
             scene.remove(ex.mesh);
             ex.mesh.material.opacity = 0.8; // reset before returning to pool
             _expMatPool.push(ex.mesh.material); // return to pool instead of dispose
@@ -147,6 +147,8 @@ export function updateEffects(dt) {
         state._hitMarkerTimer = Math.max(0, state._hitMarkerTimer - dt);
         hitMarkerEl.style.opacity = state._hitMarkerTimer > 0 ? '1' : '0';
     }
+    if (state._killMarkerTimer > 0) state._killMarkerTimer = Math.max(0, state._killMarkerTimer - dt);
+    hitMarkerEl.classList.toggle('kill', state._killMarkerTimer > 0); // kills flash gold and larger
     // ── G20: streak multiplier display decay ─────────────────────
     if (state._multiDisplayTimer > 0) { state._multiDisplayTimer = Math.max(0, state._multiDisplayTimer - dt); if (state._multiDisplayTimer <= 0) { _multiEl.style.display = 'none'; state._scoreMulti = 1; } }
     // ── V13: muzzle light decay ───────────────────────────────────

@@ -16,6 +16,7 @@ import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
 import { beginHits } from './hits.js';
+import { showHitDirection } from '../ui/threats.js';
 import { disposeOwned } from '../core/utils.js';
 import { DEBUG_PARAMS } from '../debug/params.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
@@ -273,12 +274,13 @@ export function resolveCollisions() {
         for (let i = enemyBullets.length - 1; i >= 0; i--) {
             const b = enemyBullets[i];
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
-                createExplosion(b.position);
+                createExplosion(b.position, 0.3); // small impact spark
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
                 if (state.flareTimer > 0 || state._graceTimer > 0 || DEBUG_PARAMS.invulnerable) continue; // deflect: flares, spawn grace, ?invulnerable
                 state.planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, state.planeHP);
                 document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
                 state._playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
+                showHitDirection(_sv1.copy(b.position).addScaledVector(b.velocity, -60)); // arc toward the shooter
                 _playPlayerHit();
                 if (state.planeHP <= 0) { triggerGameOver(); break; }
             }

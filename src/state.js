@@ -1,6 +1,7 @@
 /** Mutable session state shared between systems (player stats, flight rates, ammo, timers). */
 import { BOMB_MAX_AMMO, FLARE_MAX_AMMO, GRACE_PERIOD, GUN_MAX_AMMO, MISSILE_MAX_AMMO, NAPALM_MAX_AMMO, TARGET_FPS } from './config.js';
 import { storageGetInt } from './core/storage.js';
+import { difficulty } from './core/settings.js';
 
 export const state = {
     // Minimap / radar timers
@@ -20,7 +21,7 @@ export const state = {
     awaitingStart: true, // start menu showing; game/session.js clears it (or ?autostart)
     // Interceptor event
     _gameElapsed: 0, // seconds-equivalent (frame units at 60 fps)
-    _interceptorTimer: (60 + Math.random() * 60) * TARGET_FPS, // first wave: 1–2 min
+    _interceptorTimer: (60 + Math.random() * 60) * TARGET_FPS * difficulty().interceptorDelay, // first wave: 1–2 min (× difficulty)
     _interceptorWave: 0,
     // Game-over free-look orbit
     _goOrbitYaw: 0,
@@ -63,6 +64,7 @@ export const state = {
     debugCollision: false,
     // Timers
     _hitMarkerTimer: 0, // frames remaining for hit-confirm crosshair (idea 4)
+    _killMarkerTimer: 0, // frames the hit marker shows the kill confirmation
     _playerBlinkTimer: 0, // frames remaining for plane red-blink on damage (idea 3)
     _graceTimer: GRACE_PERIOD, // seconds of spawn invincibility remaining
     _mouseNDC: { x: 0, y: 0 }, // mouse position in normalized device coords for steering

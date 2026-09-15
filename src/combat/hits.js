@@ -11,7 +11,7 @@
  * scanned; a target killed twice in one blast dies — and rewards — once.
  */
 import { state } from '../state.js';
-import { _playKeyClick } from '../audio.js';
+import { _playKeyClick, _playKillConfirm } from '../audio.js';
 import { updateUnitLabel } from '../ui/labels.js';
 import { canDamageGround } from './damage.js';
 import { entityHp, entityKind } from '../entities/contract.js';
@@ -53,7 +53,8 @@ export function beginHits(weapon) {
                 else if (kind === 'air') destroyAirUnit(target);
                 else destroyLogicalEnemy(target.id);
             }
-            if (anyHit) { state._hitMarkerTimer = 9; _playKeyClick(); } // idea 4: hit confirm
+            if (dead.size) { state._killMarkerTimer = 20; state._hitMarkerTimer = Math.max(state._hitMarkerTimer, 20); _playKillConfirm(); } // kill: gold marker
+            else if (anyHit) { state._hitMarkerTimer = 9; _playKeyClick(); } // idea 4: hit confirm
             return { hit: anyHit, kills: dead.size };
         },
     };

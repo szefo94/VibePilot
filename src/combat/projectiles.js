@@ -48,7 +48,7 @@ export function updateProjectiles(dt) {
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
         if (b.velocity.lengthSq() > 0.001) b.quaternion.setFromUnitVectors(_sv1.set(0, 0, 1), _sv2.copy(b.velocity).normalize());
         if (b.position.y <= groundLevel + b.userData.collisionRadius) {
-            createExplosion(b.position);
+            createExplosion(b.position, 1.4); // weapon-sized blast
             const hits = beginHits('bomb'), rSq = b.userData.aoERadius * b.userData.aoERadius;
             for (const gu of groundUnits) if (groundUnitWorldPos(gu).distanceToSquared(b.position) < rSq) hits.damage(gu, b.userData.damage);
             for (const au of airUnits) if (au.group.position.distanceToSquared(b.position) < rSq) hits.damage(au, b.userData.damage);
@@ -121,7 +121,7 @@ export function updateProjectiles(dt) {
                 // their centre), others when their collision surface lies within missileAoERadius.
                 // Deaths are applied after all scans — removal mutates the arrays being scanned.
                 const dmg = Math.round(missileDamage * state.playerDamageMultiplier);
-                createExplosion(m.position); createExplosion(m.position); // double flash for missiles
+                createExplosion(m.position, 1.8); createExplosion(m.position); // missiles: large blast plus a core flash
                 const inBlast = (pos, radius) => m.position.distanceTo(pos) - radius < missileAoERadius;
                 const hits = beginHits('missile');
                 for (const gu of groundUnits) if (gu === struck || inBlast(groundUnitWorldPos(gu), gu.userData.collisionRadius || 0)) hits.damage(gu, dmg);

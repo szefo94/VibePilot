@@ -104,6 +104,16 @@
             <span id="napalm-status" class="ammo-status">2/2</span>
         </div>
     </div>
+    <!-- Mission objective (game/mission.js) -->
+    <div id="objective" class="ui-overlay" aria-live="polite" hidden>
+        <span id="objective-arrow" aria-hidden="true">▲</span>
+        <span class="objective-label">Objective</span> <span id="objective-name"></span> · <span id="objective-units"></span> · <span id="objective-distance"></span>
+        <div class="objective-progress">Bases conquered <span id="objective-progress"></span></div>
+    </div>
+    <!-- Threat readability (ui/threats.js) -->
+    <div id="hit-indicators" aria-hidden="true"></div>
+    <div id="flight-warning" role="alert" hidden></div>
+
     <div id="paused" role="dialog" aria-modal="true" aria-labelledby="paused-title">
         <div id="paused-title">PAUSED</div>
         <div class="menu-buttons">
@@ -141,6 +151,13 @@
         <label>Mute (V) <input type="checkbox" data-setting="muted"></label>
         <label>Mouse steering <input type="checkbox" data-setting="mouseSteering"></label>
         <label>Invert pitch <input type="checkbox" data-setting="invertPitch"></label>
+        <label>Difficulty
+            <select data-setting="difficulty">
+                <option value="easy">Easy</option>
+                <option value="normal">Normal</option>
+                <option value="hard">Hard</option>
+            </select>
+        </label>
         <label>Show controls &amp; debug panels <input type="checkbox" data-setting="showReferencePanels"></label>
         <div class="menu-buttons"><button type="button" data-action="close-settings">Done</button></div>
         <div class="menu-hint">Esc / B back</div>

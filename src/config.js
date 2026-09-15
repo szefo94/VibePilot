@@ -84,3 +84,12 @@ export const AIR_UNIT_TYPES = Object.freeze({
     tanker:     { name: 'Tanker',     hp: 200, xp: 200, collisionRadius: 15, hostile: false, wing: { halfSpan: 65, radius: 13, axis: 'q' } },
     ac130:      { name: 'AC-130',     hp: 150, xp: 250, collisionRadius: 20, hostile: true,  wing: { halfSpan: 70, radius: 14, axis: 'z' } },
 });
+
+// --- Difficulty presets (Settings → Difficulty) ---
+// enemyDamage × enemy bullet damage · enemyFireInterval × time between enemy shots · interceptorDelay × time to interceptor waves
+export const DIFFICULTY_PRESETS = Object.freeze({
+    easy:   { enemyDamage: 0.5, enemyFireInterval: 1.5, interceptorDelay: 1.5 },
+    normal: { enemyDamage: 1,   enemyFireInterval: 1,   interceptorDelay: 1 },
+    hard:   { enemyDamage: 1.5, enemyFireInterval: 0.7, interceptorDelay: 0.7 },
+});
+export const MISSION_COMPLETE_BONUS = 1000; // score for eliminating every base

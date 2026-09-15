@@ -3,7 +3,7 @@ import { state } from '../state.js';
 import { camera } from '../core/scene.js';
 import { _sv1, _sv2 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
-import { entityPosition, isAlive, missileTargets, nearestAlive } from '../entities/contract.js';
+import { entityPosition, isAlive, isHostile, missileTargets, nearestAlive } from '../entities/contract.js';
 
 // G20: lock-on reticle overlay canvas
 const _reticleCanvas = document.createElement('canvas');
@@ -26,7 +26,7 @@ export function _drawReticle() {
     if (++_reticleFrame >= 3) {
         _reticleFrame = 0;
         const entity = nearestAlive(plane.position, missileTargets()); // same rule as missile homing
-        _reticleTarget = entity && { pos: () => entityPosition(entity), alive: () => isAlive(entity) };
+        _reticleTarget = entity && { pos: () => entityPosition(entity), alive: () => isAlive(entity), hostile: isHostile(entity) };
     }
     if (!_reticleTarget || !_reticleTarget.alive()) { _reticleTarget = null; return; }
 
@@ -39,7 +39,8 @@ export function _drawReticle() {
     plane.getWorldDirection(_sv1);
     _sv2.copy(_reticleTarget.pos()).sub(plane.position).normalize();
     const inFront = _sv1.dot(_sv2) > 0.7; // within ~45 deg cone
-    const color = inFront ? '#44ff88' : '#ff8800';
+    // Hostile locks are green/orange; non-hostile targets (tankers, balloons) blue so they aren't mistaken for threats
+    const color = _reticleTarget.hostile ? (inFront ? '#44ff88' : '#ff8800') : (inFront ? '#66ccff' : '#4a7fa8');
 
     const ctx = _reticleCtx, R = 28, arm = 11;
     ctx.save();
@@ -57,7 +58,7 @@ export function _drawReticle() {
     // "LOCK" label when on target
     if (inFront) {
         ctx.fillStyle = color; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('LOCK', sx, sy + R + 14);
+        ctx.fillText(_reticleTarget.hostile ? 'LOCK' : 'LOCK · NON-HOSTILE', sx, sy + R + 14);
     }
     ctx.restore();
 }

@@ -192,3 +192,38 @@ export function _playPlayerHit() {
         return thud;
     });
 }
+
+// Kill confirmation — two quick rising pings, distinct from the hit click
+export function _playKillConfirm() {
+    play(t => {
+        sweep(t, 'sine', 880, 1100, 0.06, 0.12, 0.09);
+        return sweep(t + 0.07, 'sine', 1320, 1760, 0.06, 0.12, 0.12);
+    });
+}
+
+// --- Continuous engine hum and wind (review §5.3): pitch and level follow airspeed; wind rises at high speed ---
+let engine = null, engineUpdateAt = 0;
+function createEngine() {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 45;
+    const tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 380;
+    const engineGain = ctx.createGain(); engineGain.gain.value = 0;
+    osc.connect(tone); tone.connect(engineGain); engineGain.connect(master); osc.start();
+    const wind = noiseSource(2, 0); wind.loop = true;
+    const band = ctx.createBiquadFilter(); band.type = 'bandpass'; band.frequency.value = 900; band.Q.value = 0.8;
+    const windGain = ctx.createGain(); windGain.gain.value = 0;
+    wind.connect(band); band.connect(windGain); windGain.connect(master); wind.start();
+    return { osc, engineGain, windGain };
+}
+/** speedFraction: airspeed / max cruise speed (dives exceed 1); active: false in menus, while paused and after the run. */
+export function updateEngineSound(speedFraction, active) {
+    if (!ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    if (now < engineUpdateAt) return; // ~10 automation updates per second is plenty
+    engineUpdateAt = now + 0.1;
+    if (!engine) { if (!active) return; engine = createEngine(); }
+    const f = Math.max(0, Math.min(1.5, speedFraction));
+    engine.osc.frequency.setTargetAtTime(38 + 70 * f, now, 0.2);
+    engine.engineGain.gain.setTargetAtTime(active ? 0.03 + 0.04 * f : 0, now, 0.25);
+    engine.windGain.gain.setTargetAtTime(active && f > 0.6 ? Math.min(0.08, (f - 0.6) * 0.12) : 0, now, 0.3);
+}
+export const engineSoundStarted = () => !!engine;

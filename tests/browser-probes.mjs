@@ -423,6 +423,106 @@ const probes = {
         const pass = maps.every(m => m.clearanceViolations === 0 && m.minSeparation >= m.minAllowed - 1 && m.skipped === 0);
         return { maps, pass };
     },
+    // §5.1 mission loop: nearest base is the objective with a bearing; eliminating every base completes the mission
+    async mission(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { baseMarkers } = await import('./src/entities/registry.js');
+            const { currentObjective, relativeBearing, updateMission } = await import('./src/game/mission.js');
+            const { beginHits } = await import('./src/combat/hits.js');
+            const { plane } = await import('./src/player/plane.js');
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            await frames(3);
+            state.isPaused = true;
+            plane.position.set(0, 0, 0); plane.quaternion.identity(); // facing +Z: world -X is on the right of the screen
+            const bearings = { right: relativeBearing(-500, 0), left: relativeBearing(500, 0), ahead: relativeBearing(0, 500) };
+            updateMission(1);
+            const objective = currentObjective();
+            const panelName = document.getElementById('objective-name').textContent;
+            baseMarkers.forEach(bm => { if (bm !== objective) bm.eliminated = true; });
+            for (let pass = 0; pass < 4 && !objective.eliminated; pass++) { const h = beginHits('bomb'); objective.units.forEach(u => h.damage(u, 1e9)); h.finish(); }
+            updateMission(1);
+            const title = document.getElementById('game-over').textContent;
+            return {
+                bearings, panelName, objective: objective.name, eliminated: objective.eliminated, gameOver: state.isGameOver, title: title.slice(0, 30),
+                pass: bearings.right > 1.5 && bearings.left < -1.5 && Math.abs(bearings.ahead) < 0.01 && panelName === objective.name && objective.eliminated && state.isGameOver && title.startsWith('MISSION COMPLETE'),
+            };
+        });
+    },
+    // §5.2 threats: hit arcs point at the shooter (also through real bullet collision); flight warnings
+    async threats(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { plane } = await import('./src/player/plane.js');
+            const { showHitDirection, updateFlightWarnings } = await import('./src/ui/threats.js');
+            const { spawnEnemyBullet } = await import('./src/combat/enemyBullets.js');
+            const { enemyBullets } = await import('./src/entities/registry.js');
+            const { resolveCollisions } = await import('./src/combat/collision.js');
+            const { groundLevel } = await import('./src/config.js');
+            state.isPaused = true;
+            plane.position.set(0, 0, 0); plane.quaternion.identity();
+            showHitDirection(new THREE.Vector3(-300, 0, 0)); // from the right
+            const arcBearing = parseFloat([...document.querySelectorAll('.hit-arc')].find(a => a.style.opacity === '1')?.style.getPropertyValue('--bearing'));
+            document.querySelectorAll('.hit-arc').forEach(a => { a.style.opacity = '0'; });
+            // real hit: bullet from +X (left of screen) reaches the plane
+            Object.assign(state, { _graceTimer: 0, flareTimer: 0, planeHP: 100 });
+            spawnEnemyBullet(new THREE.Vector3(300, 0, 0), plane.position);
+            enemyBullets[enemyBullets.length - 1].position.copy(plane.position);
+            resolveCollisions();
+            const hpAfterHit = state.planeHP;
+            const hitArc = [...document.querySelectorAll('.hit-arc')].find(a => a.style.opacity === '1');
+            const collisionBearing = parseFloat(hitArc?.style.getPropertyValue('--bearing'));
+            plane.position.set(0, groundLevel + 5, 0); updateFlightWarnings();
+            const low = document.getElementById('flight-warning').textContent;
+            plane.position.set(0, 0, 0); state.planeHP = 100; updateFlightWarnings();
+            const clear = document.getElementById('flight-warning').hidden;
+            return { arcBearing, hpAfterHit, collisionBearing, low, clear, pass: arcBearing > 1.5 && hpAfterHit < 100 && collisionBearing < -1.5 && low === 'PULL UP' && clear };
+        });
+    },
+    // §5.3 feedback: kills flash the gold marker; explosions scale per weapon; engine hum starts once audio unlocks
+    async killFeedback(page) {
+        await worldReady(page);
+        await page.keyboard.press('Shift'); // user gesture unlocks audio
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { groundUnits, activeExplosions } = await import('./src/entities/registry.js');
+            const { beginHits } = await import('./src/combat/hits.js');
+            const { updateEffects, createExplosion } = await import('./src/effects/effects.js');
+            const { updateEngineSound, engineSoundStarted } = await import('./src/audio.js');
+            const { explosionMaxSize } = await import('./src/config.js');
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            await frames(3);
+            state.isPaused = true;
+            const tank = groundUnits.find(u => u.userData.type === 'tank' && u.userData.hp > 0);
+            const h = beginHits('bomb'); h.damage(tank, 1e9); h.finish();
+            updateEffects(1);
+            const killClass = document.getElementById('hit-marker').classList.contains('kill');
+            createExplosion(tank.position, 1.8);
+            const maxSize = activeExplosions[activeExplosions.length - 1].maxSize;
+            updateEngineSound(0.9, true);
+            await new Promise(r => setTimeout(r, 150));
+            return { killClass, maxSize, engine: engineSoundStarted(), pass: killClass && Math.abs(maxSize - explosionMaxSize * 1.8) < 1e-9 && engineSoundStarted() };
+        });
+    },
+    // §5.4 difficulty presets scale enemy damage and fire interval, persist, and are selectable in Settings
+    async difficulty(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { setSetting, settings, difficulty } = await import('./src/core/settings.js');
+            const { spawnEnemyBullet } = await import('./src/combat/enemyBullets.js');
+            const { enemyBullets } = await import('./src/entities/registry.js');
+            const { enemyBulletDamage } = await import('./src/config.js');
+            const damageAt = level => { setSetting('difficulty', level); spawnEnemyBullet(new THREE.Vector3(0, 500, 0), new THREE.Vector3(0, 0, 0)); return enemyBullets[enemyBullets.length - 1].userData.damage; };
+            const damage = { easy: damageAt('easy'), normal: damageAt('normal'), hard: damageAt('hard') };
+            setSetting('difficulty', 'impossible'); // rejected
+            const stored = JSON.parse(localStorage.getItem('vibepilot_settings')).difficulty;
+            const select = document.querySelector('[data-setting="difficulty"]');
+            return { base: enemyBulletDamage, damage, current: settings.difficulty, stored, options: select ? select.options.length : 0, fireInterval: difficulty().enemyFireInterval,
+                pass: damage.easy < damage.normal && damage.normal === enemyBulletDamage && damage.hard > damage.normal && settings.difficulty === 'hard' && stored === 'hard' && select?.options.length === 3 };
+        });
+    },
     // #13 islet meshes match their polygons (not mirrored) and face up
     async islets(page) {
         await worldReady(page);

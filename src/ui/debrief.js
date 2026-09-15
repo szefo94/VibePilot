@@ -1,6 +1,8 @@
 /** Mission debrief graphs (G key / game over). */
 // Death debrief stat tracking (sampled every ~1 s)
 export const _statHp = [100], _statScore = [0], _statXp = [0], _statLvl = [1];
+// Filled by gameOver.js: how the run ended
+export const debriefInfo = { outcome: '', conquered: 0, total: 0, difficulty: '' };
 export const _deathGraphEl = (() => {
     const div = document.createElement('div');
     div.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(5,5,15,0.96);border:1px solid #334;border-radius:10px;padding:22px 26px;z-index:600;color:#ccd;font-family:monospace;width:min(640px, 94vw);box-sizing:border-box;';
@@ -43,7 +45,8 @@ export function _drawDeathGraph() {
     ctx.fillStyle = '#334'; ctx.font = '10px monospace';
     ctx.fillText(`0 s`, pad, H - 6); ctx.fillText(`${secs} s`, W - pad - 20, H - 6);
     // Text summary of the charts (also the canvas's accessible name)
-    const summary = `Survived ${secs} s · final score ${_statScore[_statScore.length - 1]} · level ${Math.max(..._statLvl)} · peak XP ${Math.max(..._statXp)} · map seed ${window.__vpSeed ?? '—'}`;
+    const { outcome, conquered, total, difficulty } = debriefInfo;
+    const summary = `${outcome || 'Run ended'} after ${secs} s · final score ${_statScore[_statScore.length - 1]} · level ${Math.max(..._statLvl)} · bases ${conquered}/${total} · ${difficulty || 'normal'} · map seed ${window.__vpSeed ?? '—'}`;
     cv.setAttribute('aria-label', summary);
     const summaryEl = document.getElementById('_deathSummary');
     if (summaryEl) summaryEl.textContent = summary;

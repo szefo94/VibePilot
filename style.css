@@ -669,3 +669,40 @@ body.hide-reference #instructions, body.hide-reference #debug-info, body.hide-re
 }
 /* Settings opened from the pause menu: hide the panel underneath instead of showing it through */
 body:has(#settings-dialog:not([hidden])) #paused { visibility: hidden; }
+
+/* ── Mission objective (game/mission.js) ───────────────────────── */
+#objective { position: absolute; top: auto; left: 50%; bottom: 140px; height: auto; transform: translateX(-50%); padding: 6px 14px; text-align: center; white-space: nowrap; font-size: 13px; }
+#objective-arrow { display: inline-block; margin-right: 8px; color: var(--hud-amber); transition: transform 0.1s linear; }
+.objective-label { text-transform: uppercase; opacity: 0.75; }
+#objective-name { color: var(--hud-amber); }
+.objective-progress { font-size: 11px; opacity: 0.8; }
+#game-over.victory { color: var(--hud-amber); border-color: rgba(255, 204, 0, 0.6); text-shadow: 0 0 10px rgba(255, 204, 0, 0.85); }
+
+/* ── Threat readability (ui/threats.js) ────────────────────────── */
+#hit-indicators { position: fixed; inset: 0; pointer-events: none; z-index: 450; }
+.hit-arc {
+    position: absolute; top: 50%; left: 50%;
+    width: min(44vh, 360px); height: min(44vh, 360px);
+    border-radius: 50%;
+    border-top: 6px solid rgba(255, 40, 40, 0.9);
+    transform: translate(-50%, -50%) rotate(var(--bearing, 0rad));
+    filter: drop-shadow(0 0 6px #ff2222);
+    opacity: 0;
+    transition: opacity 0.35s ease-out;
+}
+#flight-warning {
+    position: fixed; top: 30%; left: 50%; transform: translateX(-50%);
+    z-index: 400; pointer-events: none;
+    color: var(--hud-red); font: bold 22px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.2em;
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.9);
+    animation: flight-warning-blink 0.8s steps(1) infinite;
+}
+@keyframes flight-warning-blink { 50% { opacity: 0.25; } }
+body.menu-open #flight-warning, body.menu-open #objective, body.menu-open #hit-indicators { display: none; }
+
+/* Kill confirmation: the hit marker flashes gold and larger */
+#hit-marker.kill { transform: translate(-50%, -50%) scale(1.4); }
+#hit-marker.kill .hit-line { background: #ffcc00; box-shadow: 0 0 6px rgba(255, 204, 0, 0.9); }
+
+#settings-dialog select { font: inherit; color: var(--hud-primary); background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright); padding: 4px 8px; }
+@media (max-width: 900px) { #objective { bottom: 110px; font-size: 11px; } }

@@ -7,6 +7,7 @@ import { _fenceRegistry, airUnits, enemies, groundUnits } from './entities/regis
 import { fireHostileBullet, spawnEnemyBullet } from './combat/enemyBullets.js';
 import { destroyLogicalEnemy } from './entities/airUnits.js';
 import { refreshGroundUnitWorldPos } from './combat/damage.js';
+import { difficulty } from './core/settings.js';
 
 const _targetWorldPosition = new THREE.Vector3();
 export function updateAI(dt) {
@@ -61,7 +62,7 @@ export function updateAI(dt) {
             if (au.shootCooldown <= 0 && au.group.position.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
                 _sv3.copy(au.group.position).add(_sv2.set(0, 2, 0));
                 spawnEnemyBullet(_sv3, plane.position);
-                au.shootCooldown = hostileUnitShootingCooldownTime;
+                au.shootCooldown = hostileUnitShootingCooldownTime * difficulty().enemyFireInterval;
             }
         }
     }
@@ -94,7 +95,7 @@ export function updateAI(dt) {
             u.userData.shootCooldown = Math.max(0, u.userData.shootCooldown - dt);
             if (u.userData.shootCooldown <= 0 && _uwp.distanceToSquared(plane.position) < HOSTILE_SHOOT_RANGE_SQ) {
                 const _reg = u.userData.baseId ? _fenceRegistry[u.userData.baseId] : null;
-                fireHostileBullet(u); u.userData.shootCooldown = (_reg?.alarmState ? hostileUnitShootingCooldownTime * 0.4 : hostileUnitShootingCooldownTime);
+                fireHostileBullet(u); u.userData.shootCooldown = (_reg?.alarmState ? 0.4 : 1) * hostileUnitShootingCooldownTime * difficulty().enemyFireInterval;
             }
         }
     });

@@ -167,9 +167,16 @@ Gamepad is polled every frame via the browser Gamepad API. Stick deflection is a
 - **Start menu:** the world is generated behind it, but nothing moves or fires until **Start**. It also lists the controls and your best score.
 - **Pause menu** (`Esc` / Start): Resume · Restart · Settings.
 - **Game over and debrief:** Restart (a new map) · **Replay this map** (same seed). The debrief summary shows the map seed.
-- **Settings** (saved in the browser): volume, mute, mouse steering, invert pitch, and show/hide the controls/debug/coordinates panels.
+- **Settings** (saved in the browser): volume, mute, mouse steering, invert pitch, difficulty (Easy / Normal / Hard — enemy damage, fire rate and interceptor timing), and show/hide the controls/debug/coordinates panels.
 
 All menus work with mouse, keyboard (Tab, Enter/Space, Esc) and gamepad. Animations are reduced when the OS asks for reduced motion.
+
+### Mission & Feedback
+
+- **Objective panel** (above the ammo bars): the nearest base not yet eliminated, with units left, distance, a bearing arrow and bases conquered. Eliminate every base for **Mission complete** (+1000 score).
+- **Threats:** a red arc at the screen edge points to where a hit came from. PULL UP, CEILING, BOUNDARY and LOW HP warnings blink before they end the run.
+- **Lock-on reticle:** green or orange for hostiles, blue ("NON-HOSTILE") for tankers and balloons. Missiles home on exactly what the reticle shows.
+- **Feedback:** an engine hum and wind follow airspeed. Kills flash the hit marker gold with a confirm sound. Explosion size depends on the weapon.
 
 ---
 

@@ -1,5 +1,5 @@
 /** Player settings, persisted through the safe storage wrapper. */
-import { MOUSE_STEERING } from '../config.js';
+import { DIFFICULTY_PRESETS, MOUSE_STEERING } from '../config.js';
 import { storageGet, storageSet } from './storage.js';
 
 const KEY = 'vibepilot_settings';
@@ -9,6 +9,7 @@ const DEFAULTS = Object.freeze({
     mouseSteering: MOUSE_STEERING,
     invertPitch: false,       // keyboard, gamepad and mouse pitch
     showReferencePanels: true, // controls / debug / coordinates panels
+    difficulty: 'normal',     // key of DIFFICULTY_PRESETS (config.js)
 });
 
 function load() {
@@ -18,6 +19,7 @@ function load() {
     for (const [key, def] of Object.entries(DEFAULTS)) if (typeof saved[key] === typeof def) loaded[key] = saved[key];
     if (saved.muted === undefined && storageGet('vibepilot_muted') === '1') loaded.muted = true; // pre-settings mute key
     loaded.volume = Math.min(1, Math.max(0, loaded.volume));
+    if (!Object.hasOwn(DIFFICULTY_PRESETS, loaded.difficulty)) loaded.difficulty = DEFAULTS.difficulty;
     return loaded;
 }
 
@@ -26,9 +28,13 @@ const listeners = [];
 
 export function onSettingChange(fn) { listeners.push(fn); }
 
+/** Multipliers for the selected difficulty, read at the moment they apply (changes take effect immediately). */
+export const difficulty = () => DIFFICULTY_PRESETS[settings.difficulty];
+
 /** Validate, store and broadcast one setting. */
 export function setSetting(key, value) {
     if (!(key in DEFAULTS) || typeof value !== typeof DEFAULTS[key]) return;
+    if (key === 'difficulty' && !Object.hasOwn(DIFFICULTY_PRESETS, value)) return;
     settings[key] = key === 'volume' ? Math.min(1, Math.max(0, value)) : value;
     storageSet(KEY, JSON.stringify(settings));
     for (const fn of listeners) fn(key, settings[key]);

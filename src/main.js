@@ -1,6 +1,9 @@
 /** Entry point: world initialisation and the per-frame update loop. */
-import { MINIMAP_REFRESH_S, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS } from './config.js';
-import { settings } from './core/settings.js';
+import { MINIMAP_REFRESH_S, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS, maxSpeed } from './config.js';
+import { difficulty, settings } from './core/settings.js';
+import { updateEngineSound } from './audio.js';
+import { updateMission } from './game/mission.js';
+import { updateFlightWarnings } from './ui/threats.js';
 import { state } from './state.js';
 import { camera, renderer, scene } from './core/scene.js';
 import { _sv1 } from './core/scratch.js';
@@ -62,14 +65,14 @@ function animate() {
             state._interceptorTimer -= dt;
             if (state._interceptorTimer <= 0) {
                 spawnInterceptors();
-                state._interceptorTimer = (90 + Math.random() * 60) * TARGET_FPS; // next wave 90–150 s
+                state._interceptorTimer = (90 + Math.random() * 60) * TARGET_FPS * difficulty().interceptorDelay; // next wave 90–150 s (× difficulty)
             }
         }
     }
     if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         perf.markSimulated();
         simulate(dt); // bounded sub-steps: game/simulation.js
-        perf.begin('hud'); updateHUD(); perf.end('hud');
+        perf.begin('hud'); updateHUD(); updateMission(rawDelta); updateFlightWarnings(); perf.end('hud');
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';
@@ -78,6 +81,7 @@ function animate() {
         perf.begin('effects'); updateEffects(dt); perf.end('effects'); // debris physics still runs on game over
     }
     perf.begin('debugBoxes'); updateDebugBoxes(); perf.end('debugBoxes');
+    updateEngineSound(state.speed / maxSpeed, !state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart);
     perf.begin('camera'); updateCamera(dt); perf.end('camera');
     perf.begin('cursor');
     // Decay steering cursor toward center when mouse is idle
