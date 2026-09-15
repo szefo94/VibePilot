@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vibe Pilot - Modular</title>
+    <title>Vibe Pilot</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap" media="print" onload="this.media='all'">
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap"></noscript>
     <link rel="stylesheet" href="style.css">
 </head><body>
-    <!-- Splash screen — comment out to disable, uncomment to re-enable (also uncomment runSplash() in main.js window.onload)
+    <!-- Splash screen — comment out to disable, uncomment to re-enable (also uncomment runSplash() in src/main.js)
     <div id="splash-screen">
         <div id="splash-title"><span id="splash-cursor"></span></div>
         <div id="splash-subtitle"></div>
@@ -135,7 +136,7 @@
 
     <!-- External library for 3D graphics -->
     <script src="three.min.js"></script>
-    <!-- Your game logic -->
-    <script src="main.js"></script>
+    <!-- Game logic (native ES modules; serve over HTTP, file:// will not load modules) -->
+    <script type="module" src="src/main.js"></script>
 </body>
 </html>
