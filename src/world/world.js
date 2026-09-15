@@ -161,6 +161,20 @@ export function clampToIslet(px, pz, islet) {
 export function isOnAnyIslet(px, pz) {
     return islets.some(i => (px - i.x) ** 2 + (pz - i.z) ** 2 < i.boundR * i.boundR && _pointInPolygon(px, pz, i.polygon));
 }
+/** Distance from (x, z) to an islet's coastline (same value inside or outside the islet). */
+export function distanceToCoast(x, z, islet) {
+    const p = _nearestOnPolygon(x, z, islet.polygon);
+    return Math.hypot(p.x - x, p.z - z);
+}
+/** Distance from (x, z) to the nearest coastline of any islet. */
+export function distanceToAnyCoast(x, z) {
+    let best = Infinity;
+    for (const isl of islets) {
+        if (Math.hypot(x - isl.x, z - isl.z) - isl.boundR > best) continue; // this islet's coast can't be closer
+        best = Math.min(best, distanceToCoast(x, z, isl));
+    }
+    return best;
+}
 export function getNearestIslet(x, z) {
     let best = null, bestDist = Infinity;
     for (const isl of islets) { const d = (x - isl.x) ** 2 + (z - isl.z) ** 2; if (d < bestDist) { bestDist = d; best = isl; } }

@@ -4,6 +4,10 @@
 
 > **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
+### Base placement footprints (review #14)
+- Every base kind needs coast clearance matching its unit spread (land bases inland, fleets offshore). Base centres stay ≥ 300 apart; after half the attempts the rules relax instead of skipping a base.
+- Probe `placement` checks 8 fixture seeds: every base placed, 0 violations.
+
 ### Entity contract & data tables (review #20, §5.2)
 - `src/entities/contract.js`: `entityKind`, `entityHp`, `isAlive`, `isHostile`, `entityPosition`, `missileTargets`, `nearestAlive` (JSDoc typedefs) for ground units, air units and legacy fighters. Missile homing and the lock-on reticle share one targeting rule. Air units no longer duplicate HP in `userData`.
 - Unit stats moved into `GROUND_UNIT_TYPES` / `AIR_UNIT_TYPES` tables in `config.js`. Magazine reloads are one table-driven loop.

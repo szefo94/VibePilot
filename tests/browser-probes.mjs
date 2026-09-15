@@ -400,6 +400,29 @@ const probes = {
             return { on, off, pass: on.enabled && on.override && on.existingUntouched && !off.enabled && !off.override && off.backgroundRestored };
         });
     },
+    // #14 placement rules hold on a set of fixture seeds (keep any seed that ever reveals an invalid map here)
+    async placement(page) {
+        const FIXTURE_SEEDS = [1, 2, 3, 7, 42, 1337, 2024, 90210];
+        const maps = [];
+        for (const seed of FIXTURE_SEEDS) {
+            await page.goto(page.url().replace(/\?.*$/, `?autostart&seed=${seed}`), { waitUntil: 'load' });
+            await worldReady(page);
+            maps.push(await page.evaluate(async seedValue => {
+                const { placementReport, BASE_RULES, MIN_BASE_SEPARATION } = await import('./src/world/populate.js');
+                const { bases, skipped } = placementReport;
+                let minSeparation = Infinity, clearanceViolations = 0;
+                bases.forEach((b, i) => {
+                    for (const o of bases.slice(i + 1)) minSeparation = Math.min(minSeparation, Math.hypot(b.x - o.x, b.z - o.z));
+                    const required = BASE_RULES[b.kind].coastClearance * (b.relaxed ? 0.6 : 1);
+                    if (b.coast < required - 1) clearanceViolations++;
+                });
+                const relaxed = bases.filter(b => b.relaxed).length;
+                return { seed: seedValue, bases: bases.length, relaxed, skipped: skipped.length, minSeparation: Math.round(minSeparation), clearanceViolations, minAllowed: MIN_BASE_SEPARATION * 0.6 };
+            }, seed));
+        }
+        const pass = maps.every(m => m.clearanceViolations === 0 && m.minSeparation >= m.minAllowed - 1 && m.skipped === 0);
+        return { maps, pass };
+    },
     // #13 islet meshes match their polygons (not mirrored) and face up
     async islets(page) {
         await worldReady(page);

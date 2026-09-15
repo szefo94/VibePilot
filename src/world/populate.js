@@ -1,7 +1,7 @@
 /** Initial world population: bases, fleets, squadrons, collectibles, obstacles. */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, numAirbases, numCarrierGroups, numDestroyerSquadrons, numEnemies, numForwardBases, numHoverWings, numStrikeWings } from '../config.js';
 import { randomRange } from '../core/utils.js';
-import { _pointInPolygon, createIslets, isOnAnyIslet, islets } from './world.js';
+import { _pointInPolygon, createIslets, distanceToAnyCoast, distanceToCoast, isOnAnyIslet, islets } from './world.js';
 import { spawnAirbase, spawnCarrierStrikeGroup, spawnDestroyerSquadron, spawnForwardBase } from '../entities/bases.js';
 import { spawnHoverWing, spawnSingleEnemy, spawnStrikeWing } from '../entities/airUnits.js';
 import { numCollectibleChains, spawnCollectibleChains, spawnHoopChains } from '../entities/collectibles.js';
@@ -9,16 +9,28 @@ import { spawnTube } from '../entities/tubes.js';
 import { createObstacles, numHoopChains } from '../entities/obstacles.js';
 
 const MAX_PLACEMENT_TRIES = 200;
+// Base footprints, from how far each spawner places its units: land bases need that much clearance inland
+// from the coast, fleets that much open water around them
+export const BASE_RULES = Object.freeze({
+    airbase:           { onIslet: true,  coastClearance: 120, minDistFromSpawn: 400 }, // runway 200 long, tanks 100–180 out
+    forwardBase:       { onIslet: true,  coastClearance: 90,  minDistFromSpawn: 300 }, // hangars 110 behind, trucks ≤ 90
+    carrierGroup:      { onIslet: false, coastClearance: 150, minDistFromSpawn: 450 }, // carrier hull radius 144
+    destroyerSquadron: { onIslet: false, coastClearance: 60,  minDistFromSpawn: 300 },
+});
+export const MIN_BASE_SEPARATION = 300;   // between base centres
+const RELAXED = 0.6;                       // after half the tries, accept 60 % of clearance and separation
+
+/** What the last createAllUnits() placed (read by tests/browser-probes.mjs). */
+export const placementReport = { bases: [], skipped: [] };
 
 // Rejection sampling with a bounded number of attempts; `generate` may return null for an invalid candidate
-function sample(generate, valid) {
-    for (let tries = 0; tries < MAX_PLACEMENT_TRIES; tries++) {
+function sample(generate, valid, tries) {
+    for (let i = 0; i < tries; i++) {
         const p = generate();
         if (p && valid(p)) return p;
     }
     return null;
 }
-const outsideSpawnZone = minDist => p => p.x * p.x + p.z * p.z >= minDist * minDist;
 // A point inside a random islet's actual polygon, not just its bounding circle
 function pointOnIslet() {
     const isl = islets[~~(Math.random() * islets.length)], a = Math.random() * Math.PI * 2, d = Math.random() * isl.radius * .9;
@@ -29,21 +41,32 @@ function pointInWater() {
     const p = { x: randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z: randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9) };
     return isOnAnyIslet(p.x, p.z) ? null : p;
 }
-function place(count, generate, minDistFromSpawn, spawn, what) {
+const coastDistance = (p, rule) => (rule.onIslet ? distanceToCoast(p.x, p.z, p.islet) : distanceToAnyCoast(p.x, p.z));
+
+function place(kind, count, spawn) {
+    const rule = BASE_RULES[kind];
+    const generate = rule.onIslet ? pointOnIslet : pointInWater;
+    const valid = scale => p =>
+        p.x * p.x + p.z * p.z >= rule.minDistFromSpawn ** 2
+        && placementReport.bases.every(b => Math.hypot(p.x - b.x, p.z - b.z) >= MIN_BASE_SEPARATION * scale)
+        && coastDistance(p, rule) >= rule.coastClearance * scale;
     for (let i = 0; i < count; i++) {
-        const p = sample(generate, outsideSpawnZone(minDistFromSpawn));
-        if (p) spawn(p);
-        else console.warn(`populate: no valid position for ${what} after ${MAX_PLACEMENT_TRIES} tries; skipped`);
+        let relaxed = false;
+        let p = sample(generate, valid(1), MAX_PLACEMENT_TRIES / 2);
+        if (!p) { relaxed = true; p = sample(generate, valid(RELAXED), MAX_PLACEMENT_TRIES / 2); }
+        if (!p) { placementReport.skipped.push(kind); console.warn(`populate: no valid position for ${kind} after ${MAX_PLACEMENT_TRIES} tries; skipped`); continue; }
+        placementReport.bases.push({ kind, x: p.x, z: p.z, relaxed, coast: Math.round(coastDistance(p, rule)) });
+        spawn(p);
     }
 }
 
 export function createAllUnits() {
     createIslets(10); createObstacles();
     for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
-    place(numCarrierGroups, pointInWater, 450, p => spawnCarrierStrikeGroup(p.x, p.z), 'carrier strike group');
-    place(numDestroyerSquadrons, pointInWater, 300, p => spawnDestroyerSquadron(p.x, p.z), 'destroyer squadron');
-    place(numAirbases, pointOnIslet, 400, p => spawnAirbase(p.x, p.z, p.islet), 'airbase');
-    place(numForwardBases, pointOnIslet, 300, p => spawnForwardBase(p.x, p.z, p.islet), 'forward base');
+    place('carrierGroup', numCarrierGroups, p => spawnCarrierStrikeGroup(p.x, p.z));
+    place('destroyerSquadron', numDestroyerSquadrons, p => spawnDestroyerSquadron(p.x, p.z));
+    place('airbase', numAirbases, p => spawnAirbase(p.x, p.z, p.islet));
+    place('forwardBase', numForwardBases, p => spawnForwardBase(p.x, p.z, p.islet));
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
     // Spawn challenge tubes (cyan, one-pass with orb ratio scoring) and free tubes (orange, open entry)
