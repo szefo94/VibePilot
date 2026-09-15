@@ -357,6 +357,24 @@ const probes = {
             return { budget: LIGHT_BUDGET, before, after, nearestLit, pass: before.lights <= LIGHT_BUDGET + 3 && after.lights === before.lights && after.programs === before.programs && nearestLit };
         });
     },
+    // #15 colour-lines mode covers objects spawned while it is on and keeps no per-mesh state
+    async colorMode(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { scene } = await import('./src/core/scene.js');
+            const { _toggleColorMode, colorModeEnabled } = await import('./src/effects/colorMode.js');
+            const existing = scene.children.find(o => o.isMesh);
+            const originalMaterial = existing.material, originalBackground = scene.background;
+            _toggleColorMode();
+            const spawned = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+            scene.add(spawned);
+            const on = { enabled: colorModeEnabled(), override: !!scene.overrideMaterial, existingUntouched: existing.material === originalMaterial };
+            scene.remove(spawned);
+            _toggleColorMode();
+            const off = { enabled: colorModeEnabled(), override: !!scene.overrideMaterial, backgroundRestored: scene.background === originalBackground };
+            return { on, off, pass: on.enabled && on.override && on.existingUntouched && !off.enabled && !off.override && off.backgroundRestored };
+        });
+    },
     // #13 islet meshes match their polygons (not mirrored) and face up
     async islets(page) {
         await worldReady(page);

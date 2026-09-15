@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+> **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
+
 ### One damage pipeline (review #8)
 - `src/combat/hits.js`: bullets, bombs, missiles and napalm share `beginHits(weapon)` → `damage(target)` → `finish()`: eligibility, HP and labels for ground, air and fighter targets, deferred and deduplicated deaths, one hit marker and sound per shot or explosion.
 - One `awardKill()` for score, streak and XP; every kill function accepts `{ reward: false }`.
@@ -14,8 +16,6 @@
 - **Every map is seeded;** the debrief shows the seed, and `?seed=N` or Replay rebuilds the identical world. The debrief also gains a text summary.
 - `prefers-reduced-motion` is respected. `?autostart` skips the start menu.
 - **Bounded simulation sub-steps** (`src/game/simulation.js`): the same inputs give the same flight at 60, 20 and 10 fps.
-
-> **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
 ### Performance
 - **Searchlight light budget** (`src/effects/lightBudget.js`): searchlights are virtual lights with an unlit glow bulb, and a fixed pool of 4 real PointLights follows the nearest ones, fading at the hand-over. Lights compiled into shaders: 50 → 7, and constant, so destroying a searchlight no longer risks a shader recompile. Benchmark (same seed and view, Apple M4): **49.6 → 438.6 fps**, GPU render 37.7 → 1.6 ms.

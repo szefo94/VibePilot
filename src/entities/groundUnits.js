@@ -1,9 +1,7 @@
 /** Ground/sea unit models (tanks, trucks, turrets, ships, airports) and their destruction. */
 import { groundLevel, hostileUnitShootingCooldownTime, waterLevel } from '../config.js';
-import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { markShared, randomRange } from '../core/utils.js';
-import { scoreElement } from '../ui/dom.js';
 import { groundUnits } from './registry.js';
 import { _dyingGround, createExplosion } from '../effects/effects.js';
 import { createUnitLabel, destroyLabel } from '../ui/labels.js';

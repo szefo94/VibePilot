@@ -131,7 +131,7 @@ Modules import what they use explicitly; values that several systems reassign li
 | `B` | Toggle collision box debug view |
 | `N` | Toggle wing trails |
 | `M` | Toggle memory debug panel |
-| `C` | Toggle color lines mode (all meshes → vibrant HSL wireframe on black) |
+| `C` | Toggle colour-lines mode (everything as a normal-coloured wireframe on black) |
 | `Esc` | Pause menu (Resume · Restart · Settings) · close Settings |
 | `I` | Spawn interceptor wave immediately (debug) |
 | `V` | Mute / unmute sound (remembered between sessions) |

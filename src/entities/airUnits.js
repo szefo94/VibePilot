@@ -4,7 +4,6 @@ import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { randomRange } from '../core/utils.js';
 import { _sv1 } from '../core/scratch.js';
-import { scoreElement } from '../ui/dom.js';
 import { plane } from '../player/plane.js';
 import { airUnits, baseMarkers, basesById, enemies } from './registry.js';
 import { hoverWingNames, strikeWingNames } from './names.js';
