@@ -102,7 +102,6 @@ The best arcade flying games (Ace Combat, Luftrausers, Sky Force, StarFox) conve
 
 | # | Idea | Impact | Effort |
 |---|---|---|---|
-| T1 | **Module split** — break `main.js` into `constants`, `state`, `visuals/`, `spawners/`, `collision`, `ai`, `physics`, `hud/` | Medium | High |
 | T2 | **Unit-type constants** — `UNIT.AIRPORT` etc. instead of bare strings | Low | Low |
 | T3 | **Build step (Vite/esbuild)** — enables modules, tree-shaking, offline Three.js | Medium | High |
 | T4 | **ESLint + Prettier** — consistent style, catches implicit globals | Low | Low |

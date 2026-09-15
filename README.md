@@ -1,11 +1,15 @@
 # VibePilot
 
+**▶ Play it live: [szefo94.github.io/VibePilot](https://szefo94.github.io/VibePilot/)**
+
 > Browser-based 3D flight combat game built with Three.js r128.
 
 ---
 
 ## Table of Contents
 
+- [Running Locally](#running-locally)
+- [Project Structure](#project-structure)
 - [Controls](#controls)
 - [Splash Screen](#splash-screen)
 - [Sound](#sound)
@@ -22,6 +26,44 @@
 - [Minimap](#minimap)
 - [Configuration Reference](#configuration-reference)
 - [Functions Reference](#functions-reference)
+
+---
+
+## Running Locally
+
+The game is plain static files using native ES modules, so it must be served over HTTP (opening `index.html` via `file://` will not load modules):
+
+```sh
+python3 -m http.server 8000
+# then open http://localhost:8000/
+```
+
+The `master` branch is deployed to GitHub Pages as-is; there is no build step.
+
+## Project Structure
+
+```text
+index.html            HUD markup, loads three.min.js then src/main.js
+style.css             HUD / overlay styling
+three.min.js          vendored Three.js r128 (global THREE)
+src/
+  main.js             entry: world init + per-frame loop (animate)
+  config.js           tuning constants (world, flight, weapons, enemies)
+  state.js            mutable session state shared between systems
+  input.js            keyboard, mouse, gamepad
+  ai.js               ground/air unit AI
+  audio.js            procedural Web Audio sound effects
+  core/               scene/camera/renderer, scratch vectors, utils
+  world/              environment, islets, initial population
+  player/             plane mesh, flight physics, camera, wing trails
+  entities/           registry, ground units, bases, fences, air units, collectibles, tubes, obstacles
+  combat/             weapons, projectiles, collision, spatial grid, enemy bullets, shared resources
+  effects/            explosions & effects, colour-lines mode, debug boxes
+  game/               progression (score/XP/streaks), game over
+  ui/                 HUD, notifications, labels, minimap, reticle, debrief, splash
+```
+
+Modules import what they use explicitly; values that several systems reassign live on the `state` object in `src/state.js`.
 
 ---
 
@@ -163,7 +205,7 @@ Shown automatically on death (4 s delay, giving the debris animation time to pla
 
 ### Islet Generation
 
-Islet shapes are generated procedurally at world init via a fractal polygon algorithm. The mode is set by the `ISLET_MODE` constant at the top of `main.js`.
+Islet shapes are generated procedurally at world init via a fractal polygon algorithm. The mode is set by the `ISLET_MODE` constant at the top of `src/world/world.js`.
 
 | Constant | Default | Description |
 |---|---|---|
