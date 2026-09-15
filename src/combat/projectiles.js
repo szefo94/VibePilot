@@ -14,6 +14,16 @@ import { disposeGroup } from '../core/utils.js';
 import { _damageFenceNear } from '../entities/fences.js';
 import { _playerBulletPool } from './weapons.js';
 
+// Magazine reloads: an empty weapon refills to its (level-scaled) capacity when its reload timer runs out
+const RELOADS = ['gun', 'bomb', 'missile', 'flare', 'napalm'].map(w => ({ ammo: `${w}Ammo`, max: `${w}MaxAmmo`, timer: `${w}ReloadTimer` }));
+function updateReloads(dt) {
+    for (const { ammo, max, timer } of RELOADS) {
+        if (state[ammo] > 0) continue;
+        state[timer] -= dt;
+        if (state[timer] <= 0) { state[ammo] = state[max]; state[timer] = 0; }
+    }
+}
+
 export function updateProjectiles(dt) {
     // Player bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
@@ -49,10 +59,7 @@ export function updateProjectiles(dt) {
         } else if (b.position.y < groundLevel - 30) { scene.remove(b); bombs.splice(i, 1); }
     }
     if (state.bombCooldown > 0) state.bombCooldown -= dt;
-    if (state.gunAmmo   <= 0) { state.gunReloadTimer  -= dt; if (state.gunReloadTimer  <= 0) { state.gunAmmo  = state.gunMaxAmmo;    state.gunReloadTimer  = 0; } }
-    if (state.bombAmmo  <= 0) { state.bombReloadTimer -= dt; if (state.bombReloadTimer <= 0) { state.bombAmmo = state.bombMaxAmmo;   state.bombReloadTimer = 0; } }
-    if (state.missileAmmo <= 0) { state.missileReloadTimer -= dt; if (state.missileReloadTimer <= 0) { state.missileAmmo = state.missileMaxAmmo; state.missileReloadTimer = 0; } }
-    if (state.flareAmmo   <= 0) { state.flareReloadTimer   -= dt; if (state.flareReloadTimer   <= 0) { state.flareAmmo  = state.flareMaxAmmo;   state.flareReloadTimer   = 0; } }
+    updateReloads(dt);
     if (state.flareTimer   > 0) state.flareTimer -= dt;
     // Flare angel-wing particles
     for (let i = flareParticles.length - 1; i >= 0; i--) {
@@ -63,7 +70,6 @@ export function updateProjectiles(dt) {
         fp.material.opacity = Math.max(0, fp.life / fp.maxLife);
         if (fp.life <= 0) { scene.remove(fp); fp.material.dispose(); flareParticles.splice(i, 1); }
     }
-    if (state.napalmAmmo  <= 0) { state.napalmReloadTimer  -= dt; if (state.napalmReloadTimer  <= 0) { state.napalmAmmo = state.napalmMaxAmmo;   state.napalmReloadTimer  = 0; } }
     // Missiles (§5.7)
     for (let i = missiles.length - 1; i >= 0; i--) {
         const m = missiles[i];

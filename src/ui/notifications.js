@@ -5,6 +5,7 @@ import { scoreElement } from './dom.js';
 import { basesById } from '../entities/registry.js';
 import { addXP } from '../game/progression.js';
 import { _searchlights, _updateFenceDamageState } from '../entities/fences.js';
+import { isAlive } from '../entities/contract.js';
 
 let notifSlot = 0;
 
@@ -60,7 +61,7 @@ export function notifyBase(baseId) { // (§2.2) unified signature — pass baseI
     if (!baseId) return;
     const bm = basesById[baseId];
     if (!bm || bm.eliminated) return;
-    bm.alive = bm.units.filter(x => x.userData.hp > 0).length;
+    bm.alive = bm.units.filter(isAlive).length; // ground and air units alike (entities/contract.js)
     _updateFenceDamageState(bm.id); // F10
     if (bm.alive === 0) {
         showNotification(`◆ ${bm.name} ELIMINATED  +${bm.bonusXp} XP`, true);

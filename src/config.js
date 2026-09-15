@@ -64,3 +64,23 @@ export const hostileUnitShootingRange = 600, hostileUnitShootingCooldownTime = 2
 export const ENEMY_AIM_ACCURACY = 0.95; // default 70% = 30% cone inaccuracy //single constant to tune. 1.0 = perfect lead shot, 0.0 = fully random scatter
 export const HOSTILE_SHOOT_RANGE_SQ = hostileUnitShootingRange * hostileUnitShootingRange; // §2.7
 export const numHoverWings = 3, numStrikeWings = 2;
+
+// --- Unit stats ---
+// level: fixed, or [min, max) rolled per unit; perLevel: hp and xp are multiplied by the level
+export const GROUND_UNIT_TYPES = Object.freeze({
+    tank:      { name: 'Tank',      level: [1, 4], perLevel: true,  hp: 20,  xp: 35,  collisionRadius: 3.5 * 3, hpOffsetY: 1.5 * 3 + 5, hostile: true,  color: 4957216 },
+    turret:    { name: 'Turret',    level: [2, 5], perLevel: true,  hp: 15,  xp: 30,  collisionRadius: 2.5 * 3, hpOffsetY: 1.5 * 3 + 5, hostile: true,  color: 3355443 },
+    truck:     { name: 'Truck',     level: 1,      perLevel: false, hp: 5,   xp: 10,  collisionRadius: 3 * 2.5, hpOffsetY: 2 * 2.5 + 4, hostile: false, color: 8388608 },
+    airport:   { name: 'Airbase',   level: 5,      perLevel: false, hp: 150, xp: 200, collisionRadius: 100,     hpOffsetY: 25,          hostile: false, color: 6710886 },
+    destroyer: { name: 'Destroyer', level: [3, 6], perLevel: true,  hp: 40,  xp: 75,  collisionRadius: 10 * 5,  hpOffsetY: 4 * 5,       hostile: true,  color: 5592422 },
+    carrier:   { name: 'Carrier',   level: 10,     perLevel: false, hp: 200, xp: 300, collisionRadius: 18 * 8,  hpOffsetY: 6 * 8,       hostile: false, color: 4473925 },
+});
+// Air units are modelled at 1 unit and scaled 3×; collisionRadius is the body sphere in world units.
+// wing: extra sub-sphere colliders at ±halfSpan along the wing axis ('q' = group right vector, 'z' = outer Z)
+export const AIR_UNIT_TYPES = Object.freeze({
+    helicopter: { name: 'Helicopter', hp: 60,  xp: 80,  collisionRadius: 15, hostile: true,  wing: { halfSpan: 25, radius: 10, axis: 'z' } },
+    balloon:    { name: 'Balloon',    hp: 15,  xp: 40,  collisionRadius: 21, hostile: false },
+    fighter:    { name: 'Fighter',    hp: 40,  xp: 100, collisionRadius: 14, hostile: true,  level: [1, 3], wing: { halfSpan: 28, radius: 10, axis: 'q' } },
+    tanker:     { name: 'Tanker',     hp: 200, xp: 200, collisionRadius: 15, hostile: false, wing: { halfSpan: 65, radius: 13, axis: 'q' } },
+    ac130:      { name: 'AC-130',     hp: 150, xp: 250, collisionRadius: 20, hostile: true,  wing: { halfSpan: 70, radius: 14, axis: 'z' } },
+});

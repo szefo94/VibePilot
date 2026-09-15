@@ -4,6 +4,10 @@
 
 > **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
+### Entity contract & data tables (review #20, §5.2)
+- `src/entities/contract.js`: `entityKind`, `entityHp`, `isAlive`, `isHostile`, `entityPosition`, `missileTargets`, `nearestAlive` (JSDoc typedefs) for ground units, air units and legacy fighters. Missile homing and the lock-on reticle share one targeting rule. Air units no longer duplicate HP in `userData`.
+- Unit stats moved into `GROUND_UNIT_TYPES` / `AIR_UNIT_TYPES` tables in `config.js`. Magazine reloads are one table-driven loop.
+
 ### One damage pipeline (review #8)
 - `src/combat/hits.js`: bullets, bombs, missiles and napalm share `beginHits(weapon)` → `damage(target)` → `finish()`: eligibility, HP and labels for ground, air and fighter targets, deferred and deduplicated deaths, one hit marker and sound per shot or explosion.
 - One `awardKill()` for score, streak and XP; every kill function accepts `{ reward: false }`.

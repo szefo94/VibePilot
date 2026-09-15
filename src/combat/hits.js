@@ -14,11 +14,9 @@ import { state } from '../state.js';
 import { _playKeyClick } from '../audio.js';
 import { updateUnitLabel } from '../ui/labels.js';
 import { canDamageGround } from './damage.js';
+import { entityHp, entityKind } from '../entities/contract.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
-
-export const targetKind = t => (t.parts ? 'fighter' : t.group ? 'air' : 'ground');
-const fighterHp = f => f.parts.reduce((hp, p) => hp + Math.max(0, p.userData.hp), 0);
 
 export function beginHits(weapon) {
     const dead = new Set();
@@ -26,7 +24,7 @@ export function beginHits(weapon) {
     return {
         damage(target, amount, { part = null } = {}) {
             if (dead.has(target)) return false;
-            const kind = targetKind(target);
+            const kind = entityKind(target);
             if (kind === 'ground') {
                 if (!canDamageGround(target, weapon)) return false;
                 target.userData.hp -= amount;
@@ -35,14 +33,13 @@ export function beginHits(weapon) {
             } else if (kind === 'air') {
                 if (!(target.hp > 0)) return false;
                 target.hp -= amount;
-                target.userData.hp = target.hp;
                 updateUnitLabel(target.label, target.hp);
                 if (target.hp <= 0) dead.add(target);
             } else {
-                if (fighterHp(target) <= 0) return false;
+                if (entityHp(target) <= 0) return false;
                 if (part) part.userData.hp -= amount;
                 else target.parts.forEach(p => { p.userData.hp -= amount; });
-                const hp = fighterHp(target); // overkill on one part doesn't drain the others
+                const hp = entityHp(target); // overkill on one part doesn't drain the others
                 updateUnitLabel(target.label, hp);
                 if (hp <= 0) dead.add(target);
             }
@@ -51,7 +48,7 @@ export function beginHits(weapon) {
         },
         finish() {
             for (const target of dead) {
-                const kind = targetKind(target);
+                const kind = entityKind(target);
                 if (kind === 'ground') killGroundUnit(target);
                 else if (kind === 'air') destroyAirUnit(target);
                 else destroyLogicalEnemy(target.id);

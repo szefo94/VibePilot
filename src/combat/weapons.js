@@ -5,8 +5,8 @@ import { scene } from '../core/scene.js';
 import { _bombDroop, _bombOffset, _missileLTip, _missileRTip, _sv1, _sv2, _sv3, _up3, _wv1 } from '../core/scratch.js';
 import { _playBombDrop, _playGunShot, _playMissileLaunch, _playNapalmDrop } from '../audio.js';
 import { _playerMuzzleLight, plane } from '../player/plane.js';
-import { airUnits, bombs, bullets, enemies, flareParticles, groundUnits, missiles, napalmBombs } from '../entities/registry.js';
-import { groundUnitWorldPos } from './damage.js';
+import { bombs, bullets, flareParticles, missiles, napalmBombs } from '../entities/registry.js';
+import { entityPosition, isAlive, missileTargets, nearestAlive } from '../entities/contract.js';
 import { _bombBodyGeo, _bombFinGeo, _bombNoseGeo, _createMissileMesh, _flarePGeo, _flarePMatBase, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial, bombRadius } from './resources.js';
 import { _tracerMat } from '../effects/effects.js';
 import { markShared } from '../core/utils.js';
@@ -76,15 +76,9 @@ export function dropBomb() {
     _playBombDrop();
 }
 export function fireMissile() {
-    // Find nearest hostile target to home on
-    let target = null, nearestSq = Infinity;
-    const tryTarget = (pos, alive) => {
-        const d = pos().distanceToSquared(plane.position);
-        if (d < nearestSq) { nearestSq = d; target = { pos, alive }; }
-    };
-    groundUnits.forEach(u => { if (u.userData.hp > 0 && u.userData.isHostile) tryTarget(() => groundUnitWorldPos(u), () => u.userData.hp > 0); });
-    airUnits.forEach(au => { if (au.hp > 0) tryTarget(() => au.group.position, () => au.hp > 0); });
-    enemies.forEach(en => { if (en.parts.some(p => p.userData.hp > 0)) tryTarget(() => en.parts[0].position, () => en.parts.some(p => p.userData.hp > 0)); });
+    // Home on the nearest living missile target — the same rule the lock-on reticle shows (entities/contract.js)
+    const entity = nearestAlive(plane.position, missileTargets());
+    const target = entity && { pos: () => entityPosition(entity), alive: () => isAlive(entity) };
     plane.getWorldDirection(_sv1); // forward
     // World positions of wing-tip barrels — reuse pre-allocated vectors (§3.2)
     _wv1.copy(_missileLTip).applyMatrix4(plane.matrixWorld); // lTip

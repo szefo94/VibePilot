@@ -1,5 +1,5 @@
 /** Air unit visuals, factory, squadron spawners, interceptor waves and legacy fighters. */
-import { MAP_BOUNDARY, ceilingLevel, defaultEnemyHpOffsetY, enemyColors, enemyPartHP, enemyScale, enemySpeed, groundLevel, hostileUnitShootingCooldownTime } from '../config.js';
+import { AIR_UNIT_TYPES, MAP_BOUNDARY, ceilingLevel, defaultEnemyHpOffsetY, enemyColors, enemyPartHP, enemyScale, enemySpeed, groundLevel, hostileUnitShootingCooldownTime } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { randomRange } from '../core/utils.js';
@@ -66,25 +66,18 @@ function createAC130Visual() {
 }
 
 // --- Air Unit Factory & Destruction ---
+const AIR_VISUALS = { helicopter: createHelicopterVisual, balloon: createBalloonVisual, fighter: createFighterVisual, tanker: createTankerVisual, ac130: createAC130Visual };
 function createAirUnit(type, x, y, z) {
-    let visual, hp, collR, xp, hostile, name, level = 1;
-    switch (type) {
-        // collR is fuselage/body sphere; all models are scaled 3× so local units × 3 = world units
-        case 'helicopter': visual = createHelicopterVisual(); hp = 60;  collR = 15; xp = 80;  hostile = true;  name = 'Helicopter'; break;
-        case 'balloon':    visual = createBalloonVisual();    hp = 15;  collR = 21; xp = 40;  hostile = false; name = 'Balloon';    break;
-        case 'fighter':    visual = createFighterVisual();    hp = 40;  collR = 14; xp = 100; hostile = true;  name = 'Fighter';    level = ~~randomRange(1, 3); hp *= level; xp *= level; break;
-        case 'tanker':     visual = createTankerVisual();     hp = 200; collR = 15; xp = 200; hostile = false; name = 'Tanker';     break;
-        case 'ac130':      visual = createAC130Visual();      hp = 150; collR = 20; xp = 250; hostile = true;  name = 'AC-130';     break;
-    }
+    const stats = AIR_UNIT_TYPES[type]; // config.js
+    const visual = AIR_VISUALS[type]();
+    const level = stats.level ? ~~randomRange(stats.level[0], stats.level[1]) : 1;
+    const hp = stats.hp * level, xp = stats.xp * level;
     visual.position.set(x, y, z); visual.scale.set(3, 3, 3); scene.add(visual);
-    const label = createUnitLabel(name, level, hp, hp); scene.add(label.sprite);
-    const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: collR, xpValue: xp, isHostile: hostile, baseId: null, label, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, userData: { hp, baseId: null } };
-    // Wing/rotor sub-sphere colliders (worldUnits = local × scale 3)
-    // wingType 'q' = quaternion right (fighter/tanker use lookAt), 'z' = outer-Z direction (orbit types with inner g rotated -PI/2)
-    if (type === 'helicopter') { au.wingHalfSpan = 25; au.wingR = 10; au.wingType = 'z'; } // rotor disc ±25 along outer Z
-    if (type === 'fighter')    { au.wingHalfSpan = 28; au.wingR = 10; au.wingType = 'q'; } // wing tips ±28 along group right
-    if (type === 'tanker')     { au.wingHalfSpan = 65; au.wingR = 13; au.wingType = 'q'; } // wide airliner wings
-    if (type === 'ac130')      { au.wingHalfSpan = 70; au.wingR = 14; au.wingType = 'z'; } // gunship wings ±70 along outer Z
+    const label = createUnitLabel(stats.name, level, hp, hp); scene.add(label.sprite);
+    // HP lives only on `hp` (entities/contract.js); userData carries the base id set by finaliseBase
+    const au = { id: THREE.MathUtils.generateUUID(), type, group: visual, hp, maxHp: hp, collisionRadius: stats.collisionRadius, xpValue: xp, isHostile: stats.hostile, baseId: null, label, shootCooldown: stats.hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, userData: { baseId: null } };
+    // Wing/rotor sub-sphere colliders: 'q' = group right vector (fighter/tanker use lookAt), 'z' = outer Z (orbit types)
+    if (stats.wing) { au.wingHalfSpan = stats.wing.halfSpan; au.wingR = stats.wing.radius; au.wingType = stats.wing.axis; }
     return au;
 }
 export function destroyAirUnit(au, { reward = true } = {}) {
@@ -95,7 +88,7 @@ export function destroyAirUnit(au, { reward = true } = {}) {
     destroyLabel(au.label);
     airUnits.splice(idx, 1);
     if (reward) awardKill(au.xpValue);
-    notifyBase(au.userData.baseId);
+    notifyBase(au.baseId);
     _dyingAirUnits.push({ group: au.group, timer: 50 });
 }
 

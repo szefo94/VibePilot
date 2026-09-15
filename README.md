@@ -102,7 +102,7 @@ src/
   core/               scene/camera/renderer, scratch vectors, utils
   world/              environment, islets, initial population
   player/             plane mesh, flight physics, camera, wing trails
-  entities/           registry, ground units, bases, fences, air units, collectibles, tubes, obstacles
+  entities/           entity contract, registry, ground units, bases, fences, air units, collectibles, tubes, obstacles
   combat/             weapons, projectiles, collision, spatial grid, enemy bullets, shared resources
   effects/            explosions & effects, colour-lines mode, debug boxes
   game/               progression (score/XP/streaks), game over

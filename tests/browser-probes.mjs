@@ -228,6 +228,31 @@ const probes = {
             };
         });
     },
+    // #20 entity contract: one HP/alive/position rule for every unit kind; missile + reticle share targeting
+    async entityContract(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { airUnits, enemies, baseMarkers } = await import('./src/entities/registry.js');
+            const { entityKind, isAlive, missileTargets, nearestAlive } = await import('./src/entities/contract.js');
+            const { beginHits } = await import('./src/combat/hits.js');
+            const { plane } = await import('./src/player/plane.js');
+            state.isPaused = true;
+            const kinds = [...new Set([...missileTargets()].map(entityKind))].sort();
+            const airBase = baseMarkers.find(bm => bm.units.length > 1 && bm.units.every(u => u.group) && bm.units.filter(isAlive).length > 1);
+            const victim = airBase.units.find(isAlive);
+            const aliveBefore = airBase.alive;
+            const hits = beginHits('missile'); hits.damage(victim, 1e6); hits.finish();
+            const fighter = enemies[0];
+            plane.position.copy(fighter.parts[0].position).add(new THREE.Vector3(2, 0, 0));
+            const nearest = nearestAlive(plane.position, missileTargets());
+            return {
+                kinds, aliveBefore, aliveAfter: airBase.alive, airHpOnlyOnUnit: airUnits.every(a => !('hp' in a.userData)),
+                nearestIsFighter: nearest === fighter,
+                pass: kinds.join() === 'air,fighter,ground' && airBase.alive === aliveBefore - 1 && airUnits.every(a => !('hp' in a.userData)) && nearest === fighter,
+            };
+        });
+    },
     // #7 bounded sub-steps: the same flight gives the same result at 60, 20 and 10 fps
     async fixedStep(page) {
         await worldReady(page);

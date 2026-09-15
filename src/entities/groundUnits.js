@@ -1,5 +1,5 @@
 /** Ground/sea unit models (tanks, trucks, turrets, ships, airports) and their destruction. */
-import { groundLevel, hostileUnitShootingCooldownTime, waterLevel } from '../config.js';
+import { GROUND_UNIT_TYPES, groundLevel, hostileUnitShootingCooldownTime, waterLevel } from '../config.js';
 import { scene } from '../core/scene.js';
 import { markShared, randomRange } from '../core/utils.js';
 import { groundUnits } from './registry.js';
@@ -27,12 +27,13 @@ const _truckCargoWallGeo  = markShared(new THREE.BoxGeometry(1.75, 0.7,  0.1));
 const _truckWheelGeo      = markShared((() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })());
 export function createGroundUnit(type) {
     const u = new THREE.Group();
-    let hp, collR, hpY, xp, n, turretPivotRef = null, barrelPivotRef = null, hostile = false, l = 1;
-    const UNIT_MAT_COLORS = { tank: 4957216, truck: 8388608, airport: 6710886, destroyer: 5592422, carrier: 4473925, turret: 3355443 };
-    const unitMat = new THREE.MeshStandardMaterial({ color: UNIT_MAT_COLORS[type] }); // one material per call, not 6
+    const stats = GROUND_UNIT_TYPES[type]; // config.js
+    const l = Array.isArray(stats.level) ? ~~randomRange(stats.level[0], stats.level[1]) : stats.level;
+    const hp = stats.perLevel ? stats.hp * l : stats.hp, xp = stats.perLevel ? stats.xp * l : stats.xp;
+    let turretPivotRef = null, barrelPivotRef = null;
+    const unitMat = new THREE.MeshStandardMaterial({ color: stats.color }); // one material per call, not 6
     switch (type) {
         case 'tank':
-            n = "Tank"; l = ~~randomRange(1, 4); hp = 20 * l; collR = 3.5 * 3; hpY = 1.5 * 3 + 5; xp = 35 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
             {
                 const lowerHull = new THREE.Mesh(_tankLowerHullGeo, unitMat);
@@ -49,7 +50,6 @@ export function createGroundUnit(type) {
             }
             u.scale.set(3, 3, 3); break;
         case 'turret':
-            n = "Turret"; l = ~~randomRange(2, 5); hp = 15 * l; collR = 2.5 * 3; hpY = 1.5 * 3 + 5; xp = 30 * l; hostile = true;
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4), unitMat));
             { const tp = new THREE.Group(); tp.position.y = 1.25;
@@ -57,7 +57,6 @@ export function createGroundUnit(type) {
               tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
             u.scale.set(3, 3, 3); break;
         case 'truck':
-            n = "Truck"; l = 1; hp = 5; collR = 3 * 2.5; hpY = 2 * 2.5 + 4; xp = 10;
             u.position.y = groundLevel + 2 + 2 * 2.5 / 2;
             { // --- truck body ---
                 const chassis    = new THREE.Mesh(_truckChassisGeo,    unitMat);
@@ -76,7 +75,7 @@ export function createGroundUnit(type) {
             }
             u.scale.set(2.5, 2.5, 2.5); break;
         case 'airport': {
-            n = "Airbase"; l = 5; hp = 150; collR = 100; hpY = 25; xp = 200; u.position.y = groundLevel + 2;
+            u.position.y = groundLevel + 2;
             const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), unitMat);
             const mainBuilding = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 10), unitMat); mainBuilding.position.set(25, 10, 0);
             const towerBase = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 30, 8), unitMat); towerBase.position.set(25, 15, -25);
@@ -88,7 +87,7 @@ export function createGroundUnit(type) {
             break;
         }
         case 'destroyer':
-            n = "Destroyer"; l = ~~randomRange(3, 6); hp = 40 * l; collR = 10 * 5; hpY = 4 * 5; xp = 75 * l; hostile = true; u.position.y = waterLevel;
+            u.position.y = waterLevel;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat));
             u.children[1].position.set(0, 2, -2);
             { const tp = new THREE.Group(); tp.position.set(0, 1.5, 5);
@@ -96,12 +95,12 @@ export function createGroundUnit(type) {
               tp.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
             u.scale.set(5, 5, 5); break;
         case 'carrier':
-            n = "Carrier"; l = 10; hp = 200; collR = 18 * 8; hpY = 6 * 8; xp = 300; u.position.y = waterLevel;
+            u.position.y = waterLevel;
             u.add(new THREE.Mesh(new THREE.BoxGeometry(8, 3, 35), unitMat), new THREE.Mesh(new THREE.BoxGeometry(12, .5, 32), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 3, 6), unitMat));
             u.children[1].position.y = 1.75; u.children[2].position.set(5, 3.5, -2); u.scale.set(8, 8, 8); break;
     }
-    const label = createUnitLabel(n, l, hp, hp); scene.add(label.sprite);
-    u.userData = { type, hp, maxHp: hp, collisionRadius: collR, label, hpOffsetY: hpY, isHostile: hostile, shootCooldown: hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, barrelPivot: barrelPivotRef, dependents: [] };
+    const label = createUnitLabel(stats.name, l, hp, hp); scene.add(label.sprite);
+    u.userData = { type, hp, maxHp: hp, collisionRadius: stats.collisionRadius, label, hpOffsetY: stats.hpOffsetY, isHostile: stats.hostile, shootCooldown: stats.hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, barrelPivot: barrelPivotRef, dependents: [] };
     // Populate dependents for units with protected children (§2.5)
     for (const child of u.children) { if (child.userData?.type === 'turret') u.userData.dependents.push(child); }
     return u;
