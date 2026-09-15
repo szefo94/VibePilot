@@ -8,7 +8,7 @@ import { groundUnits } from './registry.js';
 import { _dyingGround, createExplosion } from '../effects/effects.js';
 import { createUnitLabel, destroyLabel } from '../ui/labels.js';
 import { notifyBase } from '../ui/notifications.js';
-import { _addKill, addXP } from '../game/progression.js';
+import { awardKill } from '../game/progression.js';
 import { groundUnitWorldPos, refreshGroundUnitWorldPos } from '../combat/damage.js';
 
 // --- Unit Creation & Spawning ---
@@ -131,8 +131,8 @@ export function createHangar(variant = 'box') {
     u.userData = { type: 'hangar', hp, maxHp: hp, collisionRadius: 30, label, hpOffsetY: 20, isHostile: false, bombOnly: true, shootCooldown: 0, xpValue: xpVal, id: THREE.MathUtils.generateUUID(), partBoxes: null };
     return u;
 }
-// (§2.3) Centralised ground-unit death — used by bullet, bomb, missile, and napalm paths
-export function killGroundUnit(gu) {
+// (§2.3) Centralised ground-unit death — called by combat/hits.js for every weapon
+export function killGroundUnit(gu, { reward = true } = {}) {
     if (!gu.userData._alive) return; // double-kill guard
     gu.userData._alive = false;
     // Dependents (airport turrets) are exposed, not destroyed: move them into the world keeping their
@@ -149,7 +149,7 @@ export function killGroundUnit(gu) {
     destroyLabel(gu.userData.label);
     // Don't dispose immediately — blink animation (idea 5); dispose happens in updateEffects
     const ui = groundUnits.indexOf(gu); if (ui > -1) groundUnits.splice(ui, 1);
-    if (!state.isGameOver) { const _m = _addKill(); state.score += gu.userData.xpValue * _m; scoreElement.textContent = state.score; addXP(gu.userData.xpValue); }
+    if (reward) awardKill(gu.userData.xpValue);
     notifyBase(gu.userData.baseId);
     _dyingGround.push({ mesh: gu, timer: 50 });
 }

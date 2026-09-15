@@ -195,6 +195,39 @@ const probes = {
             return { ...r, pass: Math.max(...Object.values(r)) - Math.min(...Object.values(r)) <= 1 };
         });
     },
+    // #8 one damage pipeline: eligibility per weapon, one death + one reward per target, rewards per kind
+    async damagePipeline(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { groundUnits, airUnits, enemies } = await import('./src/entities/registry.js');
+            const { beginHits } = await import('./src/combat/hits.js');
+            const { killGroundUnit } = await import('./src/entities/groundUnits.js');
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            await frames(3); // updateAI marks ground units alive
+            state.isPaused = true;
+            const tanks = groundUnits.filter(u => u.userData.type === 'tank' && u.userData.hp > 0);
+            const hangar = groundUnits.find(u => u.userData.type === 'hangar');
+            const [tank, spareTank] = tanks, air = airUnits.find(a => a.hp > 0), fighter = enemies[0];
+            const hangarHp = hangar.userData.hp, score0 = state.score;
+            const blast = beginHits('missile');
+            const hangarTookMissile = blast.damage(hangar, 50);
+            blast.damage(tank, 9999); blast.damage(tank, 9999); // struck and splashed in the same blast
+            blast.damage(air, 9999); blast.damage(fighter, 9999);
+            const result = blast.finish();
+            // streak multiplier ×1, ×2, ×3 for three kills within 5 s
+            const expected = tank.userData.xpValue * 1 + air.xpValue * 2 + 25 * 3;
+            const bomb = beginHits('bomb'); const hangarTookBomb = bomb.damage(hangar, 10); bomb.finish();
+            const score1 = state.score;
+            killGroundUnit(spareTank, { reward: false });
+            return {
+                kills: result.kills, scoreGained: score1 - score0, expected, hangarTookMissile, hangarTookBomb,
+                removed: !groundUnits.includes(tank) && !airUnits.includes(air) && !enemies.includes(fighter),
+                noRewardKill: state.score === score1 && !groundUnits.includes(spareTank),
+                pass: result.kills === 3 && score1 - score0 === expected && !hangarTookMissile && hangarTookBomb && hangar.userData.hp === hangarHp - 10 && !groundUnits.includes(tank) && !airUnits.includes(air) && !enemies.includes(fighter) && state.score === score1,
+            };
+        });
+    },
     // #7 bounded sub-steps: the same flight gives the same result at 60, 20 and 10 fps
     async fixedStep(page) {
         await worldReady(page);

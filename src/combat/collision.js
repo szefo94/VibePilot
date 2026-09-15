@@ -3,7 +3,7 @@ import { TARGET_FPS } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _sv1 } from '../core/scratch.js';
-import { _playCollectCyan, _playCollectGreen, _playCollectYellow, _playKeyClick, _playPlayerHit } from '../audio.js';
+import { _playCollectCyan, _playCollectGreen, _playCollectYellow, _playPlayerHit } from '../audio.js';
 import { hpElement, scoreElement } from '../ui/dom.js';
 import { plane, planePartBoxes, planeSphereRadius } from '../player/plane.js';
 import { airUnits, bullets, collectibles, enemies, enemyBullets, groundUnits, markers, obstacles } from '../entities/registry.js';
@@ -15,8 +15,8 @@ import { updateUnitLabel } from '../ui/labels.js';
 import { addToConqueredRow, showNotification } from '../ui/notifications.js';
 import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
-import { killGroundUnit } from '../entities/groundUnits.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
+import { beginHits } from './hits.js';
 import { disposeOwned } from '../core/utils.js';
 import { DEBUG_PARAMS } from '../debug/params.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
@@ -51,6 +51,12 @@ function segmentDistSq(a, b, c) {
 }
 // Swept bullet test: the segment travelled since the last update, so fast bullets can't skip thin targets
 const bulletDistSq = (b, c) => b.prevPosition ? segmentDistSq(b.prevPosition, b.position, c) : b.position.distanceToSquared(c);
+
+// Return a player bullet (and its tracer) to the pool
+function removeBullet(b, index) {
+    if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
+    scene.remove(b); _playerBulletPool.push(b); bullets.splice(index, 1);
+}
 
 // Scratch Box3 for plane pickup AABB (covers full wingspan, recomputed each resolveCollisions call)
 const _planePickupBox = new THREE.Box3();
@@ -287,18 +293,11 @@ export function resolveCollisions() {
         let hit = false;
         // vs Enemies (no grid — enemy fighters scattered with bounding boxes)
         for (const e of enemies) {
-            if (e.parts.some(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && bulletDistSq(b, p.position) < _cr * _cr; })) {
-                if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
-                scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
-                const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && bulletDistSq(b, p.position) < _cr * _cr; });
-                if (part) part.userData.hp -= b.userData.damage;
-                let totalHp = 0; e.parts.forEach(p => totalHp += Math.max(0, p.userData.hp)); // overkill on one part doesn't drain the others
-                updateUnitLabel(e.label, totalHp);
-                if (totalHp <= 0) destroyLogicalEnemy(e.id);
-                state._hitMarkerTimer = 9; // idea 4
-                _playKeyClick();
-                break;
-            }
+            const part = e.parts.find(p => { const _cr = b.userData.collisionRadius + (p.userData.collisionRadius || 1); return p.userData.hp > 0 && bulletDistSq(b, p.position) < _cr * _cr; });
+            if (!part) continue;
+            removeBullet(b, i); hit = true;
+            const hits = beginHits('bullet'); hits.damage(e, b.userData.damage, { part }); hits.finish();
+            break;
         }
         if (hit) continue;
         // vs Air + Ground Units via spatial grid
@@ -322,25 +321,16 @@ export function resolveCollisions() {
                     _auHit = (_dx1*_dx1+_dy*_dy+_dz1*_dz1 < _wr2) || (_dx2*_dx2+_dy*_dy+_dz2*_dz2 < _wr2);
                 }
                 if (_auHit) {
-                    if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
-                    scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
-                    au.hp -= b.userData.damage; au.userData.hp = au.hp;
-                    updateUnitLabel(au.label, au.hp);
-                    if (au.hp <= 0) destroyAirUnit(au);
-                    state._hitMarkerTimer = 9; // idea 4
-                    _playKeyClick();
+                    removeBullet(b, i); hit = true;
+                    const hits = beginHits('bullet'); hits.damage(au, b.userData.damage); hits.finish();
                 }
             } else {
-                // Ground unit
+                // Ground unit — ineligible units (protected, bomb-only) don't stop bullets
                 const u = obj;
-                if (!canDamageGround(u, 'bullet')) continue; // dead, protected (§4.1) or bomb-only
+                if (!canDamageGround(u, 'bullet')) continue;
                 if (bulletDistSq(b, groundUnitWorldPos(u)) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
-                    if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
-                    scene.remove(b); _playerBulletPool.push(b); bullets.splice(i, 1); hit = true;
-                    u.userData.hp -= b.userData.damage; updateUnitLabel(u.userData.label, u.userData.hp);
-                    if (u.userData.hp <= 0) killGroundUnit(u); // (§2.3)
-                    state._hitMarkerTimer = 9; // idea 4
-                    _playKeyClick();
+                    removeBullet(b, i); hit = true;
+                    const hits = beginHits('bullet'); hits.damage(u, b.userData.damage); hits.finish();
                 }
             }
         }

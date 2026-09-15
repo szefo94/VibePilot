@@ -1,6 +1,6 @@
 /** Score, XP, levelling, healing and kill-streak multiplier. */
 import { state } from '../state.js';
-import { hpElement, levelElement, xpElement, xpToNextLevelElement } from '../ui/dom.js';
+import { hpElement, levelElement, scoreElement, xpElement, xpToNextLevelElement } from '../ui/dom.js';
 import { showLevelUpBanner, showNotification } from '../ui/notifications.js';
 import { updateDamageUI } from '../ui/hud.js';
 
@@ -42,4 +42,11 @@ export function _addKill() {
         _multiEl.textContent = `×${state._scoreMulti}  STREAK`;
     }
     return state._scoreMulti;
+}
+/** The single kill reward: score × streak multiplier, and XP. No reward after game over. */
+export function awardKill(xpValue) {
+    if (state.isGameOver) return;
+    state.score += xpValue * _addKill();
+    scoreElement.textContent = state.score;
+    addXP(xpValue);
 }

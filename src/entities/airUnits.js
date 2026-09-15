@@ -11,7 +11,7 @@ import { hoverWingNames, strikeWingNames } from './names.js';
 import { _dyingAirUnits, _dyingEnemies, createExplosion } from '../effects/effects.js';
 import { createUnitLabel, destroyLabel } from '../ui/labels.js';
 import { notifyBase } from '../ui/notifications.js';
-import { _addKill, addXP } from '../game/progression.js';
+import { awardKill } from '../game/progression.js';
 import { finaliseBase } from './bases.js';
 
 // --- Airborne Unit Visuals ---
@@ -88,12 +88,14 @@ function createAirUnit(type, x, y, z) {
     if (type === 'ac130')      { au.wingHalfSpan = 70; au.wingR = 14; au.wingType = 'z'; } // gunship wings ±70 along outer Z
     return au;
 }
-export function destroyAirUnit(au, idx = airUnits.indexOf(au)) {
+export function destroyAirUnit(au, { reward = true } = {}) {
+    const idx = airUnits.indexOf(au);
+    if (idx < 0) return; // already removed
     createExplosion(au.group.position);
     // Don't dispose immediately — blink animation (idea 5)
     destroyLabel(au.label);
     airUnits.splice(idx, 1);
-    if (!state.isGameOver) { const _m = _addKill(); state.score += au.xpValue * _m; scoreElement.textContent = state.score; addXP(au.xpValue); }
+    if (reward) awardKill(au.xpValue);
     notifyBase(au.userData.baseId);
     _dyingAirUnits.push({ group: au.group, timer: 50 });
 }
@@ -215,7 +217,7 @@ export function destroyLogicalEnemy(id, { reward = true } = {}) {
         const e = enemies[i];
         destroyLabel(e.label);
         enemies.splice(i, 1);
-        if (reward && !state.isGameOver) { const _m = _addKill(); state.score += 25 * _m; scoreElement.textContent = state.score; addXP(25); }
+        if (reward) awardKill(25);
         // Defer geometry disposal — blink animation (idea 5)
         _dyingEnemies.push({ parts: e.parts, mat: e.parts.length > 0 ? e.parts[0].material : null, timer: 50 });
         spawnSingleEnemy();

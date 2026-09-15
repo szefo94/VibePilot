@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### One damage pipeline (review #8)
+- `src/combat/hits.js`: bullets, bombs, missiles and napalm share `beginHits(weapon)` → `damage(target)` → `finish()`: eligibility, HP and labels for ground, air and fighter targets, deferred and deduplicated deaths, one hit marker and sound per shot or explosion.
+- One `awardKill()` for score, streak and XP; every kill function accepts `{ reward: false }`.
+
 ### Session flow & settings (review #19, #7, #14)
 - **Start menu:** the simulation and weapons wait until Start. It lists the controls and the best score.
 - **Pause menu:** Resume · Restart · Settings.
