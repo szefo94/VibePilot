@@ -24,6 +24,7 @@ import { updateAI } from './ai.js';
 import { pollGamepad } from './input.js';
 import * as perf from './debug/perf.js';
 import { DEBUG_PARAMS } from './debug/params.js';
+import { disableRealLights, updateLightBudget } from './effects/lightBudget.js';
 
 // --- THREE.Clock for delta-time (§3.6) ---
 const clock = new THREE.Clock();
@@ -39,7 +40,7 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
     perf.record('init.createAllUnits', t1 - t0);
     perf.record('init.buildBaseFences', performance.now() - t1);
     // ?disable=… cost experiments: hidden lights drop out of every lit shader; hidden sprites skip their draws
-    if (DEBUG_PARAMS.disable.has('searchlights')) _searchlights.forEach(sl => { sl.spot.visible = false; });
+    if (DEBUG_PARAMS.disable.has('searchlights')) disableRealLights();
     if (DEBUG_PARAMS.disable.has('labels')) scene.traverse(o => { if (o.isSprite) o.visible = false; });
 }));
 let firstFrame = true;
@@ -70,6 +71,7 @@ function animate() {
     if (!state.isGameOver && !state.isPaused && !splashActive) {
         // Spawn protection is simulation state in seconds; dt is in 60 fps frame units
         if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - dt / TARGET_FPS);
+        perf.markSimulated();
         perf.begin('physics'); updatePhysics(dt); perf.end('physics');
         perf.begin('ai'); updateAI(dt); perf.end('ai');
         perf.begin('collisions'); resolveCollisions(); perf.end('collisions');
@@ -134,6 +136,7 @@ function animate() {
         }
     }
     perf.end('searchlights');
+    perf.begin('lights'); updateLightBudget(); perf.end('lights');
     // F9: flag animation — pivot Group rotates to face wind direction; flag extends sideways from pole tip
     if (_flagMeshes.length > 0) {
         _sv1.set(0, 0, 1).applyQuaternion(plane.quaternion);

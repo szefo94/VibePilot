@@ -9,6 +9,7 @@ import { aibaseLetters, fleetNames, forwardBaseNames, squadronNames } from './na
 import { updateUnitLabel } from '../ui/labels.js';
 import { createGroundUnit, createHangar } from './groundUnits.js';
 import { _searchlights } from './fences.js';
+import { createVirtualLight } from '../effects/lightBudget.js';
 
 // Shared base finalisation — avoids repetition in every spawner (§3.3)
 export function finaliseBase(bm, startIdx, arr, bonusXp) {
@@ -74,9 +75,7 @@ export function spawnAirbase(cx, cz, islet) {
     // Searchlight on control tower (local pos 25, 34, -25 rotated by heading)
     const _cth = Math.cos(heading), _sth = Math.sin(heading);
     const _slTx = cx + 25 * _cth - (-25) * _sth, _slTy = groundLevel + 38, _slTz = cz + 25 * (-_sth) + (-25) * _cth;
-    const _slAb = new THREE.PointLight(0xffffaa, 1.5, 200);
-    _slAb.position.set(_slTx, _slTy, _slTz); scene.add(_slAb);
-    _slAb.target = { position: new THREE.Vector3(), updateMatrixWorld: () => {} }; // stub target
+    const _slAb = createVirtualLight(0xffffaa, 1.5, 200, _slTx, _slTy, _slTz); // lit via the light budget
     const _slAbInitA = Math.random() * Math.PI * 2;
     _searchlights.push({ spot: _slAb, worldPos: new THREE.Vector3(_slTx, _slTy, _slTz),
         angle: _slAbInitA, speed: (0.003 + Math.random() * 0.003) * (Math.random() > 0.5 ? 1 : -1),

@@ -9,6 +9,9 @@
  * Automation: window.__vpPerf.snapshot() / reset() / enable({ overlay }) — used by tests/perf-bench.mjs.
  */
 import { renderer, scene } from '../core/scene.js';
+import { state } from '../state.js';
+import { splashActive } from '../ui/splash.js';
+import { lightBudgetStats } from '../effects/lightBudget.js';
 import { DEBUG_PARAMS } from './params.js';
 
 const WINDOW = 600; // frames kept for statistics (~10 s at 60 fps)
@@ -32,6 +35,8 @@ class Ring {
 
 let enabled = false, overlayWanted = false, overlay = null;
 const frameInterval = new Ring(), frameCpu = new Ring(), gpuRender = new Ring(), drawCalls = new Ring(), triangles = new Ring();
+const simulated = new Ring(); // 1 when the gameplay simulation ran that frame (not paused / game over / splash)
+let simulatedThisFrame = 0;
 const sectionRings = new Map();   // name → Ring of per-frame ms
 const sectionFrameMs = new Map(); // name → ms accumulated in the current frame
 const sectionStart = new Map();   // name → start timestamp of the open section
@@ -45,6 +50,8 @@ export function end(name) {
     const start = sectionStart.get(name);
     if (start !== undefined) sectionFrameMs.set(name, (sectionFrameMs.get(name) || 0) + performance.now() - start);
 }
+/** Called by main.js when the gameplay simulation runs this frame. */
+export function markSimulated() { simulatedThisFrame = 1; }
 /** Always-on one-off timing, e.g. world initialisation. */
 export function record(name, ms) { timings[name] = Math.round(ms * 10) / 10; }
 
@@ -58,6 +65,8 @@ export function frameEnd() {
     if (!enabled) return;
     const now = performance.now();
     frameCpu.push(now - frameStartAt);
+    simulated.push(simulatedThisFrame);
+    simulatedThisFrame = 0;
     for (const [name, ms] of sectionFrameMs) {
         let ring = sectionRings.get(name);
         if (!ring) sectionRings.set(name, ring = new Ring());
@@ -114,9 +123,11 @@ function sceneStats() {
 }
 
 export function snapshot() {
-    const interval = frameInterval.stats();
+    const interval = frameInterval.stats(), sim = simulated.stats();
     return {
         enabled,
+        gameState: state.isGameOver ? 'game over' : state.isPaused ? 'paused' : splashActive ? 'splash' : 'flying',
+        simulatedPct: sim ? Math.round(sim.avg * 100) : null, // share of the window's frames that ran gameplay
         frames: frameInterval.count,
         fps: interval ? Math.round(10000 / interval.avg) / 10 : null,
         frameInterval: interval,
@@ -128,29 +139,33 @@ export function snapshot() {
         triangles: triangles.stats(),
         gpuResources: { geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs ? renderer.info.programs.length : null },
         scene: sceneStats(),
+        lights: lightBudgetStats(),
         heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 104857.6) / 10 : null,
         timings: { ...timings },
     };
 }
 
 export function reset() {
-    [frameInterval, frameCpu, gpuRender, drawCalls, triangles].forEach(r => r.clear());
+    [frameInterval, frameCpu, gpuRender, drawCalls, triangles, simulated].forEach(r => r.clear());
     sectionRings.forEach(r => r.clear());
     lastFrameStartAt = 0;
 }
 
 function renderOverlay() {
     const s = snapshot(), n = (v, d = 1) => v == null ? '–' : v.toFixed(d);
+    const entries = Object.entries(s.sections).filter(([, v]) => v);
+    const busy = entries.filter(([, v]) => v.max >= 0.05), idle = entries.filter(([, v]) => v.max < 0.05).map(([name]) => name);
     const lines = [
         `PERF [P]  ${n(s.fps)} fps   frame p50 ${n(s.frameInterval?.p50)} ms  p95 ${n(s.frameInterval?.p95)}  p99 ${n(s.frameInterval?.p99)}`,
+        `state: ${s.gameState} — gameplay simulated in ${s.simulatedPct ?? '–'}% of the last ${s.frames} frames`,
         `CPU ${n(s.frameCpu?.avg)} ms/frame (p95 ${n(s.frameCpu?.p95)})   GPU render ${s.gpuTimer ? `${n(s.gpuRender?.avg)} ms (p95 ${n(s.gpuRender?.p95)})` : 'n/a'}`,
         '  system          avg     p95     max  (ms)',
-        ...Object.entries(s.sections).filter(([, v]) => v && v.max >= 0.05)
-            .map(([name, v]) => `  ${name.padEnd(13)}${n(v.avg, 2).padStart(6)}  ${n(v.p95, 2).padStart(6)}  ${n(v.max, 1).padStart(6)}`),
+        ...busy.map(([name, v]) => `  ${name.padEnd(13)}${n(v.avg, 2).padStart(6)}  ${n(v.p95, 2).padStart(6)}  ${n(v.max, 1).padStart(6)}`),
+        ...(idle.length ? [`  idle or < 0.05 ms: ${idle.join(', ')}`] : []),
         `draw calls ${Math.round(s.drawCalls?.avg ?? 0)}   triangles ${Math.round((s.triangles?.avg ?? 0) / 1000)}k   programs ${s.gpuResources.programs}`,
         `geometries ${s.gpuResources.geometries}   textures ${s.gpuResources.textures}   heap ${s.heapMB ?? '–'} MB`,
         `objects ${s.scene.objects}   meshes ${s.scene.meshes} (visible ${s.scene.visibleMeshes})`,
-        `lights in shaders ${s.scene.lightsInShaders} (point ${s.scene.pointLights}, at intensity 0: ${s.scene.silentLights})`,
+        `lights in shaders ${s.scene.lightsInShaders} (point ${s.scene.pointLights})   searchlights ${s.lights.lit}/${s.lights.searchlights} lit, ${s.lights.pooledOn}/${s.lights.budget} real lights on`,
     ];
     overlay.textContent = lines.join('\n');
 }

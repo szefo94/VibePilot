@@ -58,7 +58,8 @@ Development checks (Node 18+, run `npm install` once for ESLint and the browser 
 - CPU time per system (physics, AI, collisions, HUD, projectiles, effects, render, …)
 - GPU render time, where the browser exposes WebGL timer queries
 - draw calls, triangles and shader programs
-- scene size and lights in shaders
+- scene size, lights in shaders and light-budget use (searchlights lit / real lights on)
+- game state, and the share of the window's frames that ran gameplay (so a paused capture is obvious)
 - GPU resources and JS heap
 
 Scripts can read it all via `window.__vpPerf.snapshot()`.
@@ -69,7 +70,7 @@ Scripts can read it all via `window.__vpPerf.snapshot()`.
 |---|---|
 | `?seed=N` | Deterministic `Math.random` — the same world layout every load |
 | `?invulnerable` | The run never ends (no game over, enemy bullets deflected) |
-| `?disable=searchlights,fences,labels` | Switch features off to measure their cost |
+| `?disable=searchlights,fences,labels` | Switch features off to measure their cost (`searchlights` hides the pooled real lights) |
 
 **Benchmark** — `npm run bench` flies a scripted scenario in a real browser (GPU, uncapped frame rate by default). It reports frame timing, long tasks, draw calls, triangles and live GL resources for any build. For builds that include the profiler it also reports per-system CPU time, GPU time and scene statistics.
 

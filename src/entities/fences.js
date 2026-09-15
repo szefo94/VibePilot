@@ -4,6 +4,7 @@ import { scene } from '../core/scene.js';
 import { _pointInPolygon, _rayPolyIntersect, islets } from '../world/world.js';
 import { _fenceRegistry, _flagMeshes, baseMarkers } from './registry.js';
 import { disposeGroup, markShared } from '../core/utils.js';
+import { createVirtualLight, removeVirtualLight } from '../effects/lightBudget.js';
 
 // F6: searchlight sweepers
 export const _searchlights = [];
@@ -121,10 +122,7 @@ export function buildBaseFences() {
             _flagMeshes.push({ mesh: fp });
             // Searchlight on tower platform
             const slY = groundLevel + 12;
-            const slSpot = new THREE.PointLight(0xffffaa, 1.2, 120);
-            slSpot.position.set(px, slY, pz);
-            scene.add(slSpot);
-            slSpot.target = { position: new THREE.Vector3(), updateMatrixWorld: () => {} }; // stub target
+            const slSpot = createVirtualLight(0xffffaa, 1.2, 120, px, slY, pz); // lit via the light budget
             const _slInitA = Math.random() * Math.PI * 2;
             _searchlights.push({ spot: slSpot, worldPos: new THREE.Vector3(px, slY, pz),
                 angle: _slInitA,
@@ -230,12 +228,9 @@ export function _damageFenceNear(pos, radius) {
         for (let pi = reg.posts.length - 1; pi >= 0; pi--) {
             if (toRemove.has(reg.posts[pi].mesh)) {
                 const _dm = reg.posts[pi].mesh;
-                if (_dm.isLight) {
-                    // Searchlights are PointLights. Do NOT scene.remove a light — Three.js recompiles all shaders
-                    // when the scene light count changes, causing a visible freeze.
-                    // Silencing intensity keeps the light in the scene (count unchanged)
-                    // so no shader recompile is triggered.
-                    _dm.intensity = 0;
+                if (_dm.isVirtualLight) {
+                    // Virtual searchlight: the real light pool is fixed, so removal never recompiles shaders
+                    removeVirtualLight(_dm);
                     const _slIdx = _searchlights.findIndex(sl => sl.spot === _dm);
                     if (_slIdx > -1) _searchlights.splice(_slIdx, 1);
                 } else {
@@ -265,6 +260,7 @@ export function _updateFenceDamageState(bmId) {
     const g = (0x6a + (0x45 - 0x6a) * dmg) / 255;
     const b = (0x5a + (0x13 - 0x5a) * dmg) / 255;
     reg.posts.forEach(p => {
+        if (p.mesh.isVirtualLight) return; // searchlight record, not a mesh
         p.mesh.traverse(child => {
             if (child.isMesh && child.material) child.material.color.setRGB(r, g, b);
         });

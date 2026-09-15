@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+> **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
+
+### Performance
+- **Searchlight light budget** (`src/effects/lightBudget.js`): searchlights are virtual lights with an unlit glow bulb, and a fixed pool of 4 real PointLights follows the nearest ones, fading at the hand-over. Lights compiled into shaders: 50 → 7, and constant, so destroying a searchlight no longer risks a shader recompile. Benchmark (same seed and view, Apple M4): **49.6 → 438.6 fps**, GPU render 37.7 → 1.6 ms.
+- **Profiler overlay** now shows the game state, the share of frames that ran gameplay, idle systems, and light-budget use.
+
+---
+
 > **Prompts:** "game works quite slow now, prepare some tools that you can later work with to optimise performance"
 
 ### Performance tooling

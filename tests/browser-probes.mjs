@@ -211,6 +211,33 @@ const probes = {
             return { destroyed, faded, pass: !destroyed.registered && destroyed.intensity === 0 && !faded.alarmed && faded.color === faded.idle };
         });
     },
+    // #16 light budget: few, constant lights in shaders; destroying searchlights never recompiles; nearest is lit
+    async lightBudget(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { scene, renderer } = await import('./src/core/scene.js');
+            const { plane } = await import('./src/player/plane.js');
+            const { _searchlights, _damageFenceNear } = await import('./src/entities/fences.js');
+            const { LIGHT_BUDGET } = await import('./src/effects/lightBudget.js');
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            for (let i = 0; i < 100 && _searchlights.filter(sl => sl.range === 90).length < 3; i++) await frames(2);
+            state.isPaused = true;
+            const lightsInShaders = () => { let n = 0; scene.traverseVisible(o => { if (o.isLight) n++; }); return n; };
+            await frames(3);
+            const before = { lights: lightsInShaders(), programs: renderer.info.programs.length };
+            const towers = _searchlights.filter(sl => sl.range === 90).slice(0, 2);
+            towers.forEach(sl => _damageFenceNear(sl.worldPos, 2));
+            await frames(3);
+            const after = { lights: lightsInShaders(), programs: renderer.info.programs.length };
+            const target = _searchlights[0];
+            plane.position.set(target.worldPos.x + 5, target.worldPos.y, target.worldPos.z + 5);
+            await frames(2);
+            let nearestLit = false;
+            scene.traverseVisible(o => { if (o.isPointLight && o.intensity > 0 && o.position.distanceTo(target.worldPos) < 0.01) nearestLit = true; });
+            return { budget: LIGHT_BUDGET, before, after, nearestLit, pass: before.lights <= LIGHT_BUDGET + 3 && after.lights === before.lights && after.programs === before.programs && nearestLit };
+        });
+    },
     // #13 islet meshes match their polygons (not mirrored) and face up
     async islets(page) {
         await worldReady(page);

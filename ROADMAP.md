@@ -107,7 +107,6 @@ The best arcade flying games (Ace Combat, Luftrausers, Sky Force, StarFox) conve
 | T4 | **Prettier** — consistent formatting (ESLint already runs via `npm run lint`) | Low | Low |
 | T5 | **Unit tests for pure functions** — `randomRange`, collision math, spawn helpers | Low | Medium |
 | T6 | **localStorage settings** — save keybindings, volume level, toggle states across sessions | Medium | Low |
-| P1 | **Searchlight light budget** — keep ≤ 4 real PointLights assigned to the nearest searchlights; draw the rest as emissive sprites/cones. Measured: 47 lights → 26.8 fps, none → 254 fps (`npm run bench -- --compare "WORKTREE,WORKTREE?disable=searchlights"`) | High | Medium |
 | P2 | **Cheaper materials for distant scenery** — MeshLambert/MeshBasic for fences, hills, small props; fewer per-fragment light evaluations | Medium | Low |
 | P3 | **Instance repeated scenery** — fence posts, sandbags, rails, hills as `InstancedMesh` (~930 draw calls today) | Medium | Medium |
 | P4 | **Pool tracer geometries and burst particles** — no per-shot `BufferGeometry` allocation | Low | Low |
