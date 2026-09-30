@@ -128,6 +128,11 @@ export const RIVAL = Object.freeze({
     farmPilotRange: 0.6,      // × visualRange: an enemy pilot closer than this comes first
     farmXp: 1,                // × the unit's XP value, paid to the bot that destroys it
     strafeBreak: 170,         // a strafing run on a ground unit pulls out this close (diving further ends in the ground)
+    // Bombs and napalm (farming aces, every difficulty): a level run over a ground unit, released on the computed drop point
+    bombs: 2, napalm: 1,      // per load; one more of each comes back every bombReload frames
+    bombReload: 1500, bombInterval: 90,
+    bombMinHeight: 35,        // above the target: lower than this, it strafes instead
+    bombAim: 20,              // release when the predicted impact is this close to the target
     // Flight
     fineAimAngle: 0.35, yawAuthority: 0.6,
     cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
