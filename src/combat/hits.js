@@ -39,7 +39,7 @@ export function beginHits(weapon, { remote = false } = {}) {
                 onUnitDamaged(target, weapon, remote); // buildings burn as they're damaged; napalm sets anything alight
                 if (target.userData.hp <= 0) dead.add(target);
             } else if (kind === 'air') {
-                if (!(target.hp > 0)) return false;
+                if (!(target.hp > 0) || (target.friendly && !remote)) return false; // allies: the player's weapons pass them by
                 if (target.proxy) { target.proxy.damage(amount, weapon); anyHit = true; return true; }
                 target.hp -= amount;
                 updateUnitLabel(target.label, target.hp);

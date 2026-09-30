@@ -42,10 +42,10 @@ export function entityPosition(e) {
     return (e.parts.find(p => p.userData.hp > 0) || e.parts[0]).position;
 }
 
-/** Everything missiles and the lock-on reticle may track: hostile ground units, all air units, legacy fighters. */
+/** Everything missiles and the lock-on reticle may track: hostile ground units, air units but allies, legacy fighters. */
 export function* missileTargets() {
     for (const u of groundUnits) if (isHostile(u)) yield u;
-    yield* airUnits;
+    for (const au of airUnits) if (!au.friendly) yield au;
     yield* enemies;
 }
 
