@@ -624,7 +624,11 @@ body.menu-open button, body.menu-open summary, body.menu-open input { cursor: po
     text-align: center;
     text-shadow: var(--text-glow);
 }
-#settings-dialog { z-index: 900; background: rgba(0, 8, 4, 0.92); }
+#settings-dialog { z-index: 900; background: rgba(0, 8, 4, 0.92); overflow-y: auto; justify-content: flex-start; }
+/* Centred while it fits, scrollable when it does not (phones in landscape) */
+#settings-dialog > :first-child { margin-top: auto; }
+#settings-dialog > :last-child { margin-bottom: auto; }
+body.touch #settings-dialog { gap: 8px; }
 #start-title {
     margin: 0;
     font-family: 'Orbitron', sans-serif;
@@ -790,9 +794,13 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 .tc-rotate { display: none; }
 /* Menus own the screen; the overlay only shows while flying */
 body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons { display: none; }
-/* Tilt steering: the phone does pitch and roll, so only the throttle (right wheel, up/down) and LEVEL stay */
-body.tilt-on .tc-left, body.tilt-on .tc-roll-hint { display: none; }
-body.tilt-on .tc-right { width: 90px; border-radius: 45px; }
+/* Tilt steering: the phone does pitch and roll; their wheel directions lock (ui/touch.js applyLayout) */
+#touch-controls .tc-wheel.tc-off { display: none; }
+.tc-wheel.tc-narrow { width: 90px; border-radius: 45px; }
+/* Settings → Touch wheels (touch devices only) */
+.tc-layout { border: 1px solid var(--hud-border); border-radius: 6px; margin: 6px 0; padding: 4px 10px 8px; }
+.tc-layout legend { font-size: 11px; letter-spacing: 0.1em; color: var(--hud-amber); }
+.tc-layout label { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; }
 .tc-system .tc-level { display: none; width: 58px; font-size: 11px !important; }
 body.tilt-on .tc-system .tc-level { display: block; }
 /* Motion indicator (ui/motionIndicator.js): ball = pitch/roll rate, bar = yaw rate, gauge = airspeed */

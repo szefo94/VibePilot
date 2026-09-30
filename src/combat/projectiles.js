@@ -8,6 +8,7 @@ import { _missileTrailGeo, _missileTrailMat, _napClusterPatchGeo, _napClusterR, 
 import { _enemyBulletPool } from './enemyBullets.js';
 import { createExplosion, updateExplosions } from '../effects/effects.js';
 import { groundUnitWorldPos } from './damage.js';
+import { nearGroundUnit } from './partBoxes.js';
 import { beginHits } from './hits.js';
 import { heightAt } from '../world/terrain.js';
 import { disposeGroup } from '../core/utils.js';
@@ -110,7 +111,7 @@ export function updateProjectiles(dt) {
         // Collision check vs ground, air, enemies — remember the directly struck entity
         let struck = null;
         for (const u of groundUnits) {
-            if (u.userData.hp > 0 && m.position.distanceToSquared(groundUnitWorldPos(u)) < (u.userData.collisionRadius + 2) ** 2) { struck = u; break; }
+            if (u.userData.hp > 0 && nearGroundUnit(u, m.position, 2, groundUnitWorldPos(u))) { struck = u; break; }
         }
         if (!struck) for (const au of airUnits) {
             if (au.hp > 0 && m.position.distanceToSquared(au.group.position) < (au.collisionRadius + 2) ** 2) { struck = au; break; }

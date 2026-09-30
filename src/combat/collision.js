@@ -15,6 +15,7 @@ import { addToConqueredRow, showNotification } from '../ui/notifications.js';
 import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
+import { boxHitsPart, nearGroundUnit } from './partBoxes.js';
 import { beginHits } from './hits.js';
 import { showHitDirection } from '../ui/threats.js';
 import { disposeOwned } from '../core/utils.js';
@@ -268,10 +269,10 @@ export function resolveCollisions() {
             if (Math.sqrt((rho - R) ** 2 + _sv1.z ** 2) < tube + planeSphereRadius) { triggerGameOver(); break; }
         }
     }
-    // Player vs Ground units (§2.1 — use worldBox from precomputed local boxes)
+    // Player vs Ground units (§2.1 — oriented boxes baked once, combat/partBoxes.js)
     if (!state.isGameOver) {
         for (const u of groundUnits) {
-            if (u.userData.partBoxes && u.userData.partBoxes.some(upb => planePartBoxes.some(ppb => ppb.intersectsBox(upb.worldBox)))) { triggerGameOver(); break; }
+            if (u.userData.partBoxes && u.userData.partBoxes.some(upb => planePartBoxes.some(ppb => boxHitsPart(ppb, upb)))) { triggerGameOver(); break; }
         }
     }
     if (!state.isGameOver) {
@@ -338,7 +339,7 @@ export function resolveCollisions() {
                 // Ground unit — ineligible units (protected, bomb-only) don't stop bullets
                 const u = obj;
                 if (!canDamageGround(u, 'bullet')) continue;
-                if (bulletDistSq(b, groundUnitWorldPos(u)) < (b.userData.collisionRadius + u.userData.collisionRadius) ** 2) {
+                if (nearGroundUnit(u, b.position, b.userData.collisionRadius + 1, groundUnitWorldPos(u))) {
                     removeBullet(b, i); hit = true;
                     const hits = beginHits('bullet'); hits.damage(u, b.userData.damage); hits.finish();
                 }

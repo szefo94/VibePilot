@@ -13,8 +13,11 @@ const DEFAULTS = Object.freeze({
     aceHunt: true,            // Shift+H — hostile aces hunt the player (entities/rival.js)
     rivalSkill: 'medium',     // key of RIVAL_SKILL (config.js)
     timeOfDay: 'day',         // key of TIME_OF_DAY (config.js); world/sky.js
+    touchWheels: 'pitch,yaw,throttle,roll', // phone wheels (ui/touch.js): left ↕, left ↔, right ↕, right ↔
 });
 const ENUMS = { difficulty: DIFFICULTY_PRESETS, rivalSkill: RIVAL_SKILL, timeOfDay: TIME_OF_DAY };
+/** Other constrained settings: each of the four flight axes on exactly one wheel direction. */
+const VALID = { touchWheels: v => v.split(',').sort().join() === 'pitch,roll,throttle,yaw' };
 
 function load() {
     let saved;
@@ -24,6 +27,7 @@ function load() {
     if (saved.muted === undefined && storageGet('vibepilot_muted') === '1') loaded.muted = true; // pre-settings mute key
     loaded.volume = Math.min(1, Math.max(0, loaded.volume));
     for (const [key, table] of Object.entries(ENUMS)) if (!Object.hasOwn(table, loaded[key])) loaded[key] = DEFAULTS[key];
+    for (const [key, ok] of Object.entries(VALID)) if (!ok(loaded[key])) loaded[key] = DEFAULTS[key];
     return loaded;
 }
 
@@ -41,6 +45,7 @@ export const rivalSkill = () => RIVAL_SKILL[settings.rivalSkill];
 export function setSetting(key, value) {
     if (!(key in DEFAULTS) || typeof value !== typeof DEFAULTS[key]) return;
     if (key in ENUMS && !Object.hasOwn(ENUMS[key], value)) return;
+    if (key in VALID && !VALID[key](value)) return;
     settings[key] = key === 'volume' ? Math.min(1, Math.max(0, value)) : value;
     storageSet(KEY, JSON.stringify(settings));
     for (const fn of listeners) fn(key, settings[key]);

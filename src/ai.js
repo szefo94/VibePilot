@@ -7,6 +7,7 @@ import { _fenceRegistry, airUnits, enemies, groundUnits } from './entities/regis
 import { fireHostileBullet, spawnEnemyBullet } from './combat/enemyBullets.js';
 import { destroyLogicalEnemy } from './entities/airUnits.js';
 import { refreshGroundUnitWorldPos } from './combat/damage.js';
+import { bakePartBoxes } from './combat/partBoxes.js';
 import { difficulty } from './core/settings.js';
 import { updateRival, updateRivalSystem } from './entities/rival.js';
 
@@ -71,16 +72,10 @@ export function updateAI(dt) {
             }
         }
     }
-    // Ground units (§2.1 — bake worldBoxes once at first visit; units are stationary so no per-frame update needed)
+    // Ground units (§2.1 — bake hitboxes once at first visit; units are stationary so no per-frame update needed)
     groundUnits.forEach(u => {
         if (!u.userData.partBoxes) {
-            u.updateMatrixWorld(true); // one-time: compute matrices before baking
-            u.userData.partBoxes = [];
-            u.traverse(child => {
-                if (!child.isMesh) return;
-                child.geometry.computeBoundingBox();
-                u.userData.partBoxes.push({ worldBox: new THREE.Box3().copy(child.geometry.boundingBox).applyMatrix4(child.matrixWorld) });
-            });
+            u.userData.partBoxes = bakePartBoxes(u); // oriented boxes that turn with the unit (combat/partBoxes.js)
             u.userData._alive = true;
         }
         const _uwp = refreshGroundUnitWorldPos(u); // cached world position used by targeting/collision this frame

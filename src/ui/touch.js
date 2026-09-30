@@ -1,8 +1,8 @@
 /**
  * Phone / tablet controls: an on-screen overlay with two wheels, plus optional tilt steering from the motion sensor.
  *
- *   left wheel   up/down = pitch · left/right = yaw
- *   right wheel  up/down = throttle forward/back · left/right = roll
+ *   wheels       by default left up/down = pitch, left/right = yaw; right up/down = throttle, left/right = roll.
+ *                Settings → Touch wheels puts any axis on any wheel direction (setting touchWheels).
  *   buttons      GUN (hold) beside the right wheel · MSL · FLR · BOMB · NAP · LASER above it
  *   indicator    between the thumbs (ui/motionIndicator.js, shared with desktop)
  *   objective    compact on phones; tap it to expand or collapse
@@ -12,8 +12,8 @@
  * recentres). It reads the accelerometer's gravity vector (DeviceMotionEvent.accelerationIncludingGravity), turned
  * into the screen's frame and low-passed so hand shake doesn't register — the usual approach for tilt games; it has
  * no compass drift and none of the landscape gimbal problems of orientation angles. Response is soft: a wide range,
- * a dead zone and an expo curve. The left wheel hides and the right wheel is throttle only (a little yaw follows the
- * roll, so turns stay coordinated).
+ * a dead zone and an expo curve. Wheel directions that carry pitch or roll lock (a wheel with nothing left hides);
+ * yaw and throttle stay wherever they are, and a little yaw follows the roll so turns stay coordinated.
  * Phones that report no accelerometer data fall back to orientation angles (DeviceOrientationEvent).
  *
  * It switches on for touch screens (coarse pointer) or at the first touch anywhere. Values land in `touchAxes`,
@@ -23,7 +23,7 @@
  * Tilt needs a secure page (https:// or localhost).
  */
 import { state } from '../state.js';
-import { setSetting, settings } from '../core/settings.js';
+import { onSettingChange, setSetting, settings } from '../core/settings.js';
 import { _steerCursorEl } from './dom.js';
 import { aimingLaser } from '../player/plane.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from '../combat/weapons.js';
@@ -43,19 +43,23 @@ const TILT = Object.freeze({
     yawMix: 0.2,      // roll also yaws a little, so turns stay coordinated
 });
 let enabled = false, tilt = null, laserButton = null; // tilt: { g, ref, samples, pitch, roll, source } while tilt steering is on
-const wheels = {};         // name → { id, x, y, release, lockX }
+const wheels = {};         // name → { id, x, y, release, lockX, lockY, el }
+// Wheel directions, in the order of settings.touchWheels
+const SLOTS = [['left', 'y', 'Left wheel ↕'], ['left', 'x', 'Left wheel ↔'], ['right', 'y', 'Right wheel ↕'], ['right', 'x', 'Right wheel ↔']];
+const AXES = { pitch: 'Pitch', yaw: 'Yaw', roll: 'Roll', throttle: 'Throttle' };
+const layout = () => settings.touchWheels.split(',');
 
 const flying = () => !state.awaitingStart && !state.isPaused && !state.isGameOver && !document.getElementById('splash-screen');
 const clamp1 = v => Math.max(-1, Math.min(1, v));
 const dead = v => (Math.abs(v) < WHEEL_DEADZONE ? 0 : Math.sign(v) * (Math.abs(v) - WHEEL_DEADZONE) / (1 - WHEEL_DEADZONE));
 const local = text => showNotification(text, false, { local: true }); // device messages are never shared
 
-/** A wheel follows one finger: x, y in -1…1 (y down = +1), back to 0 when released. lockX: only up/down. */
+/** A wheel follows one finger: x, y in -1…1 (y down = +1), back to 0 when released. lockX: only up/down; lockY: only left/right. */
 function makeWheel(name, el) {
-    const knob = el.querySelector('.tc-knob'), w = { id: null, x: 0, y: 0, lockX: false };
+    const knob = el.querySelector('.tc-knob'), w = { id: null, x: 0, y: 0, lockX: false, lockY: false, el };
     const move = t => {
         const r = el.getBoundingClientRect();
-        let dx = w.lockX ? 0 : t.clientX - (r.left + r.width / 2), dy = t.clientY - (r.top + r.height / 2);
+        let dx = w.lockX ? 0 : t.clientX - (r.left + r.width / 2), dy = w.lockY ? 0 : t.clientY - (r.top + r.height / 2);
         const len = Math.hypot(dx, dy);
         if (len > WHEEL_TRAVEL) { dx *= WHEEL_TRAVEL / len; dy *= WHEEL_TRAVEL / len; }
         w.x = dx / WHEEL_TRAVEL; w.y = dy / WHEEL_TRAVEL;
@@ -81,8 +85,8 @@ function enable() {
     const root = document.createElement('div');
     root.id = 'touch-controls';
     root.innerHTML = `
-        <div class="tc-wheel tc-left" aria-label="Pitch and yaw"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left-hint">YAW</span><div class="tc-knob"></div></div>
-        <div class="tc-wheel tc-right" aria-label="Throttle and roll"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left-hint tc-roll-hint">ROLL</span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-left"><span class="tc-hint tc-up"></span><span class="tc-hint tc-down"></span><span class="tc-hint tc-left-hint"></span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-right"><span class="tc-hint tc-up"></span><span class="tc-hint tc-down"></span><span class="tc-hint tc-left-hint"></span><div class="tc-knob"></div></div>
         <div class="tc-weapons">
             <button type="button" class="tc-gun" data-hold="shoot">GUN</button>
             <button type="button" data-tap="missile">MSL</button>
@@ -103,6 +107,8 @@ function enable() {
     makeWheel('left', root.querySelector('.tc-left'));
     makeWheel('right', root.querySelector('.tc-right'));
     laserButton = root.querySelector('[data-tap="laser"]');
+    buildLayoutPicker();
+    applyLayout();
     // Objective panel: one compact line on phones; tap to expand or collapse
     const objective = document.getElementById('objective');
     objective?.classList.add('compact');
@@ -218,8 +224,43 @@ function onOrientation(e) {
 }
 function setTiltMode(on) {
     document.body.classList.toggle('tilt-on', on);
-    wheels.right.lockX = on; // throttle only: the phone does the roll
-    wheels.left.release(); wheels.right.release();
+    applyLayout();
+}
+
+// --- Wheel layout (Settings → Touch wheels) ------------------------------------------------------------------
+/** Hints and locks for the current layout; while tilting, pitch and roll directions lock (the phone does them). */
+function applyLayout() {
+    const map = layout(), phone = a => !!tilt && (a === 'pitch' || a === 'roll');
+    for (const name of ['left', 'right']) {
+        const w = wheels[name], v = map[name === 'left' ? 0 : 2], h = map[name === 'left' ? 1 : 3];
+        w.lockY = phone(v); w.lockX = phone(h);
+        w.el.classList.toggle('tc-off', w.lockX && w.lockY);
+        w.el.classList.toggle('tc-narrow', w.lockX && !w.lockY);
+        w.el.setAttribute('aria-label', `${AXES[v]} up/down, ${AXES[h]} left/right`);
+        const [up, down, side] = ['.tc-up', '.tc-down', '.tc-left-hint'].map(s => w.el.querySelector(s));
+        up.textContent = w.lockY ? '' : v === 'throttle' ? 'FWD' : v.toUpperCase();
+        down.textContent = !w.lockY && v === 'throttle' ? 'BACK' : '';
+        side.textContent = w.lockX ? '' : h.toUpperCase();
+        w.release();
+    }
+}
+/** Four pickers in the Settings dialog (touch devices only); picking an axis swaps it with the direction that had it. */
+function buildLayoutPicker() {
+    const dialog = document.getElementById('settings-dialog');
+    if (!dialog) return;
+    const box = document.createElement('fieldset');
+    box.className = 'tc-layout';
+    box.innerHTML = '<legend>Touch wheels</legend>' + SLOTS.map(([, , label], i) =>
+        `<label>${label} <select data-wheel-slot="${i}">${Object.entries(AXES).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>`).join('');
+    dialog.querySelector('.menu-buttons')?.before(box);
+    const sync = () => { const map = layout(); box.querySelectorAll('select').forEach((s, i) => { s.value = map[i]; }); };
+    box.addEventListener('change', e => {
+        const i = Number(e.target.dataset.wheelSlot), map = layout(), j = map.indexOf(e.target.value);
+        [map[i], map[j]] = [map[j], map[i]];
+        setSetting('touchWheels', map.join());
+    });
+    onSettingChange(key => { if (key === 'touchWheels') { sync(); applyLayout(); } });
+    sync();
 }
 async function toggleTilt(button) {
     if (tilt) {
@@ -249,19 +290,14 @@ export function updateTouchAxes() {
     if (laserButton && laserButton.getAttribute('aria-pressed') !== String(aimingLaser.visible)) laserButton.setAttribute('aria-pressed', String(aimingLaser.visible)); // F key / gamepad too
     // Axes follow flight.js: +pitch = nose down, +roll = right, +yaw = left. Wheel up = nose up, like the ↑ key;
     // tilting the top edge away = nose down, like pushing a flight stick.
-    const L = wheels.left, R = wheels.right;
-    if (tilt) {
-        touchAxes.pitch = clamp1(tilt.pitch);
-        touchAxes.roll = clamp1(tilt.roll);
-        touchAxes.yaw = clamp1(-touchAxes.roll * TILT.yawMix);
-    } else {
-        touchAxes.pitch = dead(L.y);
-        touchAxes.yaw = -dead(L.x);
-        touchAxes.roll = dead(R.x);
-    }
-    const thrust = -dead(R.y); // right wheel up = forward
-    touchAxes.throttleUp = Math.max(0, thrust);
-    touchAxes.throttleDown = Math.max(0, -thrust);
+    // Each wheel direction reads "up or right" as +1: up = nose up, roll right, yaw right, more throttle
+    const v = {};
+    layout().forEach((axis, i) => { const [name, dir] = SLOTS[i], w = wheels[name]; v[axis] = dir === 'y' ? -dead(w.y) : dead(w.x); });
+    touchAxes.pitch = tilt ? clamp1(tilt.pitch) : -v.pitch;
+    touchAxes.roll = tilt ? clamp1(tilt.roll) : v.roll;
+    touchAxes.yaw = clamp1(-v.yaw - (tilt ? touchAxes.roll * TILT.yawMix : 0));
+    touchAxes.throttleUp = Math.max(0, v.throttle);
+    touchAxes.throttleDown = Math.max(0, -v.throttle);
 }
 
 // Switch on for touch-first devices, or at the first touch on anything else (e.g. a touch-screen laptop)
