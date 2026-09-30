@@ -99,7 +99,7 @@ export function spawnRival() {
 /** Shift+H: flip the persisted Ace Hunt setting; switching it on mid-flight launches an ace at once. */
 export function toggleRivalMode() {
     setSetting('aceHunt', !settings.aceHunt);
-    showNotification(settings.aceHunt ? '☠ Ace Hunt on (Shift+H)' : 'Ace Hunt off (Shift+H)');
+    showNotification(settings.aceHunt ? '☠ Ace Hunt on (Shift+H)' : 'Ace Hunt off (Shift+H)', false, { local: true });
     if (settings.aceHunt && !activeRival) spawnRival();
 }
 

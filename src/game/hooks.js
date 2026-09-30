@@ -3,6 +3,7 @@
  *   frame       (rawDelta)   every rendered frame, after the scene is drawn (main.js)
  *   playerDown  ()           the player was shot down or crashed while RULES.respawn is on (game/respawn.js)
  *   radarBlips  (blips)      push extra minimap blips at each radar sweep (ui/minimap.js)
+ *   notification (text, highlight)  a gameplay notification was shown (ui/notifications.js; device-only ones are not)
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them
  */

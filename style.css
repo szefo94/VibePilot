@@ -752,36 +752,44 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 
 /* ── Touch controls (ui/touch.js) — only with body.touch ───────── */
 #touch-controls { position: fixed; inset: 0; z-index: 30; pointer-events: none; user-select: none; -webkit-user-select: none; }
-#touch-controls button, .tc-stick { pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; }
+#touch-controls button, .tc-wheel { pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; }
 #touch-controls button {
-    font: bold 13px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.08em;
+    font: bold 12px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.06em;
     color: var(--hud-primary); background: rgba(0, 20, 10, 0.55); border: 1.5px solid var(--hud-border-bright); border-radius: 50%;
 }
 #touch-controls button.held, #touch-controls button:active { background: rgba(0, 255, 136, 0.35); color: #000; }
-.tc-stick {
-    position: absolute; left: max(24px, env(safe-area-inset-left)); bottom: 24px; width: 150px; height: 150px; border-radius: 50%;
+.tc-wheel {
+    position: absolute; bottom: 20px; width: 150px; height: 150px; border-radius: 50%;
     background: rgba(0, 20, 10, 0.35); border: 1.5px solid var(--hud-border);
 }
+.tc-thrust { left: max(20px, env(safe-area-inset-left)); }
+.tc-flight { right: max(20px, env(safe-area-inset-right)); }
 .tc-knob {
     position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%;
     background: rgba(0, 255, 136, 0.3); border: 2px solid var(--hud-primary); pointer-events: none;
 }
-.tc-throttle { position: absolute; left: calc(max(24px, env(safe-area-inset-left)) + 162px); bottom: 30px; display: flex; flex-direction: column; gap: 12px; }
-.tc-throttle button { width: 52px; height: 52px; font-size: 18px !important; }
-.tc-weapons { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: 20px; width: 230px; height: 190px; }
-.tc-weapons button { position: absolute; width: 58px; height: 58px; }
-.tc-weapons .tc-gun { right: 0; bottom: 0; width: 96px; height: 96px; font-size: 16px !important; border-width: 2px !important; }
-.tc-weapons [data-tap="missile"] { right: 108px; bottom: 6px; }
-.tc-weapons [data-tap="flare"]   { right: 88px;  bottom: 76px; }
-.tc-weapons [data-tap="bomb"]    { right: 22px;  bottom: 108px; }
-.tc-weapons [data-tap="napalm"]  { right: 158px; bottom: 76px; }
+.tc-thrust .tc-knob { background: rgba(255, 204, 0, 0.25); border-color: var(--hud-amber); }
+.tc-hint { position: absolute; font: 9px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.1em; color: var(--hud-primary); opacity: 0.55; pointer-events: none; }
+.tc-thrust .tc-hint { color: var(--hud-amber); }
+.tc-up { top: 6px; left: 50%; transform: translateX(-50%); }
+.tc-down { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.tc-left { left: 8px; top: 50%; transform: translateY(-50%); }
+/* Weapons sit above and beside the right wheel, where the right thumb can slide to them */
+.tc-weapons { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: 184px; display: flex; gap: 8px; }
+.tc-weapons button { width: 50px; height: 50px; }
+.tc-weapons .tc-gun {
+    position: fixed; right: calc(max(20px, env(safe-area-inset-right)) + 162px); bottom: 26px;
+    width: 88px; height: 88px; font-size: 15px !important; border-width: 2px !important;
+}
+.tc-weapons [data-tap="laser"] { border-radius: 10px; width: 58px; }
+#touch-controls .tc-weapons [aria-pressed="true"] { color: #000; background: rgba(0, 255, 136, 0.75); }
 .tc-system { position: absolute; top: 8px; right: max(10px, env(safe-area-inset-right)); display: flex; gap: 8px; }
 .tc-system button { width: 44px; height: 44px; border-radius: 8px !important; font-size: 15px !important; }
 .tc-system [data-tap="tilt"] { width: 58px; font-size: 12px !important; }
 .tc-system [aria-pressed="true"] { background: var(--hud-primary) !important; color: #000 !important; }
 .tc-rotate { display: none; }
 /* Menus own the screen; the overlay only shows while flying */
-body.menu-open #touch-controls .tc-stick, body.menu-open #touch-controls .tc-throttle, body.menu-open #touch-controls .tc-weapons { display: none; }
+body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons { display: none; }
 /* Declutter the HUD around the thumbs: stats + minimap top-left, ammo top-centre, no reference panels */
 body.touch { touch-action: none; overscroll-behavior: none; }
 body.touch #instructions, body.touch #debug-info, body.touch #map-constraints, body.touch #target-info { display: none; }
