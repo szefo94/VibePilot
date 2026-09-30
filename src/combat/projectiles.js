@@ -9,7 +9,7 @@ import { _enemyBulletPool } from './enemyBullets.js';
 import { createExplosion, updateExplosions } from '../effects/effects.js';
 import { groundUnitWorldPos } from './damage.js';
 import { beginHits } from './hits.js';
-import { isOnAnyIslet } from '../world/world.js';
+import { heightAt } from '../world/terrain.js';
 import { disposeGroup } from '../core/utils.js';
 import { _damageFenceNear } from '../entities/fences.js';
 import { _playerBulletPool } from './weapons.js';
@@ -23,6 +23,9 @@ function updateReloads(dt) {
         if (state[timer] <= 0) { state[ammo] = state[max]; state[timer] = 0; }
     }
 }
+
+/** What a falling weapon hits at (x, z): the terrain, or the water surface over the sea. */
+const surfaceAt = p => Math.max(heightAt(p.x, p.z), waterLevel);
 
 export function updateProjectiles(dt) {
     // Player bullets
@@ -47,7 +50,7 @@ export function updateProjectiles(dt) {
         const b = bombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
         if (b.velocity.lengthSq() > 0.001) b.quaternion.setFromUnitVectors(_sv1.set(0, 0, 1), _sv2.copy(b.velocity).normalize());
-        if (b.position.y <= groundLevel + b.userData.collisionRadius) {
+        if (b.position.y <= surfaceAt(b.position) + b.userData.collisionRadius) {
             createExplosion(b.position, 1.4); // weapon-sized blast
             const hits = beginHits('bomb'), rSq = b.userData.aoERadius * b.userData.aoERadius;
             for (const gu of groundUnits) if (groundUnitWorldPos(gu).distanceToSquared(b.position) < rSq) hits.damage(gu, b.userData.damage);
@@ -103,7 +106,7 @@ export function updateProjectiles(dt) {
             missileTrailParticles.push(tp); scene.add(tp);
         }
         const expired = m.life <= 0 || Math.abs(m.position.x) > MAP_BOUNDARY || Math.abs(m.position.z) > MAP_BOUNDARY;
-        const groundHit = m.position.y <= groundLevel + 3;
+        const groundHit = m.position.y <= surfaceAt(m.position) + 3;
         // Collision check vs ground, air, enemies — remember the directly struck entity
         let struck = null;
         for (const u of groundUnits) {
@@ -144,10 +147,10 @@ export function updateProjectiles(dt) {
     for (let i = napalmBombs.length - 1; i >= 0; i--) {
         const b = napalmBombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
-        if (b.position.y <= groundLevel + 0.8) {
+        if (b.position.y <= surfaceAt(b.position) + 0.8) {
             const pm = new THREE.Mesh(_napClusterPatchGeo, napalmPatchMat.clone());
             // Sit just above the surface the orb landed on (islet top or water), not below it
-            pm.position.set(b.position.x, (isOnAnyIslet(b.position.x, b.position.z) ? groundLevel + 1 : waterLevel) + 0.2, b.position.z);
+            pm.position.set(b.position.x, surfaceAt(b.position) + 0.2, b.position.z); // on the hillside or the water it hit
             scene.add(pm);
             napalmPatches.push({ pos: pm.position, life: 90, maxLife: 90, tick: 0, vTick: 0, mesh: pm, patchR: _napClusterR });
             scene.remove(b); b.material.dispose(); napalmBombs.splice(i, 1);

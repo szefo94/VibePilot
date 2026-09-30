@@ -108,7 +108,7 @@ export function initTerrain(islet) {
     for (let j = 0; j < nz; j++) {
         for (let i = 0; i < nx; i++) {
             const k = j * nx + i, x = x0 + i * T.cell, z = z0 + j * T.cell, d = field.d[k];
-            if (!field.inside[k]) { h[k] = -Math.min(T.shelfDepth, d * 0.25) - 0.5; continue; }
+            if (!field.inside[k]) { h[k] = -Math.min(T.shelfDepth, d * 0.25) - 1.6; continue; } // clearly below the water (no z-fighting at the shore)
             const m = smooth(0, inland, d);                                   // island mask, 0 at the coast
             const beach = T.beachHeight * smooth(0, T.beachWidth, d);
             const hills = (0.5 + 0.5 * fbm(x * 0.0065 + ox, z * 0.0065 + oz, 4)) * m;

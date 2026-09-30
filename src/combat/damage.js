@@ -16,12 +16,12 @@ export function refreshGroundUnitWorldPos(u) {
 /**
  * Whether `weapon` ('bullet' | 'bomb' | 'missile' | 'napalm') can damage ground unit `gu` right now:
  * dead units take no damage, units with a living protector (airport turrets) are immune, and
- * bomb-only units (hangars) ignore every weapon except bombs.
+ * hardened units (hangars) ignore everything except bombs and napalm.
  */
 export function canDamageGround(gu, weapon) {
     const ud = gu.userData;
     if (!(ud.hp > 0)) return false;
     if (ud.protector && ud.protector.userData.hp > 0) return false;
-    if (ud.bombOnly && weapon !== 'bomb') return false;
+    if (ud.bombOnly && weapon !== 'bomb' && weapon !== 'napalm') return false; // napalm burns buildings down
     return true;
 }

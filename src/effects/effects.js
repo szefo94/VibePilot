@@ -1,4 +1,5 @@
 /** Visual effects: explosions, tracers, muzzle flashes, pickup bursts, dying-unit blink, player debris. */
+import { updateFires } from './fire.js';
 import { explosionMaxSize, gravity, groundLevel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
@@ -47,6 +48,7 @@ export function updateExplosions(dt) { // §4.5: frame-rate independent, no disp
     }
 }
 export function updateEffects(dt) {
+    updateFires(dt); // burning buildings, napalm, smouldering wrecks (effects/fire.js)
     // ── Heart collectible spin + bob + heartbeat glow ─────────────
     state._heartbeatPhase += 0.028 * dt; // ~1 beat per 3.5 s
     // double-thump: two quick peaks close together, then rest

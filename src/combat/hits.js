@@ -23,6 +23,7 @@ import { killGroundUnit } from '../entities/groundUnits.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
 import { runHooks } from '../game/hooks.js';
 import { quietly } from '../ui/notifications.js';
+import { onUnitDamaged } from '../effects/fire.js';
 
 export function beginHits(weapon, { remote = false } = {}) {
     const dead = new Set();
@@ -35,6 +36,7 @@ export function beginHits(weapon, { remote = false } = {}) {
                 if (!canDamageGround(target, weapon)) return false;
                 target.userData.hp -= amount;
                 updateUnitLabel(target.userData.label, target.userData.hp);
+                onUnitDamaged(target, weapon, remote); // buildings burn as they're damaged; napalm sets anything alight
                 if (target.userData.hp <= 0) dead.add(target);
             } else if (kind === 'air') {
                 if (!(target.hp > 0)) return false;

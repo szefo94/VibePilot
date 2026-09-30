@@ -123,10 +123,10 @@ export const boxHangarGeo = (() => {
 // --- Airport (unscaled): runway with markings, terminal, control tower — separate meshes for fair collision ----
 export const runwayGeo = shared([
     box(40, 0.5, 200, ASPHALT, {}),
-    box(0.8, 0.06, 200, WHITE, { x: -18.5, y: 0.28 }), box(0.8, 0.06, 200, WHITE, { x: 18.5, y: 0.28 }),     // edge lines
-    ...Array.from({ length: 8 }, (_, i) => box(0.9, 0.06, 7, WHITE, { y: 0.28, z: -70 + i * 20 })),         // centreline dashes
-    ...[-1, 1].flatMap(s => Array.from({ length: 8 }, (_, i) => box(1.6, 0.06, 11, WHITE, { x: -13.3 + i * 3.8, y: 0.28, z: s * 92 }))), // thresholds
-    ...[-1, 1].flatMap(s => [-1, 1].map(x => box(4, 0.06, 12, WHITE, { x: x * 7, y: 0.28, z: s * 70 }))), // touchdown zones
+    box(0.8, 0.06, 200, WHITE, { x: -18.5, y: 0.34 }), box(0.8, 0.06, 200, WHITE, { x: 18.5, y: 0.34 }),     // edge lines
+    ...Array.from({ length: 8 }, (_, i) => box(0.9, 0.06, 7, WHITE, { y: 0.34, z: -70 + i * 20 })),         // centreline dashes
+    ...[-1, 1].flatMap(s => Array.from({ length: 8 }, (_, i) => box(1.6, 0.06, 11, WHITE, { x: -13.3 + i * 3.8, y: 0.34, z: s * 92 }))), // thresholds
+    ...[-1, 1].flatMap(s => [-1, 1].map(x => box(4, 0.06, 12, WHITE, { x: x * 7, y: 0.34, z: s * 70 }))), // touchdown zones
     box(12, 0.45, 60, ASPHALT, { x: 26, y: -0.02, z: -12 }),                                               // taxiway / apron
     box(0.5, 0.06, 60, YELLOW, { x: 26, y: 0.24, z: -12 }),
 ]);
@@ -160,7 +160,7 @@ export const destroyerHullGeo = shared([
     cyl(0.1, 0.12, 4, 5, NAVY_D, { y: 5.2, z: 0.8 }),                                                      // mast
     box(1.6, 0.12, 0.12, NAVY_D, { y: 6.2, z: 0.8 }), box(0.8, 0.45, 0.2, SUPER, { y: 6.9, z: 0.8 }),     // yard, radar
     box(2.6, 0.12, 3.5, DECK, { y: 1.05, z: -7.5 }),                                                       // helipad
-    box(0.15, 0.02, 1.8, WHITE, { y: 1.12, z: -7.5 }), box(1.4, 0.02, 0.15, WHITE, { y: 1.12, z: -7.5 }),
+    box(0.15, 0.02, 1.8, WHITE, { y: 1.16, z: -7.5 }), box(1.4, 0.02, 0.15, WHITE, { y: 1.16, z: -7.5 }),
     box(1.4, 0.7, 1.1, SUPER, { y: 1.3, z: -4.6 }),                                                         // missile launcher
 ]);
 export const destroyerTurretGeo = shared([
@@ -175,9 +175,9 @@ export const carrierGeo = shared([
     top(CARRIER_HULL.map(([x, z]) => [x * 1.02, z]), 0.4, BOOT, { y: -1.35 }),
     box(12, 0.5, 32, DECK, { y: 1.75, z: -0.5 }),                                                          // flight deck
     box(7, 0.5, 18, DECK, { x: -3.5, y: 1.75, z: -6, ry: -0.16 }),                                        // angled landing deck
-    box(0.25, 0.04, 30, WHITE, { y: 2.02, z: -0.5 }),                                                      // centreline
-    box(0.18, 0.04, 17, WHITE, { x: -3.2, y: 2.03, z: -6, ry: -0.16 }), box(0.18, 0.04, 17, YELLOW, { x: -5.4, y: 2.03, z: -6.3, ry: -0.16 }),
-    ...[-12, -6].map(z => box(3, 0.04, 3, 0x53585d, { x: 4.4, y: 2.03, z })),                             // elevators
+    box(0.25, 0.04, 30, WHITE, { y: 2.09, z: -0.5 }),                                                      // centreline
+    box(0.18, 0.04, 17, WHITE, { x: -3.2, y: 2.1, z: -6, ry: -0.16 }), box(0.18, 0.04, 17, YELLOW, { x: -5.4, y: 2.1, z: -6.3, ry: -0.16 }),
+    ...[-12, -6].map(z => box(3, 0.04, 3, 0x53585d, { x: 4.4, y: 2.1, z })),                             // elevators
     box(2, 3, 6, SUPER, { x: 5, y: 3.5, z: -2 }),                                                          // island
     box(2.05, 0.6, 3, GLASS, { x: 5, y: 4.6, z: -1.2 }),
     box(1.2, 1.4, 1.2, NAVY_D, { x: 5, y: 5.7, z: -3.5 }),                                                 // funnel

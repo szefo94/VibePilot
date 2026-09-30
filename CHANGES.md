@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fire, villages, collectibles, phone controls, water fix
+- **Water flicker fixed.** A sea-floor plane half a unit under the water z-fought with it, a fast flicker that got worse far away. The floor is gone, the camera's near plane went from 0.1 to 0.5 for depth precision, the underwater shelf sits clearly below the surface, and runway and deck markings no longer touch their surfaces.
+- **Fire** (`effects/fire.js`): buildings burn once below 75 % HP, napalm sets anything alight for 10 s, and destroyed units smoulder for 15 s. Flames and smoke are two GPU point clouds (one draw call each). Napalm now damages hangars and airports, and a burning building keeps taking fire damage, so two drops bring a hangar down. Bombs, missiles and napalm meet the real terrain or water, no longer an invisible flat floor.
+- **Civilian life** (`entities/civilians.js`): villages of cottages, long houses and two-storey houses (with some ruins), lone ruins and coastal lighthouses on flattened ground away from the bases. They're baked into one mesh per islet, and solid.
+- **Collectibles:** bevelled, faceted hearts with a halo ring (one mesh each), faceted gold crystal markers, and low-poly hoops with crisp red and white stripes (same collision).
+- **Phone controls:** the left wheel does pitch and yaw, and the right wheel does roll and throttle. A movement indicator shows pitch, roll, yaw and throttle input. Tilt steering is gentler (40° range, 5° dead zone, expo curve, smoothing) and leaves only the throttle on screen. Fullscreen and the motion permission now act on a completed tap.
+- Daylight slightly dimmer (beaches were overexposed).
+
 ### Sky, time of day, models
 - **Sky and day/night** (`world/sky.js`): a procedural sky dome with a gradient, the sun or moon with glow, drifting clouds, stars at night and hazy distant mountain ridges on the horizon. The fog matches the horizon, so the sea fades into the sky. Day and night presets set the lights (ambient, hemisphere, sun or moon) and the water. Toggle it in Settings → Time of day, with **T**, or with ☀/☾ on phones.
 - **Open sky:** the cave pillars, stalactites, stalagmites and stone ceiling are gone. Instead there are **sea stacks**, weathered rock columns off the coasts with the same cone collision. The ceiling is now a soft **altitude limit** that holds you down instead of crashing you (the ace follows the same rule, and the warning reads ALTITUDE LIMIT).
