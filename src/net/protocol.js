@@ -15,7 +15,7 @@
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const DEFAULT_PORT = 8787;
 
 // pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
@@ -63,6 +63,8 @@ export function respawnPoint(i, random = Math.random) {
 
 /** PvP damage per hit, by weapon (hits.js names). The server caps every HIT at its weapon's value. Player HP is 100. */
 export const PVP_DAMAGE = Object.freeze({ bullet: 4, missile: 45, bomb: 60, napalm: 10 });
+/** Max HP a client may report (100 + 5 per level, game/progression.js); anything above is capped. */
+export const MAX_REPORTED_HP = 1000;
 export const PVP_KILL_XP = 150;
 
 /** Enemy unit net ids: 'g<i>' ground units, 'a<i>' air units, in the order the seeded world creates them. */
@@ -84,8 +86,8 @@ export const MSG = Object.freeze({
     JOIN: 'join',         // S→C  { id, name, slot }
     LEAVE: 'leave',       // S→C  { id }
     HOST: 'host',         // S→C  { hostId } — co-op authority moved (host left)
-    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, f } — own plane (f: FLAGS bits), validated
-    SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, f, alive }] } — the room, every tick
+    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, mh: max hp, f } — own plane (f: FLAGS bits), validated
+    SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, mh, f, alive }] } — the room, every tick
     CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
     DOWN: 'down',         // C→S  { by } — I was shot down (by = player id) or crashed (by = null); S→C { id, by } to the room
     SPAWN: 'spawn',       // S→C  { p, q } — respawn here (random point near your slot, respawnPoint())

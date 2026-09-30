@@ -100,7 +100,7 @@ function receive(m) {
                 if (!peer) continue; // ourselves, or a player we have not heard JOIN for yet
                 const last = peer.samples[peer.samples.length - 1];
                 if (last && last.t >= m.time) continue;
-                peer.samples.push({ t: m.time, p: s.p, q: s.q, s: s.s, hp: s.hp, f: s.f, alive: s.alive });
+                peer.samples.push({ t: m.time, p: s.p, q: s.q, s: s.s, hp: s.hp, mh: s.mh, f: s.f, alive: s.alive });
                 if (peer.samples.length > MAX_SAMPLES) peer.samples.shift();
             }
             break;

@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_PORT, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, UNIT_ID, UNIT_WEAPONS, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
+import { DEFAULT_PORT, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, UNIT_ID, UNIT_WEAPONS, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -80,7 +80,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     /** Place `c` at its slot (join) or a random point near it (respawn): the accepted pose, alive, fresh validation baseline. */
     function placeAtSpawn(c, respawn = false) {
         const s = respawn ? respawnPoint(c.slot) : spawnSlot(c.slot);
-        Object.assign(c, { p: s.p, q: s.q, s: 0.3, hp: 100, f: 0, alive: true, at: Date.now(), strikes: 0, respawnAt: 0 });
+        Object.assign(c, { p: s.p, q: s.q, s: 0.3, hp: c.mh ?? 100, f: 0, alive: true, at: Date.now(), strikes: 0, respawnAt: 0 });
         return s;
     }
 
@@ -135,7 +135,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             if (++c.strikes >= V.strikes) { c.strikes = 0; c.at = now; send(c, MSG.CORRECT, { p: c.p, q: c.q }); }
             return;
         }
-        Object.assign(c, { p: round(m.p, 2), q: round(m.q, 4), s: +m.s || 0, hp: Math.max(0, Math.min(100, +m.hp || 0)), f: (m.f | 0) & 3, at: now, strikes: 0 });
+        Object.assign(c, { p: round(m.p, 2), q: round(m.q, 4), s: +m.s || 0, mh: Math.max(1, Math.min(MAX_REPORTED_HP, +m.mh || 100)), hp: Math.max(0, Math.min(MAX_REPORTED_HP, +m.hp || 0)), f: (m.f | 0) & 3, at: now, strikes: 0 });
     }
 
     function handle(c, m) {
@@ -202,7 +202,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         for (const room of rooms.values()) {
             room.tick++;
             for (const c of room.players.values()) if (!c.alive && now >= c.respawnAt) send(c, MSG.SPAWN, placeAtSpawn(c, true));
-            const players = [...room.players.values()].map(c => ({ id: c.id, p: c.p, q: c.q, s: c.s, hp: c.hp, f: c.alive ? c.f : 0, alive: c.alive }));
+            const players = [...room.players.values()].map(c => ({ id: c.id, p: c.p, q: c.q, s: c.s, hp: c.hp, mh: c.mh ?? 100, f: c.alive ? c.f : 0, alive: c.alive }));
             const msg = encode(MSG.SNAP, { tick: room.tick, time: now, players });
             for (const c of room.players.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(msg);
         }

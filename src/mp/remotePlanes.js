@@ -56,10 +56,10 @@ function buildLabel(name, slot) {
     drawLabel(label, 100);
     return label;
 }
-function drawLabel(label, hp) {
-    hp = Math.max(0, Math.min(100, Math.round(hp)));
-    if (hp === label.hp) return;
-    label.hp = hp;
+function drawLabel(label, hp, maxHp = 100) {
+    const pct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100))); // bar = share of that player's max HP
+    if (pct === label.hp) return;
+    label.hp = pct; hp = pct;
     const ctx = label.canvas.getContext('2d');
     ctx.clearRect(0, 0, 512, 160);
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 512, 160);
@@ -147,7 +147,7 @@ export function updateRemotePlanes() {
         if (shown) { // name tag only up close, fading out towards LABEL_RANGE
             const d = camera.position.distanceTo(v.group.position), fade = Math.min(1, (LABEL_RANGE - d) / LABEL_FADE);
             v.label.sprite.visible = fade > 0;
-            if (fade > 0) { v.label.sprite.material.opacity = fade; v.label.sprite.position.copy(v.group.position).y += 5; drawLabel(v.label, newest.hp ?? 100); }
+            if (fade > 0) { v.label.sprite.material.opacity = fade; v.label.sprite.position.copy(v.group.position).y += 5; drawLabel(v.label, newest.hp ?? 100, newest.mh ?? 100); }
         }
         if (v.unit) v.unit.hp = shown ? Math.max(1, newest.hp ?? 100) : 0; // hp 0 = not targetable (down, respawning, stale)
         v.shown = shown; v.firing = shown && ((newest.f ?? 0) & FLAGS.gun) !== 0; v.speed = newest?.s ?? 0; // no snapshot yet for a player who just joined

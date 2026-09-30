@@ -100,7 +100,7 @@ if (net.enabled) {
     const report = () => state._playerDown ? null : {
         p: plane.position.toArray().map(v => +v.toFixed(2)),
         q: plane.quaternion.toArray().map(v => +v.toFixed(4)),
-        s: +state.speed.toFixed(3), hp: Math.max(0, state.planeHP),
+        s: +state.speed.toFixed(3), hp: Math.max(0, state.planeHP), mh: state.maxHP,
         f: (performance.now() - lastGunAt < 150 ? FLAGS.gun : 0) | (aimingLaser.visible ? FLAGS.laser : 0), // others draw tracers and the laser
     };
     let chipTimer = 0;
