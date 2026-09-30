@@ -212,7 +212,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                         send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +h.dmg || 0)), w: h.w, bot: String(h.bot ?? 'ACE').slice(0, 24), team: h.team === 0 || h.team === 1 ? h.team : null });
                     }
                 }
-                broadcast(room, MSG.BOT, { bots: m.bots, m: m.m, from: c.id }, c);
+                broadcast(room, MSG.BOT, { bots: m.bots, m: m.m, fx: Array.isArray(m.fx) ? m.fx.slice(0, 8) : undefined, from: c.id }, c);
                 break;
             }
             case MSG.BOT_DOWN:

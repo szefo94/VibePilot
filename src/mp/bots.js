@@ -8,7 +8,7 @@
  *             (player or bot); teammates are never targets. Bot-vs-bot fights are resolved on the host.
  *   pvp/coop  Ace Hunt as in single player (RULES.ace on the host), but its aces hunt every player.
  *
- *   host    shares every bot ten times a second (BOT) with their missiles; hits on remote players ride along
+ *   host    shares every bot ten times a second (BOT) with their missiles and bomb / napalm drops; hits on remote players ride along
  *           (BOT.hits, the server hands each to its target as BOT_FIRE). Hits other players land on a bot arrive as
  *           BOT_HIT (the server drops them from a bot's teammates) and are applied here without reward; when a bot
  *           goes down BOT_DOWN names who shot it down (a player or a bot) — the server scores it in tdm.
@@ -38,6 +38,7 @@ import { MODES, MSG, PVP_KILL_XP, TEAM_SIZE, TEAMS, teamRespawn } from '../net/p
 import { isHost, net, netSend, onNet } from '../net/net.js';
 import { buildLabel, drawLabel, remoteViews, sampleAt } from './remotePlanes.js';
 import { flagPatrol, flagWaypoint } from './flag.js';
+import { onRemoteFire } from './remoteFx.js';
 
 const SEND_MS = 100, INTERP_DELAY = 150, STALE_MS = 3000, LABEL_RANGE = 600, FIRING_MS = 250;
 const BOT_RESPAWN_MS = 8000, BOT_XP = 100, MAX_BOTS = 12;
@@ -51,6 +52,7 @@ let enemies = false, teams = false, hosting = false, sendTimer = 0, nextBotId = 
 // --- Host -----------------------------------------------------------------------------------------------------
 const flareAt = new Map();   // peer id → when their flares went out (performance.now())
 const hitsOwed = new Map();  // `${peer}|${weapon}|${bot}|${team}` → damage to send with the next BOT
+const drops = [];            // bombs / napalm released since the last BOT: [weapon, x, y, z, vx, vy, vz]
 const hostViews = new Map(); // ace → { group, firing, speed, shown } for tracers at remote pilots (local ones are real bullets)
 const teamBots = new Map();  // tdm: bot id → { id, team, name, au, respawnAt, target }
 
@@ -148,7 +150,7 @@ function shareBots() {
         return { target: Number(target), dmg: Math.round(dmg), w, bot, team: team === '' ? null : Number(team) };
     });
     hitsOwed.clear();
-    netSend(MSG.BOT, { bots: list, m, hits });
+    netSend(MSG.BOT, { bots: list, m, hits, fx: drops.splice(0, 8) });
 }
 function updateHostViews() {
     const now = performance.now(), live = new Set(rivalList());
@@ -231,6 +233,10 @@ function onBots(m) {
         if (b.samples.length > 10) b.samples.shift();
         Object.assign(b, { hp: +e.hp || 0, mh: +e.mh || 1, lvl: e.lvl | 0, speed: +e.s || 0, firing: !!e.f, target: e.tg ?? null, seenAt: now });
     }
+    // Bombs and napalm the bots dropped: drawn falling and bursting like another player's (remoteFx.js)
+    for (const [w, x, y, z, vx, vy, vz] of Array.isArray(m.fx) ? m.fx.slice(0, 8) : []) {
+        if ((w === 'bomb' || w === 'napalm') && [x, y, z, vx, vy, vz].every(Number.isFinite)) onRemoteFire({ w, p: [x, y, z], v: [vx, vy, vz] });
+    }
     const seen = new Set();
     for (const [id, x, y, z, target] of Array.isArray(m.m) ? m.m.slice(0, MAX_BOTS) : []) {
         seen.add(id);
@@ -273,6 +279,7 @@ export function startBots(mode) {
     if (!enemies) return;
     onNet(MSG.FIRE, m => { if (m.w === 'flare') flareAt.set(m.from, performance.now()); });
     onNet(MSG.BOT, onBots);
+    onHook('aceDropped', (ace, w, p, v) => { if (hosting && net.peers.size) drops.push([w, ...p.toArray().map(r2), ...v.toArray().map(r4)]); });
     onNet(MSG.BOT_HIT, m => {
         if (!hosting) return;
         const ace = rivalList().find(r => r.netBot === m.bot && r.hp > 0 && !r.gone);

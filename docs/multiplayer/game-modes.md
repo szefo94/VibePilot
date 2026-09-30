@@ -46,7 +46,7 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 - **Kills and deaths:** every pilot, player or bot, shows `kills K / deaths D` in the roster. The server keeps the records, so every player sees the same numbers. A crash or collision counts as a death with no kill. A bot keeps its record between lives; it drops off the list when a player takes its place, and a player's record is dropped when they leave.
 - **Bots:**
   - They must **see** an enemy before they attack. Until then they patrol around the flag.
-  - When no enemy pilot is close, they attack the enemy bases' units to level up. Those units are shared, so everyone sees them destroyed, and the bot keeps the XP, not a player.
+  - When no enemy pilot is close, they attack the enemy bases' units to level up: guns, plus bombs and napalm from level runs over ground units, on every difficulty. Those units are shared, so everyone sees them destroyed, and the bot keeps the XP, not a player.
   - They level up from kills of pilots and units: more HP, sharper, full ammo. They heal on collectibles.
   - A bot comes back about 8 s after it goes down.
   - Flying into any aircraft, a bot included, destroys both planes.
