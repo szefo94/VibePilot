@@ -131,7 +131,8 @@ export const RIVAL = Object.freeze({
     // Flight
     fineAimAngle: 0.35, yawAuthority: 0.6,
     cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
-    groundMargin: 35, ceilingMargin: 20, boundaryFrac: 0.85,
+    groundMargin: 45, ceilingMargin: 20, boundaryFrac: 0.85,
+    safetyLookahead: 2,       // seconds of flight checked for terrain and ceiling (its gentle pitch rate needs room)
     pursuitLead: 30,
     // Evasion
     evadeCooldown: 240, threatCone: 0.12, breakTime: [60, 120], flareDetectRange: 250,
