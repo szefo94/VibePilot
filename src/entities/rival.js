@@ -250,6 +250,7 @@ export function updateRival(au, dt) {
 
     // 3. Where the nose should point
     if (ai.mode === 'evade') _des.copy(ai.breakDir);
+    else if (ai.mode === 'engage' && T.unit && !T.unit.group && dist < RIVAL.strafeBreak) _des.set(_fwd.x, 0.7, _fwd.z); // strafing run: pull out in time
     else if (ai.mode === 'engage') leadPoint(au, dist, _des).sub(pos);
     else if (ai.mode === 'hunt') _des.copy(ai.lastKnown).addScaledVector(ai.lastVel, Math.min(ai.sinceFix, 240)).sub(pos);
     else _des.copy(patrolPoint(au)).sub(pos);
@@ -329,12 +330,12 @@ function setThrottle(au, dist, offBore, dt) {
     else if (fl.speed > target + 0.005) fl.speed = Math.max(minSpeed, fl.speed - deceleration * dt);
 }
 
-/** Keep clear of other aircraft (not the one being attacked): steer away from anything within RIVAL.separation. */
+/** Keep clear of other aircraft (not a pilot being attacked): steer away from anything within RIVAL.separation. */
 function avoidTraffic(au, des) {
     const pos = au.group.position, sepSq = RIVAL.separation ** 2;
     _tmp2.set(0, 0, 0);
     for (const other of airUnits) {
-        if (other === au || !(other.hp > 0) || (au.ai.mode === 'engage' && other.group.position === T.position)) continue;
+        if (other === au || !(other.hp > 0) || (au.ai.mode === 'engage' && !T.unit && other.group.position === T.position)) continue; // a pilot it attacks: closes in (a unit: keeps clear)
         _tmp.subVectors(pos, other.group.position);
         const dSq = _tmp.lengthSq();
         if (dSq < sepSq && dSq > 1e-6) _tmp2.addScaledVector(_tmp, (sepSq - dSq) / (sepSq * Math.sqrt(dSq))); // stronger the closer it is

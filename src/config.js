@@ -127,6 +127,7 @@ export const RIVAL = Object.freeze({
     farmRange: 1800,          // how far a bot looks for enemy units
     farmPilotRange: 0.6,      // × visualRange: an enemy pilot closer than this comes first
     farmXp: 1,                // × the unit's XP value, paid to the bot that destroys it
+    strafeBreak: 170,         // a strafing run on a ground unit pulls out this close (diving further ends in the ground)
     // Flight
     fineAimAngle: 0.35, yawAuthority: 0.6,
     cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
