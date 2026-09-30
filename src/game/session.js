@@ -104,21 +104,25 @@ settingsDialog.addEventListener('input', e => {
     if (el) setSetting(el.dataset.setting, el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value));
 });
 const applyReferencePanels = () => document.body.classList.toggle('hide-reference', !settings.showReferencePanels);
+// Start-menu Ace AI toggle mirrors Settings → Ace AI
+const syncSkillToggle = () => document.querySelectorAll('[data-action="rival-skill"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === settings.rivalSkill)));
 onSettingChange(key => {
     if (key === 'showReferencePanels') applyReferencePanels();
+    if (key === 'rivalSkill') syncSkillToggle();
     if (key === 'mouseSteering') refresh();
     if (!settingsDialog.hidden) syncSettingsForm();
 });
 
 // --- Buttons (data-action) and gamepad navigation ---
 document.addEventListener('click', e => {
-    const action = e.target.closest('[data-action]')?.dataset.action;
+    const button = e.target.closest('[data-action]'), action = button?.dataset.action;
     if (action === 'start') startGame();
     else if (action === 'resume') setPaused(false);
     else if (action === 'restart') restart();
     else if (action === 'replay') restart({ sameMap: true });
     else if (action === 'settings') openSettings();
     else if (action === 'close-settings') closeSettings();
+    else if (action === 'rival-skill') setSetting('rivalSkill', button.dataset.value);
 });
 /** Move focus through the open menu's controls (D-pad up/down). */
 export function menuNavigate(delta) {
@@ -138,6 +142,7 @@ export function menuActivate() {
 
 // --- Initial state ---
 applyReferencePanels();
+syncSkillToggle();
 document.getElementById('start-best').textContent = state._highScore;
 if (DEBUG_PARAMS.autostart) {
     state.awaitingStart = false;

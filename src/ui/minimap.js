@@ -6,6 +6,7 @@ import { islets } from '../world/world.js';
 import { plane } from '../player/plane.js';
 import { airUnits, baseMarkers, collectibles, enemies, groundUnits, markers } from '../entities/registry.js';
 import { tubes } from '../entities/tubes.js';
+import { rivalMissilesInFlight } from '../entities/rival.js';
 
 let _radarBlips = [];                 // frozen positions updated once per sweep
 const _radarPlayerPos = new THREE.Vector3(); // frozen player world position at snapshot
@@ -30,7 +31,10 @@ export function updateRadarSnapshot() {
     collectibles.forEach(c => _radarBlips.push({ wx: c.position.x, wz: c.position.z, color: '#00ff44', shape: 'dot' }));
     enemies.forEach(e => { if (e.parts.length > 0) _radarBlips.push({ wx: e.parts[0].position.x, wz: e.parts[0].position.z, color: 'red', shape: 'dot' }); });
     groundUnits.forEach(u => { if (u.userData.hp > 0) { u.getWorldPosition(_wp); _radarBlips.push({ wx: _wp.x, wz: _wp.z, color: u.userData.isHostile ? 'orange' : 'white', shape: 'dot' }); } });
-    airUnits.forEach(au => { if (au.hp > 0) _radarBlips.push({ wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
+    airUnits.forEach(au => { if (au.hp > 0) _radarBlips.push(au.isRival
+        ? { wx: au.group.position.x, wz: au.group.position.z, color: '#ff33cc', shape: 'ace', label: `ACE ${au.callsign}` }
+        : { wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
+    rivalMissilesInFlight().forEach(m => { if (!m.userData.decoyed) _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: '#ff33cc', shape: 'dot' }); });
     baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
     tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: '#00ccff', shape: 'ring' }); });
 }
@@ -90,8 +94,12 @@ export function updateMinimap() {
         if (b.shape === 'triangle') {
             minimapCtx.fillStyle = b.color;
             minimapCtx.beginPath(); minimapCtx.moveTo(mp.x, mp.y - 5); minimapCtx.lineTo(mp.x - 4, mp.y + 3); minimapCtx.lineTo(mp.x + 4, mp.y + 3); minimapCtx.closePath(); minimapCtx.fill();
-        } else if (b.shape === 'square') {
-            minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 3, mp.y - 3, 6, 6);
+        } else if (b.shape === 'square' || b.shape === 'ace') {
+            if (b.shape === 'ace') { // larger outlined triangle — the rival stands out from ordinary fighters
+                minimapCtx.fillStyle = b.color; minimapCtx.strokeStyle = '#ffffff'; minimapCtx.lineWidth = 1.5;
+                minimapCtx.beginPath(); minimapCtx.moveTo(mp.x, mp.y - 8); minimapCtx.lineTo(mp.x - 6, mp.y + 5); minimapCtx.lineTo(mp.x + 6, mp.y + 5); minimapCtx.closePath(); minimapCtx.fill(); minimapCtx.stroke();
+                minimapCtx.lineWidth = 1;
+            } else { minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 3, mp.y - 3, 6, 6); }
             if (b.label) {
                 const sx = MINIMAP_SIZE / 2 + mp.x * Math.cos(playerAngle) - mp.y * Math.sin(playerAngle);
                 const sy = MINIMAP_SIZE / 2 + mp.x * Math.sin(playerAngle) + mp.y * Math.cos(playerAngle);

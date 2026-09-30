@@ -12,6 +12,7 @@ import { _deathGraphEl, _drawDeathGraph, _statHp, _statLvl, _statScore, _statXp,
 import { _gameOverPos } from '../player/camera.js';
 import { onGameOver } from './session.js';
 import { missionProgress } from './mission.js';
+import { acesShotDown } from '../entities/rival.js';
 
 export function triggerGameOver({ victory = false } = {}) {
     if (state.isGameOver) return;
@@ -22,10 +23,10 @@ export function triggerGameOver({ victory = false } = {}) {
     if (victory) { state.score += MISSION_COMPLETE_BONUS; scoreElement.textContent = state.score; }
     if (state.score > state._highScore) { state._highScore = state.score; storageSet('vibepilot_hs', state.score); } // G5 — never throws
     const _isNewBest = state.score >= state._highScore;
-    const { conquered, total } = missionProgress();
+    const { conquered, total } = missionProgress(), aces = acesShotDown();
     gameOverElement.classList.toggle('victory', victory);
     gameOverElement.innerHTML = `${victory ? 'MISSION COMPLETE' : 'GAME OVER!'}<br><span style="font-size:24px">Score: ${state.score}${_isNewBest ? '  ★ NEW BEST' : ''}</span>` +
-        `<br><span style="font-size:16px">Best: ${state._highScore} · Bases ${conquered}/${total}${victory ? ` · +${MISSION_COMPLETE_BONUS} mission bonus` : ''}</span>` +
+        `<br><span style="font-size:16px">Best: ${state._highScore} · Bases ${conquered}/${total}${aces ? ` · Aces ${aces}` : ''}${victory ? ` · +${MISSION_COMPLETE_BONUS} mission bonus` : ''}</span>` +
         '<div class="menu-buttons menu-row"><button type="button" data-action="restart">Restart</button><button type="button" data-action="replay">Replay this map</button></div>' +
         '<div class="menu-hint">Enter restart · G debrief · arrows orbit the camera</div>';
     gameOverElement.style.display = 'block';

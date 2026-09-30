@@ -6,6 +6,7 @@ import { wingTrailL, wingTrailR } from './player/wingTrails.js';
 import { _toggleColorMode } from './effects/colorMode.js';
 import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
+import { spawnRival, toggleRivalMode } from './entities/rival.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
 import { toggleMute } from './audio.js';
 import { showNotification } from './ui/notifications.js';
@@ -79,6 +80,7 @@ document.addEventListener('keydown', e => {
     else if (k === 'q') tryDeployFlares();
     else if (k === 'x') tryDropNapalm();
     else if (k === 'i') spawnInterceptors(); // debug: instant interceptor wave
+    else if (k === 'h') { if (e.shiftKey) toggleRivalMode(); else spawnRival(); } // Ace Hunt on/off · spawn an ace now
 });
 document.addEventListener('keyup', e => {
     const held = heldKey(e);

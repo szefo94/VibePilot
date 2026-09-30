@@ -32,6 +32,7 @@
         - F: Toggle Aiming Laser<br>
         - Mouse: Steer · LMB Shoot · RMB Missile<br>
         - Esc: Pause · V: Mute<br>
+        - Shift+H: Ace Hunt · H: Spawn Ace<br>
         <strong style="color: #ffcc00;">(Watch out! Enemies shoot back!)</strong>
     </div>
     <div id="conquered-panel" class="ui-overlay">
@@ -45,6 +46,12 @@
         <span style="color: #ff8800;">Airborne: <span id="enemy-distance">N/A</span></span><br>
         <span style="color: #00ff88;">Hostile: <span id="ground-distance">N/A</span></span><br>
         <span style="color: #ffcc00;">Marker: <span id="marker-distance">N/A</span></span>
+    </div>
+    <!-- Ace rival (ui/rivalHud.js) -->
+    <div id="rival-panel" class="ui-overlay" aria-live="polite" hidden>
+        <div class="rival-head"><span aria-hidden="true">☠</span> <span id="rival-name">Ace Hunt</span> <span id="rival-tier" class="rival-tier"></span></div>
+        <div id="rival-hp-track" class="rival-hp-track"><div id="rival-hp-bar"></div></div>
+        <div class="rival-row"><span id="rival-arrow" aria-hidden="true">▲</span> <span id="rival-info"></span></div>
     </div>
     <div id="right-panel">
     <div id="debug-info" class="ui-overlay">
@@ -113,6 +120,7 @@
     <!-- Threat readability (ui/threats.js) -->
     <div id="hit-indicators" aria-hidden="true"></div>
     <div id="flight-warning" role="alert" hidden></div>
+    <div id="rival-warning" role="alert" hidden></div>
 
     <div id="paused" role="dialog" aria-modal="true" aria-labelledby="paused-title">
         <div id="paused-title">PAUSED</div>
@@ -135,9 +143,15 @@
             <button type="button" data-action="start">Start</button>
             <button type="button" data-action="settings">Settings</button>
         </div>
+        <div class="skill-toggle" role="group" aria-label="Ace AI">
+            <span class="skill-toggle-label">☠ Ace AI</span>
+            <button type="button" data-action="rival-skill" data-value="easy">Easy</button>
+            <button type="button" data-action="rival-skill" data-value="medium">Medium</button>
+            <button type="button" data-action="rival-skill" data-value="hard">Hard</button>
+        </div>
         <details class="menu-controls">
             <summary>Controls</summary>
-            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · Esc pause · V mute</p>
+            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · Esc pause · V mute · Shift+H Ace Hunt</p>
             <p><b>Mouse</b>: move to steer · left button gun · right button missiles</p>
             <p><b>Gamepad</b>: left stick yaw/throttle · right stick roll/pitch · RT gun · A/B bomb · X missiles · Y flares · LB napalm · RB laser · Start pause</p>
         </details>
@@ -156,6 +170,14 @@
                 <option value="easy">Easy</option>
                 <option value="normal">Normal</option>
                 <option value="hard">Hard</option>
+            </select>
+        </label>
+        <label>Ace Hunt (Shift+H) <input type="checkbox" data-setting="aceHunt"></label>
+        <label>Ace AI
+            <select data-setting="rivalSkill">
+                <option value="easy">Easy — guns only</option>
+                <option value="medium">Medium — + missiles, flares</option>
+                <option value="hard">Hard — full kit, sharp</option>
             </select>
         </label>
         <label>Show controls &amp; debug panels <input type="checkbox" data-setting="showReferencePanels"></label>

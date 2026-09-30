@@ -4,6 +4,7 @@ import { difficulty, settings } from './core/settings.js';
 import { updateEngineSound } from './audio.js';
 import { updateMission } from './game/mission.js';
 import { updateFlightWarnings } from './ui/threats.js';
+import { updateRivalHud } from './ui/rivalHud.js';
 import { state } from './state.js';
 import { camera, renderer, scene } from './core/scene.js';
 import { _sv1 } from './core/scratch.js';
@@ -72,7 +73,7 @@ function animate() {
     if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         perf.markSimulated();
         simulate(dt); // bounded sub-steps: game/simulation.js
-        perf.begin('hud'); updateHUD(); updateMission(rawDelta); updateFlightWarnings(); perf.end('hud');
+        perf.begin('hud'); updateHUD(); updateMission(rawDelta); updateRivalHud(rawDelta); updateFlightWarnings(); perf.end('hud');
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';

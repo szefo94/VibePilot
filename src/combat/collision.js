@@ -57,6 +57,21 @@ function removeBullet(b, index) {
     scene.remove(b); _playerBulletPool.push(b); bullets.splice(index, 1);
 }
 
+/**
+ * Apply damage to the player (spawn grace and ?invulnerable block it): HP, red flash, blink, hit arc toward
+ * `source`, sound, game over at 0 HP. Returns true when the hit ended the run.
+ */
+export function damagePlayer(amount, source) {
+    if (state.isGameOver || state._graceTimer > 0 || DEBUG_PARAMS.invulnerable) return false;
+    state.planeHP -= amount; hpElement.textContent = Math.max(0, state.planeHP);
+    document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
+    state._playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
+    showHitDirection(source);
+    _playPlayerHit();
+    if (state.planeHP <= 0) { triggerGameOver(); return true; }
+    return false;
+}
+
 // Scratch Box3 for plane pickup AABB (covers full wingspan, recomputed each resolveCollisions call)
 const _planePickupBox = new THREE.Box3();
 const _planeMarkerBox = new THREE.Box3();
@@ -276,13 +291,8 @@ export function resolveCollisions() {
             if (plane.position.distanceToSquared(b.position) < (planeSphereRadius + b.userData.collisionRadius) ** 2) {
                 createExplosion(b.position, 0.3); // small impact spark
                 scene.remove(b); _enemyBulletPool.push(b); enemyBullets.splice(i, 1);
-                if (state.flareTimer > 0 || state._graceTimer > 0 || DEBUG_PARAMS.invulnerable) continue; // deflect: flares, spawn grace, ?invulnerable
-                state.planeHP -= b.userData.damage; hpElement.textContent = Math.max(0, state.planeHP);
-                document.body.style.backgroundColor = '#500'; setTimeout(() => document.body.style.backgroundColor = '#111', 100);
-                state._playerBlinkTimer = 45; // idea 3: plane red-emissive blink on damage
-                showHitDirection(_sv1.copy(b.position).addScaledVector(b.velocity, -60)); // arc toward the shooter
-                _playPlayerHit();
-                if (state.planeHP <= 0) { triggerGameOver(); break; }
+                if (state.flareTimer > 0) continue; // flares deflect bullets
+                if (damagePlayer(b.userData.damage, _sv1.copy(b.position).addScaledVector(b.velocity, -60))) break; // arc toward the shooter
             }
         }
     }

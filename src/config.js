@@ -93,3 +93,42 @@ export const DIFFICULTY_PRESETS = Object.freeze({
     hard:   { enemyDamage: 1.5, enemyFireInterval: 0.7, interceptorDelay: 0.7 },
 });
 export const MISSION_COMPLETE_BONUS = 1000; // score for eliminating every base
+
+// --- Ace rival (entities/rival.js) ---
+// Distances in world units, times in frames at 60 fps, angles in radians. Per-tier values live in RIVAL_SKILL.
+export const RIVAL = Object.freeze({
+    firstDelay: 90 * 60,      // Ace Hunt: first ace launches 90 s into the run
+    respawnDelay: 25 * 60,    // Ace Hunt: next ace after a kill
+    spawnDist: 0.85,          // × MAP_BOUNDARY, on the far side of the map
+    scale: 3,                 // the player's airframe, scaled so it is hittable
+    collisionRadius: 10, wingHalfSpan: 14, wingRadius: 5,
+    baseHp: 100, hpPerAce: 0.25, xpPerAce: 400,
+    // Sensors
+    radarFloor: 25,           // player below groundLevel + this is masked from the radar ping
+    // Flight
+    fineAimAngle: 0.35, yawAuthority: 0.6,
+    cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
+    groundMargin: 35, ceilingMargin: 20, boundaryFrac: 0.85,
+    pursuitLead: 30,
+    // Evasion
+    evadeCooldown: 240, threatCone: 0.12, breakTime: [60, 120], flareDetectRange: 250,
+    // Gun (player-grade muzzle velocity)
+    gunRange: 350, bulletSpeed: 1.8, gunAmmo: 60, gunReload: 180,
+    burst: 5, gunInterval: 5, burstPause: 50, aimTolerance: 6, aimSpread: 0.04, gunDamage: 5,
+    // Missiles (paired) and flares
+    mslCooldown: 480, mslReload: 1200, mslRangeMin: 120, mslRangeMax: 700, mslLockCone: 0.35,
+    mslLaunchSpeed: 0.9, mslMaxSpeed: 2.6, mslAccel: 0.04, mslTurnRate: 0.035, mslLife: 360,
+    mslFuse: 8, mslDamage: 35, mslFlareRange: 150,
+    flareDuration: 150, flareReload: 900,
+});
+// Ace AI tiers (Settings → Ace AI). Each tier unlocks more of the kit and sharpens the pilot:
+//   skill        chance to react on each decision tick + gun accuracy (grows per ace, capped at skillMax)
+//   reactInterval frames between decisions · rateScale × the player's pitch/roll/yaw limits · speedScale × maxSpeed
+//   visualRange / scanInterval  continuous tracking range / map-wide radar ping period
+//   mslAmmo 0 = no missiles · mslLockTime frames on target before launch · flareAmmo 0 = no flares
+//   evades       break-turns when the player's nose is on it · gunDamage / hp × base values
+export const RIVAL_SKILL = Object.freeze({
+    easy:   { label: 'Easy',   skill: 0.3,  skillPerAce: 0.05, skillMax: 0.5,  reactInterval: 40, rateScale: 0.7,  speedScale: 0.85, visualRange: 450, scanInterval: 600, mslAmmo: 0, mslLockTime: 0,   flareAmmo: 0, evades: false, gunDamage: 0.7, hp: 0.8 },
+    medium: { label: 'Medium', skill: 0.5,  skillPerAce: 0.07, skillMax: 0.75, reactInterval: 22, rateScale: 0.88, speedScale: 0.95, visualRange: 600, scanInterval: 360, mslAmmo: 1, mslLockTime: 150, flareAmmo: 1, evades: true,  gunDamage: 1,   hp: 1 },
+    hard:   { label: 'Hard',   skill: 0.75, skillPerAce: 0.05, skillMax: 0.95, reactInterval: 10, rateScale: 1,    speedScale: 1,    visualRange: 800, scanInterval: 180, mslAmmo: 2, mslLockTime: 90,  flareAmmo: 2, evades: true,  gunDamage: 1.3, hp: 1.25 },
+});

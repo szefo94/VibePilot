@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Ace rival
+- `src/entities/rival.js`: a hostile ace with the player's flight model and kit (gun bursts, paired homing missiles, flares) hunts the player across the map. It uses radar pings out of visual range, is masked by low flying, break-turns, and crashes on the same ground, ceiling and boundary limits.
+- **Ace Hunt** (Settings, Shift+H, on by default): the first ace launches 90 s in and a stronger one follows 25 s after each kill. H spawns one immediately.
+- **Ace AI** (Settings and the start-menu toggle, Medium by default), from `RIVAL_SKILL` in `config.js`:
+  - **Easy:** guns only, slow reactions, softer turn envelope, no break turns.
+  - **Medium:** adds one missile pair and flares.
+  - **Hard:** full turn rate and speed, two missile pairs, faster lock, 2 flares, sharper aim.
+  - Changing the tier mid-fight takes effect immediately.
+- UI: an ace panel (callsign, tier, HP, bearing, distance, state, next-ace countdown), MISSILE / LOCKING warnings, call-out banners, a magenta ACE minimap blip plus hostile missile blips, and the aces-downed count on game over.
+- `damagePlayer()` in `combat/collision.js` is now the shared player-damage path (grace, invulnerable, hit arc, game over).
+
 > **Prompts:** "continue with this (light budget + overlay), then continue with PROJECT_REVIEW to the end"
 
 ### Gameplay upgrades (review §5)
