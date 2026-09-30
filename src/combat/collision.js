@@ -318,7 +318,7 @@ export function resolveCollisions() {
             // Air unit?
             if ('group' in obj) {
                 const au = obj;
-                if (au.hp <= 0) continue;
+                if (au.hp <= 0 || au.friendly) continue; // allies don't stop the player's bullets
                 // Main fuselage sphere check
                 let _auHit = bulletDistSq(b, au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2;
                 // Wing/rotor sub-sphere checks (corrects for scale×3 models with large wingspans)

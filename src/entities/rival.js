@@ -40,13 +40,13 @@ const localTarget = {
     get speed() { return state.speed; }, get alive() { return !state.isGameOver && !state._playerDown; }, get flares() { return state.flareTimer > 0; },
 };
 let targetsFn = () => [localTarget], remoteHit = null;
-/** targets(): [{ id, local, position, quaternion, speed, alive, flares }]; onRemoteHit(targetId, damage, weapon). */
+/** targets(ace): [{ id, local, position, quaternion, speed, alive, flares }] that ace may hunt; onRemoteHit(targetId, damage, weapon, ace). */
 export function setRivalTargets(targets, onRemoteHit) { targetsFn = targets || (() => [localTarget]); remoteHit = onRemoteHit || null; }
 export const localRivalTarget = localTarget;
 let T = localTarget; // the target of the ace being updated this frame
 function pickTarget(au) {
     let best = null, bestD = Infinity;
-    for (const t of targetsFn()) {
+    for (const t of targetsFn(au)) {
         if (!t.alive) continue;
         const d = t.position.distanceToSquared(au.group.position) * (t.id === au.ai.targetId ? 0.5 : 1); // sticky: switch only for a clearly closer target
         if (d < bestD) { bestD = d; best = t; }
@@ -54,7 +54,7 @@ function pickTarget(au) {
     au.ai.targetId = best ? best.id : null;
     return best;
 }
-const targetById = id => targetsFn().find(t => t.id === id) || null;
+const targetById = (id, au) => targetsFn(au).find(t => t.id === id) || null;
 /** Every ace in the air (multiplayer's host shares them with the other players). */
 export const rivalList = () => rivals;
 
@@ -99,10 +99,17 @@ export function spawnRival() {
     const tier = rivalSkill();
     const hp = Math.round(RIVAL.baseHp * tier.hp * (1 + RIVAL.hpPerAce * (aceLevel - 1)) * state.playerDamageMultiplier);
     const label = createUnitLabel(`ACE ${callsign}`, aceLevel, hp, hp); scene.add(label.sprite);
-    const au = {
+    const au = makeAce({ callsign, group, hp, label, xp: RIVAL.xpPerAce * aceLevel, tier });
+    airUnits.push(au); rivals.push(au); activeRival = au;
+    banner(`☠ ACE ${callsign.toUpperCase()} (LV ${aceLevel} · ${tier.label.toUpperCase()}) IS HUNTING YOU`, 'threat');
+    return au;
+}
+
+function makeAce({ callsign, group, hp, label, xp, tier }) {
+    return {
         // AirUnit contract (entities/contract.js) — 'fighter' so minimap/reticle treat it like one
         id: THREE.MathUtils.generateUUID(), type: 'fighter', group, hp, maxHp: hp,
-        collisionRadius: RIVAL.collisionRadius, xpValue: RIVAL.xpPerAce * aceLevel,
+        collisionRadius: RIVAL.collisionRadius, xpValue: xp,
         isHostile: true, baseId: null, label, shootCooldown: 0, userData: { baseId: null },
         wingHalfSpan: RIVAL.wingHalfSpan, wingR: RIVAL.wingRadius, wingType: 'q',
         velocity: new THREE.Vector3(), // kept current for anyone reading it; ai.js skips generic movement for rivals
@@ -119,8 +126,21 @@ export function spawnRival() {
             lastKnown: plane.position.clone(), lastVel: new THREE.Vector3(), breakDir: new THREE.Vector3(),
         },
     };
-    airUnits.push(au); rivals.push(au); activeRival = au;
-    banner(`☠ ACE ${callsign.toUpperCase()} (LV ${aceLevel} · ${tier.label.toUpperCase()}) IS HUNTING YOU`, 'threat');
+}
+
+/**
+ * An ace outside Ace Hunt (e.g. multiplayer team bots): no banners, own level and colour. `friendly` aces are on the
+ * player's side: the player's weapons, lock-on and minimap treat them as allies. Returns the air unit.
+ */
+export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level }) {
+    const group = createRivalVisual(color);
+    group.position.copy(position); group.rotation.set(0, heading, 0);
+    scene.add(group);
+    const tier = rivalSkill(), hp = Math.round(RIVAL.baseHp * tier.hp * (1 + RIVAL.hpPerAce * (level - 1)));
+    const label = createUnitLabel(callsign, level, hp, hp); scene.add(label.sprite);
+    const au = makeAce({ callsign, group, hp, label, xp, tier });
+    Object.assign(au, { quiet: true, friendly, isHostile: !friendly, blipColor, blipLabel: callsign, level });
+    airUnits.push(au); rivals.push(au);
     return au;
 }
 
@@ -140,9 +160,9 @@ export const acesShotDown = () => acesDowned;
 export const rivalMissilesInFlight = () => rivalMissiles;
 
 /** Reaction/aim quality for the current tier; grows with each ace. The flight envelope is the tier's, not the skill's. */
-function skillOf() {
+function skillOf(au) {
     const t = rivalSkill();
-    return Math.min(t.skillMax, t.skill + t.skillPerAce * (aceLevel - 1));
+    return Math.min(t.skillMax, t.skill + t.skillPerAce * ((au?.level ?? aceLevel) - 1));
 }
 
 /** Once per updateAI(): missiles, death bookkeeping, Ace Hunt respawns, HUD warnings. */
@@ -153,7 +173,7 @@ export function updateRivalSystem(dt) {
         if (airUnits.includes(r)) continue;
         rivals.splice(i, 1);
         runHooks('rivalDown', r);
-        if (r.crashed) { acesDowned++; banner(`✈ ACE ${r.callsign.toUpperCase()} CRASHED`, 'win'); }
+        if (r.quiet) { /* team bots: whoever spawned them reports it */ } else if (r.crashed) { acesDowned++; banner(`✈ ACE ${r.callsign.toUpperCase()} CRASHED`, 'win'); }
         else if (r.hp <= 0) { acesDowned++; banner(`★ ACE ${r.callsign.toUpperCase()} SHOT DOWN  +${r.xpValue} XP`, 'win'); }
         if (r === activeRival) { activeRival = null; respawnTimer = RIVAL.respawnDelay; }
     }
@@ -163,7 +183,7 @@ export function updateRivalSystem(dt) {
 
 /** Per-frame brain + flight for one ace. Called from the airUnits loop in ai.js. */
 export function updateRival(au, dt) {
-    const { ai, fl, wpn, group } = au, pos = group.position, target = pickTarget(au), alive = !!target && !state.isGameOver;
+    const { ai, fl, wpn, group } = au, pos = group.position, target = pickTarget(au), alive = !!target && !(target.local && state.isGameOver);
     T = target || localTarget;
     _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
     _pFwd.set(0, 0, 1).applyQuaternion(T.quaternion);
@@ -180,7 +200,7 @@ export function updateRival(au, dt) {
             ai.lastKnown.copy(T.position); ai.lastVel.copy(_pVel); ai.sinceFix = 0;
         }
     }
-    if (visual && !ai.contact && T.local) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
+    if (visual && !ai.contact && T.local && !au.quiet) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
     ai.contact = visual;
     tickWeapons(wpn, dt);
 
@@ -304,7 +324,7 @@ function checkThreats(au, dist) {
     if (ai.react > 0) return;                    // decisions run on a reaction clock, not every frame
     const tier = rivalSkill();
     ai.react = tier.reactInterval;
-    const reacts = Math.random() < skillOf();
+    const reacts = Math.random() < skillOf(au);
     if (inbound) {
         if (wpn.flareAmmo > 0 && wpn.flareTimer <= 0 && reacts) popFlares(au);
         if (ai.mode !== 'evade' && (tier.evades || reacts)) startBreak(au, _tmp.subVectors(pos, inbound.position).normalize(), 90);
@@ -368,7 +388,7 @@ function fireGuns(au, dist) {
     _fwd.set(0, 0, 1).applyQuaternion(au.group.quaternion);
     if (_fwd.angleTo(_tmp) > Math.atan2(RIVAL.aimTolerance, dist) + 0.02) { w.burstLeft = 0; return; } // no solution
     if (w.burstLeft <= 0) w.burstLeft = RIVAL.burst;
-    const spread = (1 - skillOf()) * dist * RIVAL.aimSpread;
+    const spread = (1 - skillOf(au)) * dist * RIVAL.aimSpread;
     _aim.x += (Math.random() - 0.5) * spread; _aim.y += (Math.random() - 0.5) * spread; _aim.z += (Math.random() - 0.5) * spread;
     const damage = Math.max(1, Math.round(RIVAL.gunDamage * rivalSkill().gunDamage * difficulty().enemyDamage));
     au.firingAt = performance.now(); // multiplayer shows the ace's tracers
@@ -381,7 +401,7 @@ function fireGuns(au, dist) {
             b.velocity.setLength(RIVAL.bulletSpeed + au.fl.speed); // player-grade muzzle velocity + own speed (1.2 can't catch a fleeing player)
             b.userData.damage = damage;
         }
-    } else if (!T.flares && Math.random() < 0.25 + 0.45 * skillOf()) remoteHit?.(T.id, damage, 'gun'); // aimed round: hit roll by skill
+    } else if (!T.flares && Math.random() < 0.25 + 0.45 * skillOf(au)) remoteHit?.(T.id, damage, 'gun', au); // aimed round: hit roll by skill
     w.burstLeft--;
     if (--w.gunAmmo <= 0) w.gunReload = RIVAL.gunReload;
     w.gunCd = w.burstLeft > 0 ? RIVAL.gunInterval : RIVAL.burstPause * difficulty().enemyFireInterval;
@@ -402,7 +422,7 @@ function launchMissile(au, side) {
     const m = new THREE.Mesh(_mslGeo, _mslMat);
     au.group.localToWorld(m.position.set(side * 5.9, -0.3, 0.5));
     const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(au.group.quaternion);
-    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id };
+    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id, owner: au };
     m.quaternion.setFromUnitVectors(_up3, dir);
     scene.add(m); rivalMissiles.push(m);
 }
@@ -421,9 +441,9 @@ function updateRivalMissiles(dt) {
         const m = rivalMissiles[i], d = m.userData;
         d.life -= dt;
         d.speed = Math.min(RIVAL.mslMaxSpeed, d.speed + RIVAL.mslAccel * dt);
-        const t = targetById(d.targetId);
+        const t = targetById(d.targetId, d.owner);
         // Its target's flares only spoof it in the terminal phase → timing matters, not spamming
-        if (!d.decoyed && (!t || !t.alive || state.isGameOver || (t.flares && m.position.distanceToSquared(t.position) < flareSq))) d.decoyed = true;
+        if (!d.decoyed && (!t || !t.alive || (t.local && state.isGameOver) || (t.flares && m.position.distanceToSquared(t.position) < flareSq))) d.decoyed = true;
         // Turn rate is capped: a hard break perpendicular to the missile makes it overshoot
         if (!d.decoyed) turnToward(d.dir, _tmp.subVectors(t.position, m.position).normalize(), RIVAL.mslTurnRate * dt);
         m.position.addScaledVector(d.dir, d.speed * dt);
@@ -431,7 +451,7 @@ function updateRivalMissiles(dt) {
         let hit = false;
         if (!d.decoyed && m.position.distanceToSquared(t.position) < fuseSq) {
             const damage = Math.max(1, Math.round(RIVAL.mslDamage * difficulty().enemyDamage));
-            if (t.local) damagePlayer(damage, m.position); else remoteHit?.(t.id, damage, 'missile');
+            if (t.local) damagePlayer(damage, m.position); else remoteHit?.(t.id, damage, 'missile', d.owner);
             hit = true;
         }
         const out = d.life <= 0 || m.position.y < groundLevel || m.position.y > ceilingLevel
@@ -466,10 +486,10 @@ function updateWarnings() {
 
 // --- Visual -----------------------------------------------------------------------------------
 
-/** The player's airframe in dark red / black, scaled up so it is hittable. */
-export function createRivalVisual() {
+/** The player's airframe in dark red (or `color`) and black, scaled up so it is hittable. */
+export function createRivalVisual(color = 0x7a0d12) {
     const g = new THREE.Group();
-    const body = new THREE.MeshStandardMaterial({ color: 0x7a0d12, roughness: 0.6 });
+    const body = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
     const trim = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
     const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 4, 12).rotateX(Math.PI / 2), body);
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 12).rotateX(Math.PI / 2), trim); nose.position.z = 2.6;
