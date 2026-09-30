@@ -13,10 +13,13 @@ import { _gameOverPos } from '../player/camera.js';
 import { onGameOver } from './session.js';
 import { missionProgress } from './mission.js';
 import { acesShotDown } from '../entities/rival.js';
+import { RULES } from './rules.js';
+import { playerDown } from './respawn.js';
 
 export function triggerGameOver({ victory = false } = {}) {
     if (state.isGameOver) return;
     if (DEBUG_PARAMS.invulnerable && !victory) return; // ?invulnerable: profiling flights never end
+    if (RULES.respawn && !victory) { playerDown(); return; } // a respawning mode: wreck now, respawn later
     state.isGameOver = true; state.speed = 0;
     _gameOverPos.copy(plane.position);
     state._goOrbitYaw = 0; state._goOrbitPitch = 0.3;

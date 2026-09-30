@@ -7,6 +7,7 @@ import { state } from '../state.js';
 import { baseMarkers } from '../entities/registry.js';
 import { plane } from '../player/plane.js';
 import { triggerGameOver } from './gameOver.js';
+import { RULES } from './rules.js';
 
 const panel = document.getElementById('objective');
 const arrowEl = document.getElementById('objective-arrow');
@@ -44,7 +45,7 @@ export function relativeBearing(x, z) {
 }
 
 export function updateMission(rawDelta) {
-    if (!baseMarkers.length || state.isGameOver) return; // world not populated yet, or the run has ended
+    if (!RULES.mission || !baseMarkers.length || state.isGameOver) return; // no mission in this mode, world not populated yet, or the run has ended
     if (!current || current.eliminated) current = nearestRemainingBase(); // objectives stay put until eliminated
     if (!current) { panel.hidden = true; triggerGameOver({ victory: true }); return; }
     uiTimer -= rawDelta;

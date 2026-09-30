@@ -24,9 +24,10 @@ export function simulate(dt) {
         remaining -= step;
         // Spawn protection is simulation state in seconds; steps are in 60 fps frame units
         if (state._graceTimer > 0) state._graceTimer = Math.max(0, state._graceTimer - step / TARGET_FPS);
-        perf.begin('physics'); updatePhysics(step); perf.end('physics');
+        const flying = !state._playerDown; // RULES.respawn: the wreck neither flies nor collides until respawnPlayer()
+        perf.begin('physics'); if (flying) updatePhysics(step); perf.end('physics');
         perf.begin('ai'); updateAI(step); perf.end('ai');
-        perf.begin('collisions'); resolveCollisions(); perf.end('collisions');
+        perf.begin('collisions'); if (flying) resolveCollisions(); perf.end('collisions');
         perf.begin('projectiles'); updateProjectiles(step); perf.end('projectiles');
         perf.begin('effects'); updateEffects(step); perf.end('effects'); // ideas 1-6, 10
     }

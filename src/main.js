@@ -27,6 +27,8 @@ import { simulate } from './game/simulation.js';
 import * as perf from './debug/perf.js';
 import { DEBUG_PARAMS } from './debug/params.js';
 import { disableRealLights, updateLightBudget } from './effects/lightBudget.js';
+import { RULES } from './game/rules.js';
+import { runHooks } from './game/hooks.js';
 
 // --- THREE.Clock for delta-time (§3.6) ---
 const clock = new THREE.Clock();
@@ -62,7 +64,7 @@ function animate() {
     // Interceptor event timer
     if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         state._gameElapsed += dt;
-        if (state._gameElapsed >= 60 * TARGET_FPS) { // arm after 1 minute
+        if (RULES.interceptors && state._gameElapsed >= 60 * TARGET_FPS) { // arm after 1 minute
             state._interceptorTimer -= dt;
             if (state._interceptorTimer <= 0) {
                 spawnInterceptors();
@@ -162,6 +164,7 @@ function animate() {
     perf.end('minimap');
     perf.renderBegin(); renderer.render(scene, camera); perf.renderEnd();
     perf.begin('reticle'); _drawReticle(); perf.end('reticle');
+    runHooks('frame', rawDelta); // optional systems (game/hooks.js)
     perf.frameEnd();
 }
 // Start rendering immediately — script is at end of <body> so DOM is ready.
