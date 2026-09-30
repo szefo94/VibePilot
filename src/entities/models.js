@@ -255,7 +255,7 @@ export const balloonGeo = shared([
 
 // --- Player plane (unscaled, +Z forward): four baked pieces, one collision box each (player/plane.js) -------------
 // A light swept-wing jet in the player's white-and-blue. Span ±6 (wing trails), wing-tip rails at ±5.9 (missiles).
-const PL_WHITE = 0xdfe4ea, PL_GREY = 0xaab3bd, PL_BLUE = 0x1f4fa0, PL_DARK = 0x2a3038;
+const PL_WHITE = 0xc9d0d8, PL_GREY = 0x98a2ad, PL_BLUE = 0x1f4fa0, PL_DARK = 0x2a3038;
 export const playerFuselageGeo = shared([
     side([[-2.4, -0.25], [1.8, -0.42], [3.35, -0.05], [2.2, 0.35], [-1.2, 0.45], [-2.5, 0.2]], 0.95, PL_WHITE, {}),
     side([[0.35, 0.3], [1.95, 0.3], [1.35, 0.8], [0.6, 0.82]], 0.72, GLASS, {}),                         // canopy
