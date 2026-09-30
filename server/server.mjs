@@ -209,7 +209,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     }
 
     wss.on('connection', ws => {
-        const c = { id: nextId++, ws, room: null, name: 'Pilot', alive: true, heartbeat: true, budget: LIMITS.maxMsgPerSec, budgetAt: Date.now() };
+        const c = { id: nextId++, ws, room: null, name: 'Pilot', alive: true, heartbeat: true, connectedAt: Date.now(), budget: LIMITS.maxMsgPerSec, budgetAt: Date.now() };
         clients.add(c);
         ws.on('pong', () => { c.heartbeat = true; });
         ws.on('message', raw => {
@@ -225,7 +225,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     const tickTimer = setInterval(tick, 1000 / LIMITS.tickHz);
     const heartbeat = setInterval(() => {
         for (const c of clients) {
-            if (!c.heartbeat || !c.room) { c.ws.terminate(); continue; } // missed a ping, or never sent HELLO
+            // Missed a ping, or no HELLO within helloGraceMs (a slow device may still be building its world)
+            if (!c.heartbeat || (!c.room && Date.now() - c.connectedAt > LIMITS.helloGraceMs)) { c.ws.terminate(); continue; }
             c.heartbeat = false;
             c.ws.ping();
         }

@@ -34,6 +34,7 @@ export const LIMITS = Object.freeze({
     maxMsgPerSec: 60,     // per client, all types; excess is dropped
     nameMax: 16, roomMax: 24,
     heartbeatMs: 10000,   // server pings; a client that misses one is dropped
+    helloGraceMs: 30000,  // a new connection may take this long to send HELLO
     respawnMs: 3000,      // shot down → SPAWN
 });
 
@@ -53,7 +54,8 @@ export function spawnSlot(i) {
 }
 
 /** Respawn area: a random point RESPAWN.min–max from slot i's start, at a safe height, with a random heading. */
-export const RESPAWN = Object.freeze({ min: 80, max: 350, minY: groundLevel + 35, maxY: groundLevel + 90 });
+/** Respawn area: minY clears the highest island peaks (world/terrain.js; the server doesn't know the terrain). */
+export const RESPAWN = Object.freeze({ min: 80, max: 350, minY: groundLevel + 75, maxY: groundLevel + 115 });
 export function respawnPoint(i, random = Math.random) {
     const [sx, , sz] = spawnSlot(i).p;
     const a = random() * Math.PI * 2, d = RESPAWN.min + random() * (RESPAWN.max - RESPAWN.min), h = random() * Math.PI * 2;
