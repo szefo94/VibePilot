@@ -97,7 +97,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0] }; // units: damage log for late joiners
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0], stats: {} }; // units: damage log for late joiners; stats: kills/deaths per pilot
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
@@ -113,7 +113,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
         const spawn = placeAtSpawn(c);
-        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, team: c.team, score: room.score, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, team: c.team, score: room.score, stats: room.stats, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
             players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot, team: p.team })) });
         broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot, team: c.team }, c);
         log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot}${c.team === null ? '' : ` team ${c.team ? 'Blue' : 'Red'}`} (${room.players.size}) from ${where(c)}`);
@@ -124,6 +124,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     function leave(c) {
         const room = c.room;
         if (!room || !room.players.delete(c.id)) return;
+        delete room.stats[`p${c.id}`];
         broadcast(room, MSG.LEAVE, { id: c.id });
         if (room.hostId === c.id) {
             room.hostId = room.players.size ? room.players.keys().next().value : null; // oldest remaining player
@@ -161,8 +162,10 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 if (killer && mode.teams && killer.team === c.team) killer = null; // no friendly fire, so no teamkill credit
                 const byTeam = mode.teams ? (killer ? killer.team : (m.byTeam === 0 || m.byTeam === 1) && m.byTeam !== c.team ? m.byTeam : null) : null;
                 c.alive = false; c.hp = 0; c.respawnAt = Date.now() + LIMITS.respawnMs;
-                broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null, byTeam, bot: !killer && byTeam !== null ? String(m.bot ?? '').slice(0, 24) : null });
-                if (byTeam !== null) score(room, byTeam);
+                const bot = !killer && (byTeam !== null || (!mode.teams && m.bot)) ? String(m.bot ?? '').slice(0, 24) : null;
+                broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null, byTeam, bot });
+                if (byTeam !== null) room.score[byTeam]++;
+                tally(room, `p${c.id}`, c.team, killer ? `p${killer.id}` : bot ? `b:${bot}` : null, byTeam);
                 log(`x ${c.name}#${c.id} down${killer ? ` (by ${killer.name}#${killer.id})` : ''}`);
                 break;
             }
@@ -215,7 +218,17 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             case MSG.BOT_DOWN:
                 if (!mode.enemies || room.hostId !== c.id) return;
                 broadcast(room, MSG.BOT_DOWN, { ...m, t: undefined, from: c.id }, c);
-                if (mode.teams && (m.byTeam === 0 || m.byTeam === 1) && m.byTeam !== m.team && !m.gone) score(room, m.byTeam);
+                if (typeof m.name !== 'string') break;
+                if (m.gone) { // a player took this bot's place: its record goes with it
+                    if (delete room.stats[`b:${m.name.slice(0, 24)}`]) broadcast(room, MSG.SCORE, { score: room.score, stats: room.stats });
+                    break;
+                }
+                {
+                    const team = m.team === 0 || m.team === 1 ? m.team : null, byTeam = m.byTeam === 0 || m.byTeam === 1 ? m.byTeam : null;
+                    const killer = room.players.has(m.by) ? `p${m.by}` : typeof m.byBot === 'string' && m.byBot ? `b:${m.byBot.slice(0, 24)}` : null;
+                    if (mode.teams && byTeam !== null && byTeam !== team) room.score[byTeam]++;
+                    tally(room, `b:${m.name.slice(0, 24)}`, team, killer, byTeam);
+                }
                 break;
             case MSG.BOT_HIT: {
                 const host = mode.enemies && room.players.get(room.hostId);
@@ -233,10 +246,15 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         }
     }
 
-    /** tdm: one more kill for `team`; everyone gets the new score. */
-    function score(room, team) {
-        room.score[team]++;
-        broadcast(room, MSG.SCORE, { score: room.score });
+    /**
+     * A pilot went down: one death for `victim`, one kill for `killer` (keys: 'p<id>' players, 'b:<name>' bots; a
+     * teamkill or a crash gives no kill). Everyone gets the team score and every pilot's kills and deaths.
+     */
+    function tally(room, victim, victimTeam, killer, killerTeam) {
+        const rec = (key, team) => (room.stats[key] ??= { k: 0, d: 0, team: team ?? null });
+        if (Object.keys(room.stats).length < 64 || room.stats[victim]) rec(victim, victimTeam).d++;
+        if (killer && killer !== victim && !(MODES[room.mode].teams && killerTeam === victimTeam) && (Object.keys(room.stats).length < 64 || room.stats[killer])) rec(killer, killerTeam).k++;
+        broadcast(room, MSG.SCORE, { score: room.score, stats: room.stats });
     }
 
     /** One server tick: respawns due, then one snapshot of every room. */

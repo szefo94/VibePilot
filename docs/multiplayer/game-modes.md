@@ -33,7 +33,8 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 | Teams | Red and Blue, 5 a side; the server puts each new player on the smaller team | — | — | — |
 | Bots | Up to 9: they fill each team to 5 and leave when a player takes their place | Ace Hunt aces | Ace Hunt aces | — |
 | Enemy bases (XP, objectives) | Yes, shared | Yes, shared | Yes, shared | No |
-| Score | Team kills in the roster (`RED 3 : BLUE 1`); no limit yet | Kills per player (★) | — | — |
+| Score | Team kills in the roster (`RED 3 : BLUE 1`); no limit yet | — | — | — |
+| Kills / deaths | Every player and bot (`3K/1D`), best first in each team | Every player and ace | Every player and ace | — |
 | Being shot down | Respawn near your team's start | Respawn near your start | Respawn near your start | Respawn near your start |
 | Max players | 10 | 10 | 10 | 10 |
 
@@ -42,6 +43,7 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 - **The flag:** a big red-and-blue flag stands in the middle of the map, with a white ⚑ marker on the minimap. Every bot flies to it first after it spawns, then patrols around it, so the fighting starts at the flag. Its pole is solid: flying into it crashes you.
 - **Teams:** you can't hit or lock onto your teammates, players or bots, and they can't hit you. Teammates are drawn in your team's colour.
 - **Score:** each kill of the other team scores for the killer's team, whoever makes it: a player, a bot, or a bot shooting a bot.
+- **Kills and deaths:** every pilot, player or bot, shows `kills K / deaths D` in the roster. The server keeps the records, so every player sees the same numbers. A crash or collision counts as a death with no kill. A bot keeps its record between lives; it drops off the list when a player takes its place, and a player's record is dropped when they leave.
 - **Bots:**
   - They must **see** an enemy before they attack. Until then they patrol around the flag.
   - They level up from kills: more HP, sharper, full ammo. They heal on collectibles.

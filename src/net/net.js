@@ -82,7 +82,7 @@ function receive(m) {
                 location.replace(u.href);
                 return;
             }
-            Object.assign(net, { id: m.id, hostId: m.hostId, team: m.team ?? null, score: m.score ?? [0, 0] });
+            Object.assign(net, { id: m.id, hostId: m.hostId, team: m.team ?? null, score: m.score ?? [0, 0], stats: m.stats ?? {} });
             retry = 0;
             m.players.forEach(addPeer);
             setStatus('online');
@@ -92,7 +92,7 @@ function receive(m) {
         case MSG.JOIN: addPeer(m); emit('peer-join', m); break;
         case MSG.LEAVE: { const p = net.peers.get(m.id); net.peers.delete(m.id); emit('peer-leave', p || m); break; }
         case MSG.HOST: net.hostId = m.hostId; break;
-        case MSG.SCORE: if (Array.isArray(m.score)) net.score = m.score; break;
+        case MSG.SCORE: if (Array.isArray(m.score)) net.score = m.score; if (m.stats && typeof m.stats === 'object') net.stats = m.stats; break;
         case MSG.PONG: net.rtt = Math.round(performance.now() - m.c); emit('status', net); break;
         case MSG.SNAP: {
             net.clockOffset = Math.min(net.clockOffset + 0.05, performance.now() - m.time); // +0.05 ms/tick: follow slow clock drift

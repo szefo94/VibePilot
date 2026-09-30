@@ -15,8 +15,8 @@ export const FLAG = Object.freeze({ x: 0, z: 0, pole: 110, clothW: 44, clothH: 2
 const flagTop = new THREE.Vector3(FLAG.x, 0, FLAG.z); // y set when built
 let cloth = null, time = 0;
 
-/** Where bots fly first: over the flag, clear of the pole. */
-export const flagWaypoint = () => flagTop.clone().setY(flagTop.y + 45);
+/** Where a bot flies first: a spot of its own around and above the flag (they would collide at one point). */
+export const flagWaypoint = () => flagTop.clone().add(new THREE.Vector3((Math.random() - 0.5) * 300, 30 + Math.random() * 40, (Math.random() - 0.5) * 300));
 /** The patrol area around the flag. */
 export const flagPatrol = () => ({ center: flagTop, radius: FLAG.patrolRadius });
 

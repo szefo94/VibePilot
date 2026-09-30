@@ -13,6 +13,7 @@
  *
  * Team deathmatch (default mode, tdm): Red against Blue, five a side; the host's bots fill the empty places (bots.js).
  * No damage between teammates; the server keeps the score (kills of the other team), shown in the roster.
+ * Every pilot, player or bot, has kills and deaths (K/D, kept by the server) in the roster; each team is sorted by kills.
  *
  * PvP: every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
  * the victim applies it with damagePlayer() — its flares still stop gun and missile hits, spawn protection still
@@ -75,7 +76,7 @@ if (net.enabled) {
     });
     onNet(MSG.FIRE, onRemoteFire);
     // --- PvP ---
-    const pvp = MODES[net.mode].pvp, kills = new Map(); // player id → kills this session
+    const pvp = MODES[net.mode].pvp;
     let lastHit = null; // { by, at } — who to credit if we go down soon after
     const nameOf = id => id === net.id ? net.name : net.peers.get(id)?.name ?? 'someone';
     if (pvp) {
@@ -93,7 +94,6 @@ if (net.enabled) {
         netSend(MSG.DOWN, { by, ...(by === null ? botKiller() ?? {} : {}) }); // a bot's kill scores for its team
     });
     onNet(MSG.DOWN, ({ id, by, bot }) => {
-        if (by !== null) kills.set(by, (kills.get(by) ?? 0) + 1);
         if (by === null && bot) { // a bot got them
             showNotification(id === net.id ? `Shot down by ${bot} — respawning` : `${bot} shot down ${nameOf(id)}`, false, { local: true });
             return;
@@ -103,7 +103,6 @@ if (net.enabled) {
         else if (id === net.id) feed(by !== null ? `Shot down by ${nameOf(by)} — respawning` : 'You went down — respawning');
         else feed(by === null ? `${nameOf(id)} went down` : `${nameOf(by)} shot down ${nameOf(id)}`);
     });
-    onNet('peer-leave', p => kills.delete(p.id));
 
     // --- Notifications: ours go to everyone, theirs are shown with their name ---
     onHook('notification', (text, hl) => netSend(MSG.EVENT, { text, hl: !!hl }));
@@ -141,16 +140,28 @@ if (net.enabled) {
                 el.append(dot, `${name}${note}`);
                 return el;
             };
-            const score = id => (kills.get(id) ? ` · ${kills.get(id)}★` : '');
-            const pilots = [{ team: net.team, el: row(net.name, myKey, `${state._playerDown ? ' (you · down)' : ` (you) · ${Math.max(0, state.planeHP)} HP`}${score(net.id)}`) }];
+            // Kills / deaths from the server (net.stats): 'p<id>' players, 'b:<name>' bots
+            const kd = key => { const s = net.stats?.[key]; return { k: s?.k ?? 0, d: s?.d ?? 0 }; };
+            const kdText = ({ k, d }) => ` · ${k}K/${d}D`;
+            const pilots = [];
+            const add = (team, key, name, colour, note) => { const s = kd(key); pilots.push({ team, k: s.k, d: s.d, el: row(name, colour, `${note}${kdText(s)}`) }); };
+            add(net.team, `p${net.id}`, net.name, myKey, state._playerDown ? ' (you · down)' : ` (you) · ${Math.max(0, state.planeHP)} HP`);
             for (const peer of net.peers.values()) {
                 const last = peer.samples[peer.samples.length - 1];
-                pilots.push({ team: peer.team, el: row(peer.name, colorKey(peer), `${last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : ''}${score(peer.id)}`) });
+                add(peer.team, `p${peer.id}`, peer.name, colorKey(peer), last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : '');
             }
+            const listed = new Set();
             for (const b of botRoster()) { // the host's bots
                 const key = b.team === null ? 'ace' : `t${b.team}`, target = b.target != null && b.team === null ? ` → ${nameOf(b.target)}` : '';
-                pilots.push({ team: b.team, el: row(b.team === null ? `☠ ${b.name}` : `${b.name} · bot`, key, b.down ? ' (down)' : ` · LV ${b.lvl} · ${b.hp} HP${target}`) });
+                listed.add(b.name);
+                add(b.team, `b:${b.name}`, b.team === null ? `☠ ${b.name}` : `${b.name} · bot`, key, b.down ? ' (down)' : ` · LV ${b.lvl} · ${b.hp} HP${target}`);
             }
+            if (MODES[net.mode].teams) { // team bots between lives: the server still has their record
+                for (const [key, s] of Object.entries(net.stats ?? {})) {
+                    if (key.startsWith('b:') && !listed.has(key.slice(2)) && (s.team === 0 || s.team === 1)) add(s.team, key, `${key.slice(2)} · bot`, `t${s.team}`, ' (down)');
+                }
+            }
+            pilots.sort((a, b) => b.k - a.k || a.d - b.d); // best first
             if (MODES[net.mode].teams) { // scoreboard, then each team
                 const board = document.createElement('div'); board.className = 'net-score';
                 board.innerHTML = TEAMS.map((t, i) => `<span style="color:${t.css}">${t.name.toUpperCase()} ${net.score?.[i] ?? 0}</span>`).join(' : ');

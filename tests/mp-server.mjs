@@ -162,6 +162,11 @@ r1.ws.send(encode(MSG.BOT_DOWN, { bot: 'r3', name: 'Hawk', team: 1, by: r1.first
 b1.ws.send(encode(MSG.BOT_DOWN, { bot: 'r4', name: 'Hawk', team: 0, byTeam: 1 }));                          // not the host: dropped
 await wait(80);
 check('tdmBotKillScores', JSON.stringify(got(b1, MSG.SCORE).at(-1)?.score) === '[2,1]' && got(b1, MSG.BOT_DOWN).length === 1);
+{
+    const st = got(r2, MSG.SCORE).at(-1)?.stats ?? {};
+    check('tdmKillsDeaths', st[`p${r1.first.id}`]?.k === 2 && st[`p${b1.first.id}`]?.d === 1 && st[`p${r2.first.id}`]?.d === 1
+        && st['b:Viper']?.k === 1 && st['b:Viper']?.team === 1 && st['b:Hawk']?.d === 1 && st['b:Hawk']?.team === 1, st);
+}
 
 // Limits and validation
 const wrongVersion = await client({ v: 1, room: 'x' });

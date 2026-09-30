@@ -126,7 +126,7 @@ export const MSG = Object.freeze({
     BOT_HIT: 'bothit',    // enemies: C→host { bot, dmg, w, ram? } — a guest hit a bot (the host applies it); ram: flew into it, both go down
     BOT_FIRE: 'botfire',  // enemies: S→C { dmg, w, bot, team } — a bot hit you (from BOT.hits; never from a bot's teammate)
     BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, team, by, byBot, byTeam, xp, gone } — shot down (by player id / by a bot), crashed, or gone (removed)
-    SCORE: 'score',       // tdm: S→C { score: [red, blue] } — after every kill of the other team
+    SCORE: 'score',       // S→C { score: [red, blue], stats: { 'p<id>' | 'b:<bot name>': { k, d, team } } } — after every shoot-down (also in WELCOME)
     EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
     ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }
