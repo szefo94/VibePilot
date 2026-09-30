@@ -9,6 +9,8 @@
  * A proxy air unit (`proxy: { damage(amount, weapon) }`, e.g. another player in multiplayer) is owned elsewhere:
  * the hit is handed to its proxy and counts for feedback, but it takes no local HP loss and never dies here.
  * A bullet damages the fighter part it struck (`{ part }`); splash damages every part.
+ * `beginHits(weapon, { remote: true })` applies damage that happened elsewhere (another player's hit, synced):
+ * no hook, no rewards, no hit marker or sound, and no notifications.
  * Deaths are applied in finish(), after the caller's scans, because removal mutates the arrays being
  * scanned; a target killed twice in one blast dies — and rewards — once.
  */
@@ -19,8 +21,10 @@ import { canDamageGround } from './damage.js';
 import { entityHp, entityKind } from '../entities/contract.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
+import { runHooks } from '../game/hooks.js';
+import { quietly } from '../ui/notifications.js';
 
-export function beginHits(weapon) {
+export function beginHits(weapon, { remote = false } = {}) {
     const dead = new Set();
     let anyHit = false;
     return {
@@ -46,16 +50,21 @@ export function beginHits(weapon) {
                 updateUnitLabel(target.label, hp);
                 if (hp <= 0) dead.add(target);
             }
+            if (!remote) runHooks('unitHit', target, amount, weapon);
             anyHit = true;
             return true;
         },
         finish() {
-            for (const target of dead) {
-                const kind = entityKind(target);
-                if (kind === 'ground') killGroundUnit(target);
-                else if (kind === 'air') destroyAirUnit(target);
-                else destroyLogicalEnemy(target.id);
-            }
+            const kill = () => {
+                for (const target of dead) {
+                    const kind = entityKind(target), reward = !remote;
+                    if (kind === 'ground') killGroundUnit(target, { reward });
+                    else if (kind === 'air') destroyAirUnit(target, { reward });
+                    else destroyLogicalEnemy(target.id, { reward });
+                }
+            };
+            if (remote) { quietly(kill); return { hit: anyHit, kills: dead.size }; }
+            kill();
             if (dead.size) { state._killMarkerTimer = 20; state._hitMarkerTimer = Math.max(state._hitMarkerTimer, 20); _playKillConfirm(); } // kill: gold marker
             else if (anyHit) { state._hitMarkerTimer = 9; _playKeyClick(); } // idea 4: hit confirm
             return { hit: anyHit, kills: dead.size };

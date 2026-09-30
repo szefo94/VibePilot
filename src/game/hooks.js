@@ -4,6 +4,8 @@
  *   playerDown  ()           the player was shot down or crashed while RULES.respawn is on (game/respawn.js)
  *   radarBlips  (blips)      push extra minimap blips at each radar sweep (ui/minimap.js)
  *   notification (text, highlight)  a gameplay notification was shown (ui/notifications.js; device-only ones are not)
+ *   worldReady  ()           the world is populated: every unit exists (main.js)
+ *   unitHit     (target, amount, weapon)  the player's weapon damaged a unit (combat/hits.js; not for remote-applied hits)
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them
  */

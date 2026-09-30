@@ -8,7 +8,10 @@ import { _searchlights, _updateFenceDamageState } from '../entities/fences.js';
 import { isAlive } from '../entities/contract.js';
 import { runHooks } from '../game/hooks.js';
 
-let notifSlot = 0;
+let notifSlot = 0, quiet = 0;
+
+/** Run `fn` without notifications or base-elimination rewards (e.g. applying another player's synced kill). */
+export function quietly(fn) { quiet++; try { return fn(); } finally { quiet--; } }
 
 // G18: level-up banner
 export function showLevelUpBanner(lvl) {
@@ -24,7 +27,7 @@ export function showLevelUpBanner(lvl) {
 
 /** `local: true` for messages about this device only (mute, tilt…); everything else also runs the 'notification' hook. */
 export function showNotification(text, isEliminated = false, { local = false } = {}) {
-    if (state.isGameOver) return;
+    if (state.isGameOver || quiet) return;
     if (!local) runHooks('notification', text, isEliminated);
     const el = document.createElement('div');
     el.className = 'kill-notif' + (isEliminated ? ' eliminated' : '');
@@ -68,9 +71,11 @@ export function notifyBase(baseId) { // (§2.2) unified signature — pass baseI
     bm.alive = bm.units.filter(isAlive).length; // ground and air units alike (entities/contract.js)
     _updateFenceDamageState(bm.id); // F10
     if (bm.alive === 0) {
-        showNotification(`◆ ${bm.name} ELIMINATED  +${bm.bonusXp} XP`, true);
-        showCongratsBanner(bm.name);
-        if (!state.isGameOver) { addXP(bm.bonusXp); state.score += Math.floor(bm.bonusXp / 2); scoreElement.textContent = state.score; }
+        if (!quiet) { // the bonus belongs to whoever eliminated it
+            showNotification(`◆ ${bm.name} ELIMINATED  +${bm.bonusXp} XP`, true);
+            showCongratsBanner(bm.name);
+            if (!state.isGameOver) { addXP(bm.bonusXp); state.score += Math.floor(bm.bonusXp / 2); scoreElement.textContent = state.score; }
+        }
         bm.eliminated = true; addToConqueredPanel(bm.name);
         // Silence any searchlights owned by this base (intensity=0, not scene.remove — avoids shader recompile)
         if (bm._spotLight) { bm._spotLight.intensity = 0; }

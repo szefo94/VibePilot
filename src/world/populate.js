@@ -64,7 +64,7 @@ function place(kind, count, spawn) {
 export function createAllUnits() {
     createIslets(10); createObstacles();
     if (RULES.enemies) {
-        for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
+        if (RULES.roamingFighters) for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
         place('carrierGroup', numCarrierGroups, p => spawnCarrierStrikeGroup(p.x, p.z));
         place('destroyerSquadron', numDestroyerSquadrons, p => spawnDestroyerSquadron(p.x, p.z));
         place('airbase', numAirbases, p => spawnAirbase(p.x, p.z, p.islet));

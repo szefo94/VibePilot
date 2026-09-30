@@ -130,7 +130,7 @@ export function createHangar(variant = 'box') {
 }
 // (§2.3) Centralised ground-unit death — called by combat/hits.js for every weapon
 export function killGroundUnit(gu, { reward = true } = {}) {
-    if (!gu.userData._alive) return; // double-kill guard
+    if (gu.userData._alive === false) return; // double-kill guard (undefined = alive, not yet visited by the AI)
     gu.userData._alive = false;
     // Dependents (airport turrets) are exposed, not destroyed: move them into the world keeping their
     // world transform, so the parent's disposal doesn't take them along, and drop their protection.

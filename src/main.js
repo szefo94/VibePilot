@@ -44,6 +44,7 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
     if (!DEBUG_PARAMS.disable.has('fences')) buildBaseFences();
     perf.record('init.createAllUnits', t1 - t0);
     perf.record('init.buildBaseFences', performance.now() - t1);
+    runHooks('worldReady'); // every unit exists now (game/hooks.js)
     // ?disable=… cost experiments: hidden lights drop out of every lit shader; hidden sprites skip their draws
     if (DEBUG_PARAMS.disable.has('searchlights')) disableRealLights();
     if (DEBUG_PARAMS.disable.has('labels')) scene.traverse(o => { if (o.isSprite) o.visible = false; });
