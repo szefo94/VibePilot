@@ -49,9 +49,10 @@ const localTarget = {
     id: 'local', local: true, position: plane.position, quaternion: plane.quaternion,
     get speed() { return state.speed; }, get alive() { return !state.isGameOver && !state._playerDown; }, get flares() { return state.flareTimer > 0; },
 };
-let targetsFn = () => [localTarget], remoteHit = null;
-/** targets(ace): [{ id, local, position, quaternion, speed, alive, flares }] that ace may hunt; onRemoteHit(targetId, damage, weapon, ace). */
-export function setRivalTargets(targets, onRemoteHit) { targetsFn = targets || (() => [localTarget]); remoteHit = onRemoteHit || null; }
+let targetsFn = () => [localTarget], remoteHit = null, trafficFn = () => [];
+/** targets(ace): [{ id, local, position, quaternion, speed, alive, flares }] that ace may hunt; onRemoteHit(targetId, damage, weapon, ace);
+ *  traffic(): positions of other pilots to keep clear of (remote players, whatever their team). */
+export function setRivalTargets(targets, onRemoteHit, traffic) { targetsFn = targets || (() => [localTarget]); remoteHit = onRemoteHit || null; trafficFn = traffic || (() => []); }
 export const localRivalTarget = localTarget;
 let T = localTarget; // the target of the ace being updated this frame
 /** The target the ace can see: keeps a spotted one while in tracking range, else the nearest newly spotted, else null. */
@@ -330,16 +331,22 @@ function setThrottle(au, dist, offBore, dt) {
     else if (fl.speed > target + 0.005) fl.speed = Math.max(minSpeed, fl.speed - deceleration * dt);
 }
 
-/** Keep clear of other aircraft (not a pilot being attacked): steer away from anything within RIVAL.separation. */
+/**
+ * Keep clear of other aircraft, the player and other pilots (trafficFn) included — except a pilot being attacked:
+ * steer away from anything within RIVAL.separation.
+ */
 function avoidTraffic(au, des) {
-    const pos = au.group.position, sepSq = RIVAL.separation ** 2;
+    const pos = au.group.position, sepSq = RIVAL.separation ** 2, attacking = au.ai.mode === 'engage' && !T.unit ? T.position : null;
     _tmp2.set(0, 0, 0);
-    for (const other of airUnits) {
-        if (other === au || !(other.hp > 0) || (au.ai.mode === 'engage' && !T.unit && other.group.position === T.position)) continue; // a pilot it attacks: closes in (a unit: keeps clear)
-        _tmp.subVectors(pos, other.group.position);
+    const away = p => {
+        if (p === attacking) return; // a pilot it attacks: closes in (a unit: keeps clear)
+        _tmp.subVectors(pos, p);
         const dSq = _tmp.lengthSq();
         if (dSq < sepSq && dSq > 1e-6) _tmp2.addScaledVector(_tmp, (sepSq - dSq) / (sepSq * Math.sqrt(dSq))); // stronger the closer it is
-    }
+    };
+    for (const other of airUnits) if (other !== au && other.hp > 0 && !other.proxy) away(other.group.position);
+    if (!state.isGameOver && !state._playerDown) away(plane.position);
+    for (const p of trafficFn()) away(p);
     if (_tmp2.lengthSq() > 0) des.addScaledVector(_tmp2, 1.5).normalize();
 }
 
@@ -347,10 +354,10 @@ function avoidTraffic(au, des) {
 function applySafety(au, des) {
     const p = au.group.position;
     _tmp.set(0, 0, 1).applyQuaternion(au.group.quaternion);
-    const yAhead = p.y + _tmp.y * au.fl.speed * 60;
-    // Floor: the terrain under the ace and 1 s ahead of it
-    const floor = Math.max(heightAt(p.x, p.z), heightAt(p.x + _tmp.x * au.fl.speed * 60, p.z + _tmp.z * au.fl.speed * 60)) + RIVAL.groundMargin, roof = ceilingLevel - RIVAL.ceilingMargin;
-    if (p.y < floor || yAhead < floor) des.y = Math.max(des.y, 0.5);
+    const ahead = au.fl.speed * 60 * RIVAL.safetyLookahead, yAhead = p.y + _tmp.y * ahead;
+    // Floor: the terrain under the ace, halfway and all the way along its look-ahead (its gentle pitch rate needs room)
+    const floor = Math.max(heightAt(p.x, p.z), heightAt(p.x + _tmp.x * ahead / 2, p.z + _tmp.z * ahead / 2), heightAt(p.x + _tmp.x * ahead, p.z + _tmp.z * ahead)) + RIVAL.groundMargin, roof = ceilingLevel - RIVAL.ceilingMargin;
+    if (p.y < floor || yAhead < floor) des.y = Math.max(des.y, _tmp.y < -0.2 ? 0.9 : 0.5); // diving: pull harder
     else if (p.y > roof || yAhead > roof) des.y = Math.min(des.y, -0.3);
     const lim = MAP_BOUNDARY * RIVAL.boundaryFrac;
     if (Math.abs(p.x) > lim || Math.abs(p.z) > lim) des.lerp(_tmp2.set(-p.x, 0, -p.z).normalize(), 0.6);
