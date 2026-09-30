@@ -43,7 +43,7 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 - **Teams:** you can't hit or lock onto your teammates, players or bots, and they can't hit you. Teammates are drawn in your team's colour.
 - **Score:** each kill of the other team scores for the killer's team, whoever makes it: a player, a bot, or a bot shooting a bot.
 - **Bots:**
-  - They must **see** an enemy before they attack. Until then they patrol.
+  - They must **see** an enemy before they attack. Until then they patrol around the flag.
   - They level up from kills: more HP, sharper, full ammo. They heal on collectibles.
   - A bot comes back about 8 s after it goes down.
   - Flying into any aircraft, a bot included, destroys both planes.
