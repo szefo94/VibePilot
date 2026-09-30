@@ -11,6 +11,7 @@
 //   life      DOWN marks a player dead; SPAWN puts them back at their slot after LIMITS.respawnMs
 // PvP hits are routed to their target; in co-op the server tracks the host and hands it over (phases 2–3).
 // GET /health returns room and player counts as JSON. Only the game's own files are served over HTTP.
+// The log names each player's IP address and rough location (geo.mjs; --no-geo turns the location lookup off).
 import { createServer } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { readFile, stat } from 'node:fs/promises';
@@ -19,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
+import { clientIp, locate } from './geo.mjs';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
 
@@ -32,7 +34,7 @@ const round = (a, d) => a.map(v => +v.toFixed(d));
 
 /** Start the server; resolves with { port, close(), stats() }. `port: 0` picks a free port (tests). */
 /** `tls: { cert, key }` (PEM strings) serves https:// and wss:// instead of http:// and ws://. */
-export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, tls = null, log = console.log } = {}) {
+export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, tls = null, log = console.log, geo = false, trustProxy = false } = {}) {
     const rooms = new Map();   // `${mode}:${room}` → { key, mode, name, seed, hostId, tick, players: Map<id, client> }
     const clients = new Set(); // every connection, joined or not
     let nextId = 1;
@@ -114,7 +116,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, team: c.team, score: room.score, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
             players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot, team: p.team })) });
         broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot, team: c.team }, c);
-        log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot} (${room.players.size})`);
+        log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot}${c.team === null ? '' : ` team ${c.team ? 'Blue' : 'Red'}`} (${room.players.size}) from ${where(c)}`);
+        if (geo && !c.place) c.locating.then(() => { if (c.room) log(`  ${c.name}#${c.id} is at ${where(c)}`); }); // lookup still running at join
     }
     function reject(c, reason) { send(c, MSG.REJECT, { reason }); c.ws.close(4000, reason.slice(0, 100)); }
 
@@ -127,7 +130,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             if (room.hostId !== null) broadcast(room, MSG.HOST, { hostId: room.hostId });
         }
         if (!room.players.size) rooms.delete(room.key);
-        log(`- ${c.name}#${c.id} ← ${room.key} (${room.players.size})`);
+        log(`- ${c.name}#${c.id} ← ${room.key} (${room.players.size}) ${c.ip}`);
     }
 
     /** Accept a plane report if it is physically possible since the last accepted one. */
@@ -248,8 +251,13 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         }
     }
 
-    wss.on('connection', ws => {
+    /** "1.2.3.4 (Kraków, Lesser Poland, Poland · Orange)" — as much as is known yet. */
+    const where = c => (c.place ? `${c.ip} (${c.place})` : c.ip);
+
+    wss.on('connection', (ws, req) => {
         const c = { id: nextId++, ws, room: null, name: 'Pilot', alive: true, heartbeat: true, connectedAt: Date.now(), budget: LIMITS.maxMsgPerSec, budgetAt: Date.now() };
+        c.ip = clientIp(req, trustProxy);
+        if (geo) c.locating = locate(c.ip).then(place => { c.place = place; }); // usually done before HELLO arrives
         clients.add(c);
         ws.on('pong', () => { c.heartbeat = true; });
         ws.on('message', raw => {
@@ -291,6 +299,9 @@ const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/serve
   --tls-cert <file>   use your own certificate instead (PEM; with --tls-key; env TLS_CERT / TLS_KEY)
   --tls-key <file>
   --origins <list>    comma-separated extra page origins allowed to connect (env ALLOWED_ORIGINS)
+  --no-geo            log players' IP addresses only; by default each new public IP is also sent once to
+                      ip-api.com to log a rough location (city, country, network)
+  --trust-proxy       behind a reverse proxy or tunnel (Cloudflare, nginx): log the IP it forwards, not the proxy's
   --help              show this help
 Command-line options win over environment variables.`;
 
@@ -300,6 +311,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         ({ values: args } = parseArgs({ options: {
             port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' },
             tls: { type: 'boolean' }, public: { type: 'string' }, 'tls-cert': { type: 'string' }, 'tls-key': { type: 'string' },
+            'no-geo': { type: 'boolean' }, 'trust-proxy': { type: 'boolean' },
             help: { type: 'boolean', short: 'h' },
         } }));
     } catch (e) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
@@ -326,7 +338,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     } catch (e) { console.error(`TLS: ${e.message}`); process.exit(1); }
 
     let srv;
-    try { srv = await startMpServer({ port, host, allowedOrigins, tls }); } catch (e) {
+    try { srv = await startMpServer({ port, host, allowedOrigins, tls, geo: !args['no-geo'], trustProxy: !!args['trust-proxy'] }); } catch (e) {
         console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — stop the other program or choose another port: --port ${port + 1}`
             : e.code === 'EACCES' ? `No permission to use port ${port} — use a port above 1024, e.g. --port 8787` : e.message);
         process.exit(1);

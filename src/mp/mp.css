@@ -1,7 +1,7 @@
 /* Multiplayer HUD (src/mp/index.js) — loaded only with ?mp, so the shared style.css stays untouched */
-/* Right column under Targets: the ace panel's slot (there is no ace in multiplayer) */
+/* Top edge, left of Targets: clear of the right column (Ace Hunt panel, key help, coordinates) */
 #net-status {
-    position: fixed; top: 124px; right: 10px; z-index: 20; pointer-events: none;
+    position: fixed; top: 10px; right: 145px; max-height: calc(100vh - 300px); overflow: hidden; z-index: 20; pointer-events: none;
     padding: 4px 10px; font: 11px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--hud-amber); background: var(--hud-bg); border: 1px solid currentColor; white-space: nowrap;
 }
@@ -22,7 +22,10 @@
 #mp-lobby input:focus-visible { outline: 2px solid var(--hud-amber); outline-offset: 2px; }
 #mp-lobby button:disabled { opacity: 0.4; cursor: default; }
 /* Phones (ui/touch.js): under the pause / tilt / fullscreen buttons */
-body.touch #net-status { top: 58px; font-size: 9px; padding: 3px 8px; }
+body.touch #net-status { top: 58px; right: 10px; font-size: 9px; padding: 3px 8px; pointer-events: auto; max-height: calc(100vh - 250px); }
+/* Phones: folded to the status line and score (tap to open); index.js stacks it under the Ace Hunt panel */
+body.touch #net-status.folded .net-pilot, body.touch #net-status.folded .net-team { display: none; }
+body.touch #net-status.folded::after { content: '▾ tap for pilots'; display: block; opacity: 0.6; }
 /* Change-callsign dialog */
 #mp-lobby .mp-name-row { display: flex; gap: 8px; align-items: center; }
 #mp-lobby .mp-dice { font-size: 20px; padding: 6px 10px; background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright); cursor: pointer; }

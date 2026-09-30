@@ -48,6 +48,7 @@ if (net.enabled) {
     document.head.appendChild(css);
     const chip = document.createElement('div');
     chip.id = 'net-status'; chip.setAttribute('aria-live', 'polite');
+    chip.addEventListener('click', () => chip.classList.toggle('folded')); // phones: fold / unfold the roster
     document.body.appendChild(chip);
 
     const _p = new THREE.Vector3(), _q = new THREE.Quaternion();
@@ -160,6 +161,11 @@ if (net.enabled) {
             } else rows.push(...pilots.map(p => p.el));
         }
         chip.replaceChildren(...rows);
+        if (document.body.classList.contains('touch')) { // phones: start folded, and sit under the Ace Hunt panel when it shows
+            if (!chip.dataset.folded) { chip.dataset.folded = '1'; chip.classList.add('folded'); }
+            const ace = document.getElementById('rival-panel'), r = ace && getComputedStyle(ace).display !== 'none' ? ace.getBoundingClientRect() : null;
+            chip.style.top = `${r && r.height ? Math.round(r.bottom + 6) : 58}px`;
+        }
     }
     renderChip();
 
