@@ -96,7 +96,7 @@ Extra checks (optional):
 | Roster stays `○ connecting…` | The server was stopped or restarted. Check its terminal. |
 | The other plane stutters or freezes | Its window is hidden or minimised. Keep both windows visible. |
 | Bravo keeps reloading | Only one reload is expected. If it repeats, send me the server log. |
-| `EADDRINUSE` when starting the server | Something already uses port 8787. Close the other server, or pick another port (PowerShell: `$env:PORT=8788; npm run mp-server`, bash: `PORT=8788 npm run mp-server`) and use it in the addresses. |
+| `EADDRINUSE` when starting the server | Something already uses port 8787. Close the other server, or pick another port with `npm run mp-server -- --port 8788` and use it in the addresses. |
 | Your plane jumps back | The server rejected impossible movement (`CORRECT`). This should not happen in normal flight; report it with what you were doing. |
 
 ## 6. Report back

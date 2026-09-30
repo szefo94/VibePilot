@@ -1,7 +1,7 @@
 // VibePilot multiplayer server: serves the game and runs the rooms (see MULTIPLAYER.md).
 //
-//   npm run mp-server                 # http://localhost:8787/?mp  (game + WebSocket on one port)
-//   PORT=9000 HOST=0.0.0.0 npm run mp-server
+//   npm run mp-server                              # http://localhost:8787/?mp  (game + WebSocket on one port)
+//   npm run mp-server -- --port 9000 --host 0.0.0.0 # any port, reachable from the network; --help for all options
 //
 // The server owns the session state; clients only fly their own plane and report it.
 //   room      (mode, name); the first player's map seed becomes the room's, later players reload onto it
@@ -15,6 +15,8 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join as joinPath, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { networkInterfaces } from 'node:os';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, VALIDATION, cleanName, cleanRoom, decode, encode, spawnSlot } from '../src/net/protocol.js';
 
@@ -59,6 +61,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         maxPayload: LIMITS.maxMsgBytes,
         verifyClient: ({ origin, req }) => !allowedOrigins.length || allowedOrigins.includes(origin) || origin === `http://${req.headers.host}` || origin === `https://${req.headers.host}`,
     });
+
+    wss.on('error', () => {}); // ws re-emits listen errors (EADDRINUSE…); the http 'error' handler below reports them
 
     const send = (c, t, data) => { if (c.ws.readyState === c.ws.OPEN) c.ws.send(encode(t, data)); };
     const broadcast = (room, t, data, except = null) => { for (const c of room.players.values()) if (c !== except) send(c, t, data); };
@@ -200,15 +204,41 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     });
 }
 
+const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/server.mjs [options])
+
+  --port <n>        port for the game and WebSocket (default ${DEFAULT_PORT}; env PORT)
+  --host <addr>     127.0.0.1 = this computer only (default), 0.0.0.0 = whole network (env HOST)
+  --origins <list>  comma-separated extra page origins allowed to connect, e.g. https://example.com (env ALLOWED_ORIGINS)
+  --help            show this help
+Command-line options win over environment variables.`;
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-    const host = process.env.HOST || '127.0.0.1';
-    const srv = await startMpServer({ port: Number(process.env.PORT) || DEFAULT_PORT, host, allowedOrigins });
-    const shown = host === '0.0.0.0' ? 'localhost' : host;
-    console.log(`VibePilot multiplayer server
+    let args;
+    try {
+        ({ values: args } = parseArgs({ options: { port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' }, help: { type: 'boolean', short: 'h' } } }));
+    } catch (e) { console.error(`${e.message}
+
+${USAGE}`); process.exit(1); }
+    if (args.help) { console.log(USAGE); process.exit(0); }
+    const port = Number(args.port ?? process.env.PORT ?? DEFAULT_PORT);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) { console.error(`Invalid port "${args.port ?? process.env.PORT}" — use a number from 1 to 65535.`); process.exit(1); }
+    const host = args.host ?? process.env.HOST ?? '127.0.0.1';
+    const allowedOrigins = (args.origins ?? process.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    let srv;
+    try { srv = await startMpServer({ port, host, allowedOrigins }); } catch (e) {
+        console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — stop the other program or choose another port: --port ${port + 1}`
+            : e.code === 'EACCES' ? `No permission to use port ${port} — ports below 1024 need admin rights; use e.g. --port 8787` : e.message);
+        process.exit(1);
+    }
+    const everywhere = host === '0.0.0.0' || host === '::';
+    const lan = everywhere ? Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address) : [];
+    const shown = everywhere ? 'localhost' : host;
+    console.log(`VibePilot multiplayer server — port ${srv.port}, ${everywhere ? 'reachable from your network' : `listening on ${host} only`}
   game:    http://${shown}:${srv.port}/?mp&room=test&name=Alpha
-  health:  http://${shown}:${srv.port}/health
-  origins: ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (set ALLOWED_ORIGINS to restrict)'}`);
+${lan.map(ip => `  network: http://${ip}:${srv.port}/?mp&room=test&name=Bravo
+`).join('')}  health:  http://${shown}:${srv.port}/health
+  origins: ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (use --origins to restrict)'}
+Stop with Ctrl+C.`);
     const stop = () => srv.close().then(() => process.exit(0));
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

@@ -2,6 +2,7 @@
 
 Multiplayer development happens on the **`multiplayer`** branch. This file is the plan and reference. The step-by-step guides are:
 
+- [Server hosting quick start](docs/multiplayer/server-hosting-quick-start.md): run the server on any port, locally, on your LAN or on the internet
 - [Test 1: two tabs on one computer](docs/multiplayer/test-1-two-tabs.md)
 - [Server setup on a Raspberry Pi 5](docs/multiplayer/server-setup-raspberry-pi.md)
 
@@ -121,7 +122,8 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [x] The server owns the state: snapshots, spawn slots, validation with `CORRECT`, down/respawn, and serving the game.
 - [x] Client: joins onto the room's map, remote planes with interpolation, roster panel, minimap blips, respawn instead of game over.
 - [x] Automated tests: 25 server checks; a two-tab browser run; the 27 single-player tests still pass.
-- [ ] **Test stage 1 by hand** ([guide](docs/multiplayer/test-1-two-tabs.md)).
+- [x] **Test stage 1 by hand** ([guide](docs/multiplayer/test-1-two-tabs.md)): two tabs work.
+- [x] Configurable port and host (`--port`, `--host`, `--origins`; [quick start](docs/multiplayer/server-hosting-quick-start.md)).
 - [ ] Lobby dialog on the start menu (server, room, name) instead of URL parameters.
 - [ ] Stages 2–4: LAN, Raspberry Pi, internet.
 - [ ] Tuning from real play: interpolation delay, report rate, spawn layout (the spawn line can face an obstacle on some maps).
@@ -188,7 +190,7 @@ npm run test:browser # 27 single-player browser tests (needs Node 20+ for Playwr
 
 | Path | What it is |
 |---|---|
-| `server/server.mjs` | The server: game files, rooms, state, validation |
+| `server/server.mjs` | The server: game files, rooms, state, validation. Run it with `npm run mp-server -- --port <n> --host <addr>` |
 | `server/deploy/` | systemd unit and `update.sh` for the Pi |
 | `src/net/protocol.js` | Protocol shared by browser and server |
 | `src/net/net.js` | Connection, peers, clock |
