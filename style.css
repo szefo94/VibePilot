@@ -790,9 +790,10 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 .tc-rotate { display: none; }
 /* Menus own the screen; the overlay only shows while flying */
 body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons, body.menu-open #touch-controls .tc-indicator { display: none; }
-/* Tilt steering: the phone does pitch and roll, so only the throttle stays on screen (the right wheel, up/down) */
-body.tilt-on .tc-left, body.tilt-on .tc-roll-hint { display: none; }
-body.tilt-on .tc-right { width: 90px; border-radius: 45px; }
+/* Tilt steering: the phone does pitch and roll, so only the right wheel (throttle, yaw) and LEVEL stay */
+body.tilt-on .tc-left { display: none; }
+.tc-system .tc-level { display: none; width: 58px; font-size: 11px !important; }
+body.tilt-on .tc-system .tc-level { display: block; }
 /* Movement indicator between the thumbs: ball = pitch/roll input, bar = yaw, gauge = throttle */
 .tc-indicator { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 8px; pointer-events: none; opacity: 0.85; }
 .tc-ind-ring { position: relative; width: 60px; height: 60px; border-radius: 50%; border: 1.5px solid var(--hud-border-bright); background: rgba(0, 20, 10, 0.4); }
