@@ -115,6 +115,7 @@ export const RIVAL = Object.freeze({
     pingError: 300,           // Ace Hunt's radar ping is only this accurate: the ace flies to the area, then searches
     searchTime: 600,          // frames spent at the last known position before giving up and patrolling
     patrolRadius: 0.6,        // × MAP_BOUNDARY: patrol waypoints (team bots, or an ace with nothing on radar)
+    rallyRadius: 250,         // a rallying ace (spawnAce rally) is there within this distance of its first waypoint
     rotAccelScale: 0.6,       // × the player's rotational acceleration: aces wind up their turns more slowly
     // Collisions and growth
     collisionScale: 0.8,      // × (sum of collision radii): aircraft this close collide and both explode
