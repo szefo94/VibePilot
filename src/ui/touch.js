@@ -1,15 +1,18 @@
 /**
  * Phone / tablet controls: an on-screen overlay with two wheels, plus optional tilt steering from the motion sensor.
  *
- *   left wheel   up/down = pitch · left/right = yaw
- *   right wheel  up/down = throttle forward/back · left/right = roll
+ *   left wheel   up/down = pitch · left/right = roll
+ *   right wheel  up/down = throttle forward/back · left/right = yaw
  *   buttons      GUN (hold) beside the right wheel · MSL · FLR · BOMB · NAP · LASER above it
  *   indicator    between the thumbs: a ball for pitch/roll input, a bar for yaw, a gauge for throttle
  *   top right    ⏸ pause · TILT · ☾/☀ night/day · ⛶ fullscreen
  *
- * TILT: tilting the phone steers pitch and roll ("level" = how you hold it when you switch it on), softly — a wide
- * range, a dead zone, an expo curve and smoothing — and the screen keeps only the throttle (the right wheel, locked
- * to up/down); a little yaw follows the roll so turns stay coordinated.
+ * TILT: tilting the phone steers pitch and roll, relative to however you hold it when you switch it on (LEVEL
+ * recentres). It reads the accelerometer's gravity vector (DeviceMotionEvent.accelerationIncludingGravity), turned
+ * into the screen's frame and low-passed so hand shake doesn't register — the usual approach for tilt games; it has
+ * no compass drift and none of the landscape gimbal problems of orientation angles. Response is soft: a wide range,
+ * a dead zone and an expo curve. The left wheel hides; the right wheel (yaw, throttle) stays.
+ * Phones that report no accelerometer data fall back to orientation angles (DeviceOrientationEvent).
  *
  * It switches on for touch screens (coarse pointer) or at the first touch anywhere. Values land in `touchAxes`,
  * which input.js adds to the gamepad axes, so flight.js needs no touch-specific code. Mouse steering is turned
@@ -30,13 +33,14 @@ export const touchAxes = { pitch: 0, roll: 0, yaw: 0, throttleUp: 0, throttleDow
 const WHEEL_TRAVEL = 56;   // px — knob travel from the centre
 const WHEEL_DEADZONE = 0.12;
 const TILT = Object.freeze({
-    max: 40,        // degrees of tilt for full deflection (was 25: far too twitchy)
-    deadzone: 5,    // degrees ignored around "level"
-    expo: 1.7,      // response curve: gentle near centre, full at the edge
-    smoothing: 0.18, // per sensor event: low-pass to remove hand jitter
-    yawMix: 0.3,    // roll input also yaws a little (the yaw wheel is hidden while tilting)
+    max: 40,          // degrees away from the reference for full deflection
+    deadzone: 5,      // degrees ignored around the reference
+    expo: 1.7,        // response curve: gentle near centre, full at the edge
+    lowPass: 0.15,    // per sensor event: gravity-vector low-pass (hand shake and bumps don't register)
+    calibration: 8,   // readings averaged into the reference when tilt starts or LEVEL is tapped
+    yawMix: 0.2,      // roll also yaws a little, so turns stay coordinated
 });
-let enabled = false, tilt = null, laserButton = null; // tilt: { neutralPitch, neutralRoll, pitch, roll } while tilt steering is on
+let enabled = false, tilt = null, laserButton = null; // tilt: { g, ref, samples, pitch, roll, source } while tilt steering is on
 const wheels = {};         // name → { id, x, y, release, lockX }
 let indicator = null;      // { ball, yaw, thr }
 
@@ -76,8 +80,8 @@ function enable() {
     const root = document.createElement('div');
     root.id = 'touch-controls';
     root.innerHTML = `
-        <div class="tc-wheel tc-left" aria-label="Pitch and yaw"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left-hint">YAW</span><div class="tc-knob"></div></div>
-        <div class="tc-wheel tc-right" aria-label="Throttle and roll"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left-hint tc-roll-hint">ROLL</span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-left" aria-label="Pitch and roll"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left-hint">ROLL</span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-right" aria-label="Throttle and yaw"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left-hint">YAW</span><div class="tc-knob"></div></div>
         <div class="tc-indicator" aria-hidden="true">
             <div class="tc-ind-ring"><div class="tc-ind-cross"></div><div class="tc-ind-ball"></div></div>
             <div class="tc-ind-yaw"><div></div></div>
@@ -94,6 +98,7 @@ function enable() {
         <div class="tc-system">
             <button type="button" data-tap="pause" aria-label="Pause">⏸</button>
             <button type="button" data-activate="tilt" aria-pressed="false">TILT</button>
+            <button type="button" data-tap="level" class="tc-level" aria-label="Recentre tilt">LEVEL</button>
             <button type="button" data-tap="daynight" aria-label="Day or night">☾</button>
             <button type="button" data-activate="fullscreen" aria-label="Fullscreen">⛶</button>
         </div>
@@ -132,6 +137,7 @@ function enable() {
 
 function tap(action, button) {
     if (action === 'pause') { togglePause(); return; }
+    if (action === 'level') { if (tilt) { recalibrate(); local('Tilt recentred — this is level now'); } return; }
     if (action === 'daynight') { setSetting('timeOfDay', settings.timeOfDay === 'night' ? 'day' : 'night'); button.textContent = settings.timeOfDay === 'night' ? '☀' : '☾'; return; }
     if (action === 'laser') { aimingLaser.visible = !aimingLaser.visible; button.setAttribute('aria-pressed', String(aimingLaser.visible)); return; }
     if (!flying()) return;
@@ -160,53 +166,81 @@ function toggleFullscreen() {
 }
 
 // --- Tilt steering ---------------------------------------------------------------------------------
+// Gravity (the accelerometer's reaction vector, "up" in the device frame) turned into the screen's frame:
+// sx = screen right, sy = screen up, sz = out of the screen. Pitch and roll are angles of that vector, measured
+// against the reference captured when tilt starts.
 
-/** Device tilt in the screen's frame: pitch = nose down when the top edge tips away, roll = right when tilted right. */
-function screenTilt(e) {
-    const angle = screen.orientation?.angle ?? window.orientation ?? 0;
-    const b = e.beta ?? 0, g = e.gamma ?? 0;
-    if (angle === 90) return { pitch: g, roll: b };
-    if (angle === 270 || angle === -90) return { pitch: -g, roll: -b };
-    return { pitch: -b, roll: g }; // portrait
+/** Device-frame vector → screen frame for the current screen rotation (0, 90, 180, 270). */
+function toScreen(x, y, z) {
+    const a = ((screen.orientation?.angle ?? window.orientation ?? 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+    return { sx: x * c - y * s, sy: x * s + y * c, sz: z };
 }
-/** Degrees away from level → -1…1: dead zone, then an expo curve for fine control near the centre. */
-function tiltAxis(v, neutral) {
-    const d = v - neutral, a = Math.abs(d);
+const pitchOf = v => Math.atan2(v.sy, v.sz);                    // leaning the top edge away lowers it
+const rollOf = v => Math.atan2(v.sx, Math.hypot(v.sy, v.sz));   // dipping the right edge lowers it
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+/** Radians away from the reference → -1…1: dead zone, then an expo curve for fine control near the centre. */
+function tiltAxis(rad) {
+    const deg = (rad * 180) / Math.PI, a = Math.abs(deg);
     if (a < TILT.deadzone) return 0;
-    const t = Math.min(1, (a - TILT.deadzone) / (TILT.max - TILT.deadzone));
-    return Math.sign(d) * Math.pow(t, TILT.expo);
+    return Math.sign(deg) * Math.pow(Math.min(1, (a - TILT.deadzone) / (TILT.max - TILT.deadzone)), TILT.expo);
 }
-function onOrientation(e) {
+function recalibrate() { tilt.ref = null; tilt.samples = []; tilt.pitch = tilt.roll = 0; }
+/** One gravity reading (screen frame): calibrate first, then steer by the change from the reference. */
+function onGravity(raw) {
     if (!tilt) return;
-    const t = screenTilt(e);
-    if (tilt.neutralPitch === null) { tilt.neutralPitch = t.pitch; tilt.neutralRoll = t.roll; } // first reading = level
-    tilt.pitch += (tiltAxis(t.pitch, tilt.neutralPitch) - tilt.pitch) * TILT.smoothing;
-    tilt.roll += (tiltAxis(t.roll, tilt.neutralRoll) - tilt.roll) * TILT.smoothing;
+    const g = tilt.g ? { sx: tilt.g.sx + (raw.sx - tilt.g.sx) * TILT.lowPass, sy: tilt.g.sy + (raw.sy - tilt.g.sy) * TILT.lowPass, sz: tilt.g.sz + (raw.sz - tilt.g.sz) * TILT.lowPass } : raw;
+    tilt.g = g;
+    if (!tilt.ref) {
+        tilt.samples.push(raw);
+        if (tilt.samples.length < TILT.calibration) return;
+        const n = tilt.samples.length, avg = k => tilt.samples.reduce((t, v) => t + v[k], 0) / n;
+        tilt.ref = { sx: avg('sx'), sy: avg('sy'), sz: avg('sz') };
+        // Some browsers report the vector with the opposite sign: hold posture always has "up" towards the screen's
+        // top and face, so flip everything if the reference points the other way
+        tilt.sign = tilt.ref.sy + tilt.ref.sz < 0 ? -1 : 1;
+        tilt.g = { ...tilt.ref };
+        return;
+    }
+    const s = tilt.sign, cur = { sx: g.sx * s, sy: g.sy * s, sz: g.sz * s }, ref = { sx: tilt.ref.sx * s, sy: tilt.ref.sy * s, sz: tilt.ref.sz * s };
+    tilt.pitch = -tiltAxis(wrap(pitchOf(cur) - pitchOf(ref))); // +pitch = nose down: top edge tipped away
+    tilt.roll = -tiltAxis(rollOf(cur) - rollOf(ref));          // +roll = right: right edge dipped
+}
+function onMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x === null) return;
+    tilt.source = 'motion';
+    onGravity(toScreen(a.x, a.y, a.z));
+}
+/** Fallback for phones without accelerometer data: gravity rebuilt from orientation angles. */
+function onOrientation(e) {
+    if (!tilt || tilt.source === 'motion' || e.beta === null) return;
+    const b = (e.beta * Math.PI) / 180, g = (e.gamma * Math.PI) / 180;
+    onGravity(toScreen(-Math.cos(b) * Math.sin(g), Math.sin(b), Math.cos(b) * Math.cos(g)));
 }
 function setTiltMode(on) {
     document.body.classList.toggle('tilt-on', on);
-    wheels.right.lockX = on; // throttle only
     wheels.left.release(); wheels.right.release();
 }
 async function toggleTilt(button) {
     if (tilt) {
-        tilt = null; window.removeEventListener('deviceorientation', onOrientation);
+        tilt = null; window.removeEventListener('devicemotion', onMotion); window.removeEventListener('deviceorientation', onOrientation);
         button.setAttribute('aria-pressed', 'false'); setTiltMode(false); local('Tilt steering off');
         return;
     }
-    if (!('DeviceOrientationEvent' in window) || !window.isSecureContext) {
+    if (!('DeviceMotionEvent' in window) || !window.isSecureContext) {
         local(window.isSecureContext ? 'No motion sensor on this device' : 'Tilt needs https:// — use the wheels');
         return;
     }
-    try {
-        if (typeof DeviceOrientationEvent.requestPermission === 'function' && await DeviceOrientationEvent.requestPermission() !== 'granted') {
-            local('Motion sensor permission denied'); return;
+    try { // iPhone: both sensors need the player's permission, asked from this tap
+        for (const Ev of [window.DeviceMotionEvent, window.DeviceOrientationEvent]) {
+            if (typeof Ev?.requestPermission === 'function' && await Ev.requestPermission() !== 'granted') { local('Motion sensor permission denied'); return; }
         }
     } catch { local('Motion sensor permission denied'); return; }
-    tilt = { neutralPitch: null, neutralRoll: null, pitch: 0, roll: 0 };
+    tilt = { g: null, ref: null, samples: [], sign: 1, pitch: 0, roll: 0, source: null };
+    window.addEventListener('devicemotion', onMotion);
     window.addEventListener('deviceorientation', onOrientation);
     button.setAttribute('aria-pressed', 'true'); setTiltMode(true);
-    local('Tilt steering on — hold the phone as "level" now');
+    local('Tilt steering on — your current hold is level (LEVEL recentres)');
 }
 
 /** Once per frame from input.js, before the axes are read: fold the wheels and tilt into touchAxes. */
@@ -219,11 +253,11 @@ export function updateTouchAxes() {
     if (tilt) {
         touchAxes.pitch = clamp1(tilt.pitch);
         touchAxes.roll = clamp1(tilt.roll);
-        touchAxes.yaw = -touchAxes.roll * TILT.yawMix;
+        touchAxes.yaw = clamp1(-dead(R.x) - touchAxes.roll * TILT.yawMix);
     } else {
         touchAxes.pitch = dead(L.y);
-        touchAxes.yaw = -dead(L.x);
-        touchAxes.roll = dead(R.x);
+        touchAxes.roll = dead(L.x);
+        touchAxes.yaw = -dead(R.x);
     }
     const thrust = -dead(R.y); // right wheel up = forward
     touchAxes.throttleUp = Math.max(0, thrust);
