@@ -18,6 +18,7 @@ export const state = {
     // Control flow
     isGameOver: false,
     isPaused: false,
+    _playerDown: false, // RULES.respawn: shot down, waiting for respawnPlayer() (game/respawn.js)
     awaitingStart: true, // start menu showing; game/session.js clears it (or ?autostart)
     // Interceptor event
     _gameElapsed: 0, // seconds-equivalent (frame units at 60 fps)

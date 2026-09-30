@@ -7,6 +7,7 @@ import { spawnHoverWing, spawnSingleEnemy, spawnStrikeWing } from '../entities/a
 import { numCollectibleChains, spawnCollectibleChains, spawnHoopChains } from '../entities/collectibles.js';
 import { spawnTube } from '../entities/tubes.js';
 import { createObstacles, numHoopChains } from '../entities/obstacles.js';
+import { RULES } from '../game/rules.js';
 
 const MAX_PLACEMENT_TRIES = 200;
 // Base footprints, from how far each spawner places its units: land bases need that much clearance inland
@@ -62,16 +63,19 @@ function place(kind, count, spawn) {
 
 export function createAllUnits() {
     createIslets(10); createObstacles();
-    for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
-    place('carrierGroup', numCarrierGroups, p => spawnCarrierStrikeGroup(p.x, p.z));
-    place('destroyerSquadron', numDestroyerSquadrons, p => spawnDestroyerSquadron(p.x, p.z));
-    place('airbase', numAirbases, p => spawnAirbase(p.x, p.z, p.islet));
-    place('forwardBase', numForwardBases, p => spawnForwardBase(p.x, p.z, p.islet));
+    if (RULES.enemies) {
+        for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
+        place('carrierGroup', numCarrierGroups, p => spawnCarrierStrikeGroup(p.x, p.z));
+        place('destroyerSquadron', numDestroyerSquadrons, p => spawnDestroyerSquadron(p.x, p.z));
+        place('airbase', numAirbases, p => spawnAirbase(p.x, p.z, p.islet));
+        place('forwardBase', numForwardBases, p => spawnForwardBase(p.x, p.z, p.islet));
+    }
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
     // Spawn challenge tubes (cyan, one-pass with orb ratio scoring) and free tubes (orange, open entry)
     for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'challenge'); }
     for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'free'); }
+    if (!RULES.enemies) return;
     const sz2_100 = 400 * 400;
     for (let i = 0; i < numHoverWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x += 500; p.z += 500; } spawnHoverWing(p.x, p.z); }
     for (let i = 0; i < numStrikeWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x -= 500; p.z -= 500; } spawnStrikeWing(p.x, p.z); }

@@ -7,6 +7,7 @@ import { plane } from '../player/plane.js';
 import { airUnits, baseMarkers, collectibles, enemies, groundUnits, markers } from '../entities/registry.js';
 import { tubes } from '../entities/tubes.js';
 import { rivalMissilesInFlight } from '../entities/rival.js';
+import { runHooks } from '../game/hooks.js';
 
 let _radarBlips = [];                 // frozen positions updated once per sweep
 const _radarPlayerPos = new THREE.Vector3(); // frozen player world position at snapshot
@@ -37,6 +38,7 @@ export function updateRadarSnapshot() {
     rivalMissilesInFlight().forEach(m => { if (!m.userData.decoyed) _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: '#ff33cc', shape: 'dot' }); });
     baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
     tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: '#00ccff', shape: 'ring' }); });
+    runHooks('radarBlips', _radarBlips); // extra blips from optional systems (game/hooks.js)
 }
 export function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);

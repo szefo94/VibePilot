@@ -93,8 +93,6 @@ export const DIFFICULTY_PRESETS = Object.freeze({
     hard:   { enemyDamage: 1.5, enemyFireInterval: 0.7, interceptorDelay: 0.7 },
 });
 export const MISSION_COMPLETE_BONUS = 1000; // score for eliminating every base
-// Multiplayer relay used by a bare ?mp (src/net/net.js). GitHub Pages is HTTPS, so a deployed server needs wss://.
-export const MP_SERVER_URL = 'ws://localhost:8787';
 
 // --- Ace rival (entities/rival.js) ---
 // Distances in world units, times in frames at 60 fps, angles in radians. Per-tier values live in RIVAL_SKILL.

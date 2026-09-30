@@ -1,29 +1,28 @@
-# systemd unit for the VibePilot multiplayer relay on a Raspberry Pi (see MULTIPLAYER.md → Raspberry Pi).
+# systemd unit for the VibePilot multiplayer server on a Raspberry Pi.
+# Guide: docs/multiplayer/server-setup-raspberry-pi.md
 #   sudo cp server/deploy/vibepilot-mp.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now vibepilot-mp
 #   journalctl -u vibepilot-mp -f
 [Unit]
-Description=VibePilot multiplayer relay
+Description=VibePilot multiplayer server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Recent Raspberry Pi OS images have no default "pi" user: change User and WorkingDirectory to yours
-User=pi
-WorkingDirectory=/home/pi/VibePilot
+User=vibepilot
+WorkingDirectory=/opt/vibepilot/app
 ExecStart=/usr/bin/node server/server.mjs
 Environment=PORT=8787
-# Localhost only: cloudflared (or Caddy) terminates TLS in front and forwards to it
+# 127.0.0.1: only the tunnel (cloudflared / Tailscale) reaches it. Use 0.0.0.0 for LAN testing without a tunnel.
 Environment=HOST=127.0.0.1
-Environment=ALLOWED_ORIGINS=https://szefo94.github.io
 Restart=always
 RestartSec=3
-# Hardening: the relay needs no disk writes or privileges
+# Hardening: the server only reads the game files and needs no privileges
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=read-only
+ProtectHome=true
 PrivateTmp=true
-MemoryMax=200M
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

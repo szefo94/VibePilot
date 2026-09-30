@@ -10,7 +10,7 @@ export const _gameOverPos = new THREE.Vector3();
 const _goOrbitDist = 35;
 
 export function updateCamera(dt) {
-    if (state.isGameOver) {
+    if (state.isGameOver || state._playerDown) { // game over or waiting to respawn: orbit the crash site
         const ORBIT_SPEED = 0.025 * dt; // radians per 60 fps frame
         if (keys.ArrowLeft  || keys.a) state._goOrbitYaw   -= ORBIT_SPEED;
         if (keys.ArrowRight || keys.d) state._goOrbitYaw   += ORBIT_SPEED;

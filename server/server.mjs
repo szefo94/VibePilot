@@ -1,23 +1,34 @@
-// VibePilot multiplayer relay: rooms over WebSocket, no game simulation (see MULTIPLAYER.md).
+// VibePilot multiplayer server: serves the game and runs the rooms (see MULTIPLAYER.md).
 //
-//   npm run mp-server                 # ws://localhost:8787
-//   PORT=9000 HOST=0.0.0.0 ALLOWED_ORIGINS=https://szefo94.github.io npm run mp-server
+//   npm run mp-server                 # http://localhost:8787/?mp  (game + WebSocket on one port)
+//   PORT=9000 HOST=0.0.0.0 npm run mp-server
 //
-// A room is (mode, name). The first player's map seed becomes the room's seed; later players are told it in
-// WELCOME and reload onto the same map. The server relays plane state and events, routes PvP hits to their
-// target, and in co-op tracks which player is the host (the authority for enemy state) and hands it over when
-// that player leaves. GET /health returns room/player counts as JSON.
+// The server owns the session state; clients only fly their own plane and report it.
+//   room      (mode, name); the first player's map seed becomes the room's, later players reload onto it
+//   roster    ids, names, spawn slots; JOIN / LEAVE
+//   planes    each STATE report is validated (speed, bounds) before it is accepted; repeated rejects → CORRECT
+//   clock     one SNAP of the whole room per tick (LIMITS.tickHz) with the server time, for interpolation
+//   life      DOWN marks a player dead; SPAWN puts them back at their slot after LIMITS.respawnMs
+// PvP hits are routed to their target; in co-op the server tracks the host and hands it over (phases 2–3).
+// GET /health returns room and player counts as JSON. Only the game's own files are served over HTTP.
 import { createServer } from 'node:http';
-import { resolve } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join as joinPath, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, cleanName, cleanRoom, decode, encode } from '../src/net/protocol.js';
+import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, VALIDATION, cleanName, cleanRoom, decode, encode, spawnSlot } from '../src/net/protocol.js';
+
+const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+// Public files: the page, its stylesheet, three.js and the game modules. Never .git, server/, node_modules, docs.
+const PUBLIC = /^\/(index\.html|style\.css|three\.min\.js|src\/[\w/.-]+\.(js|css))$/;
 
 const isVec = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isFinite);
+const round = (a, d) => a.map(v => +v.toFixed(d));
 
-/** Start the relay; resolves with { port, close(), stats() }. `port: 0` picks a free port (tests). */
-export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], log = console.log } = {}) {
-    const rooms = new Map(); // `${mode}:${room}` → { key, mode, name, seed, hostId, players: Map<id, client> }
+/** Start the server; resolves with { port, close(), stats() }. `port: 0` picks a free port (tests). */
+export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, log = console.log } = {}) {
+    const rooms = new Map();   // `${mode}:${room}` → { key, mode, name, seed, hostId, tick, players: Map<id, client> }
     const clients = new Set(); // every connection, joined or not
     let nextId = 1;
     const started = Date.now();
@@ -28,18 +39,36 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0),
     });
 
-    const http = createServer((req, res) => {
-        if (req.url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify(stats())); return; }
-        res.writeHead(404).end('VibePilot multiplayer relay — connect over WebSocket');
+    const http = createServer(async (req, res) => {
+        const path = new URL(req.url, 'http://x').pathname;
+        if (path === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify(stats())); return; }
+        const rel = path === '/' ? '/index.html' : path;
+        if (serveGame && PUBLIC.test(rel) && !rel.includes('..')) {
+            const file = normalize(joinPath(ROOT, rel));
+            try {
+                if (file.startsWith(ROOT + sep) && (await stat(file)).isFile()) {
+                    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }).end(await readFile(file));
+                    return;
+                }
+            } catch { /* 404 below */ }
+        }
+        res.writeHead(404).end('Not found');
     });
     const wss = new WebSocketServer({
         server: http,
         maxPayload: LIMITS.maxMsgBytes,
-        verifyClient: ({ origin }) => !allowedOrigins.length || allowedOrigins.includes(origin),
+        verifyClient: ({ origin, req }) => !allowedOrigins.length || allowedOrigins.includes(origin) || origin === `http://${req.headers.host}` || origin === `https://${req.headers.host}`,
     });
 
     const send = (c, t, data) => { if (c.ws.readyState === c.ws.OPEN) c.ws.send(encode(t, data)); };
     const broadcast = (room, t, data, except = null) => { for (const c of room.players.values()) if (c !== except) send(c, t, data); };
+
+    /** Place `c` at its spawn slot: the accepted pose, alive, and a fresh validation baseline. */
+    function placeAtSpawn(c) {
+        const s = spawnSlot(c.slot);
+        Object.assign(c, { p: s.p, q: s.q, s: 0.3, hp: 100, alive: true, at: Date.now(), strikes: 0, respawnAt: 0 });
+        return s;
+    }
 
     function join(c, m) {
         if (m.v !== PROTOCOL_VERSION) return reject(c, `protocol ${m.v} ≠ server ${PROTOCOL_VERSION} — reload the page`);
@@ -51,17 +80,20 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, players: new Map() };
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map() };
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
+        const taken = new Set([...room.players.values()].map(p => p.slot));
+        c.slot = 0; while (taken.has(c.slot)) c.slot++;
         c.room = room; c.name = cleanName(m.name);
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
-        send(c, MSG.WELCOME, { id: c.id, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId,
-            players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name })) });
-        broadcast(room, MSG.JOIN, { id: c.id, name: c.name }, c);
-        log(`+ ${c.name}#${c.id} → ${key} (${room.players.size})`);
+        const spawn = placeAtSpawn(c);
+        send(c, MSG.WELCOME, { id: c.id, slot: c.slot, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+            players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot })) });
+        broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot }, c);
+        log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot} (${room.players.size})`);
     }
     function reject(c, reason) { send(c, MSG.REJECT, { reason }); c.ws.close(4000, reason.slice(0, 100)); }
 
@@ -77,15 +109,30 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         log(`- ${c.name}#${c.id} ← ${room.key} (${room.players.size})`);
     }
 
+    /** Accept a plane report if it is physically possible since the last accepted one. */
+    function acceptState(c, m) {
+        if (!c.alive || !isVec(m.p, 3) || !isVec(m.q, 4)) return;
+        const V = VALIDATION, now = Date.now(), [x, y, z] = m.p;
+        const dt = Math.max(0.001, (now - c.at) / 1000);
+        const moved = Math.hypot(x - c.p[0], y - c.p[1], z - c.p[2]);
+        const inBounds = x >= V.minX - V.boundsMargin && x <= V.maxX + V.boundsMargin && z >= V.minX - V.boundsMargin && z <= V.maxX + V.boundsMargin
+            && y >= V.minY - V.boundsMargin && y <= V.maxY + V.boundsMargin;
+        if (!inBounds || moved > V.maxUnitsPerSec * V.slack * dt + V.jitterUnits) {
+            if (++c.strikes >= V.strikes) { c.strikes = 0; c.at = now; send(c, MSG.CORRECT, { p: c.p, q: c.q }); }
+            return;
+        }
+        Object.assign(c, { p: round(m.p, 2), q: round(m.q, 4), s: +m.s || 0, hp: Math.max(0, Math.min(100, +m.hp || 0)), at: now, strikes: 0 });
+    }
+
     function handle(c, m) {
         const room = c.room;
         if (!room) { if (m.t === MSG.HELLO) join(c, m); return; }
         const mode = MODES[room.mode];
         switch (m.t) {
             case MSG.PING: send(c, MSG.PONG, { c: m.c }); break;
-            case MSG.STATE:
-                if (!isVec(m.p, 3) || !isVec(m.q, 4)) return;
-                broadcast(room, MSG.STATE, { from: c.id, p: m.p, q: m.q, s: +m.s || 0, hp: +m.hp || 0 }, c);
+            case MSG.STATE: acceptState(c, m); break;
+            case MSG.DOWN:
+                if (c.alive) { c.alive = false; c.respawnAt = Date.now() + LIMITS.respawnMs; log(`x ${c.name}#${c.id} down`); }
                 break;
             case MSG.FIRE:
                 if (!isVec(m.p, 3) || !isVec(m.d, 3)) return;
@@ -97,7 +144,6 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 if (target && target !== c) send(target, MSG.HIT, { from: c.id, dmg: Math.min(100, Math.max(0, +m.dmg || 0)), w: String(m.w).slice(0, 12) });
                 break;
             }
-            case MSG.DOWN: broadcast(room, MSG.DOWN, { from: c.id, by: m.by ?? null }, c); break;
             case MSG.WORLD:
                 if (mode.hostAuthority && room.hostId === c.id) broadcast(room, MSG.WORLD, { ...m, t: undefined, from: c.id }, c);
                 break;
@@ -109,9 +155,22 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         }
     }
 
+    /** One server tick: respawns due, then one snapshot of every room. */
+    function tick() {
+        const now = Date.now();
+        for (const room of rooms.values()) {
+            room.tick++;
+            for (const c of room.players.values()) if (!c.alive && now >= c.respawnAt) send(c, MSG.SPAWN, placeAtSpawn(c));
+            const players = [...room.players.values()].map(c => ({ id: c.id, p: c.p, q: c.q, s: c.s, hp: c.hp, alive: c.alive }));
+            const msg = encode(MSG.SNAP, { tick: room.tick, time: now, players });
+            for (const c of room.players.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(msg);
+        }
+    }
+
     wss.on('connection', ws => {
-        const c = { id: nextId++, ws, room: null, name: 'Pilot', alive: true, budget: LIMITS.maxMsgPerSec, budgetAt: Date.now() };
-        ws.on('pong', () => { c.alive = true; });
+        const c = { id: nextId++, ws, room: null, name: 'Pilot', alive: true, heartbeat: true, budget: LIMITS.maxMsgPerSec, budgetAt: Date.now() };
+        clients.add(c);
+        ws.on('pong', () => { c.heartbeat = true; });
         ws.on('message', raw => {
             const now = Date.now();
             if (now - c.budgetAt >= 1000) { c.budget = LIMITS.maxMsgPerSec; c.budgetAt = now; }
@@ -120,13 +179,13 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             if (m) handle(c, m);
         });
         ws.on('close', () => { clients.delete(c); leave(c); });
-        clients.add(c);
         ws.on('error', () => {});
     });
+    const tickTimer = setInterval(tick, 1000 / LIMITS.tickHz);
     const heartbeat = setInterval(() => {
         for (const c of clients) {
-            if (!c.alive || !c.room) { c.ws.terminate(); continue; } // missed a ping, or never sent HELLO
-            c.alive = false;
+            if (!c.heartbeat || !c.room) { c.ws.terminate(); continue; } // missed a ping, or never sent HELLO
+            c.heartbeat = false;
             c.ws.ping();
         }
     }, LIMITS.heartbeatMs);
@@ -136,15 +195,20 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         http.listen(port, host, () => done({
             port: http.address().port,
             stats,
-            close: () => new Promise(r => { clearInterval(heartbeat); for (const ws of wss.clients) ws.terminate(); wss.close(); http.close(() => r()); }),
+            close: () => new Promise(r => { clearInterval(tickTimer); clearInterval(heartbeat); for (const ws of wss.clients) ws.terminate(); wss.close(); http.close(() => r()); }),
         }));
     });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-    const srv = await startMpServer({ port: Number(process.env.PORT) || DEFAULT_PORT, host: process.env.HOST || '127.0.0.1', allowedOrigins });
-    console.log(`VibePilot MP relay on ws://${process.env.HOST || '127.0.0.1'}:${srv.port}/  origins: ${allowedOrigins.join(', ') || 'any'}`);
+    const host = process.env.HOST || '127.0.0.1';
+    const srv = await startMpServer({ port: Number(process.env.PORT) || DEFAULT_PORT, host, allowedOrigins });
+    const shown = host === '0.0.0.0' ? 'localhost' : host;
+    console.log(`VibePilot multiplayer server
+  game:    http://${shown}:${srv.port}/?mp&room=test&name=Alpha
+  health:  http://${shown}:${srv.port}/health
+  origins: ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (set ALLOWED_ORIGINS to restrict)'}`);
     const stop = () => srv.close().then(() => process.exit(0));
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

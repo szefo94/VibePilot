@@ -1,0 +1,11 @@
+/* Multiplayer HUD (src/mp/index.js) — loaded only with ?mp, so the shared style.css stays untouched */
+/* Right column under Targets: the ace panel's slot (there is no ace in multiplayer) */
+#net-status {
+    position: fixed; top: 124px; right: 10px; z-index: 20; pointer-events: none;
+    padding: 4px 10px; font: 11px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--hud-amber); background: var(--hud-bg); border: 1px solid currentColor; white-space: nowrap;
+}
+#net-status[data-status="online"] { color: var(--hud-primary); }
+#net-status[data-status="error"] { color: var(--hud-red); }
+#net-status .net-pilot { margin-top: 2px; color: #fff; text-transform: none; }
+#net-status .net-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }

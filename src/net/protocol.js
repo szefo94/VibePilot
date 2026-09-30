@@ -1,15 +1,21 @@
 /**
- * Multiplayer wire protocol, shared by the browser client (src/net/net.js) and the relay server (server/server.mjs).
+ * Multiplayer wire protocol, shared by the browser client (src/net/net.js) and the server (server/server.mjs).
  * Plain ES module with no browser or THREE dependencies, so Node can import it as-is.
  *
- * Messages are JSON objects `{ t: <type>, ...fields }`. The server adds `from` (sender id) when relaying.
+ * Messages are JSON objects `{ t: <type>, ...fields }`.
  *
- * Modes (see MULTIPLAYER.md):
- *   skies  shared sky — same map, everyone sees everyone's plane; enemies stay local to each player
- *   pvp    skies + players can shoot each other (shooter-authoritative hits, victim applies damage)
- *   coop   one shared war — the room host's browser owns enemy state and streams it to the others
+ * The server owns the session state: room, map seed, roster, spawn slots, alive/respawning, the clock and the
+ * accepted position of every plane. Clients fly their own plane and report it (STATE); the server validates each
+ * report and broadcasts one SNAP of the whole room per tick. See MULTIPLAYER.md.
+ *
+ * Modes:
+ *   skies  shared sky — same map, everyone sees everyone's plane, no enemies (phase 1)
+ *   pvp    skies + players can shoot each other (phase 2)
+ *   coop   one shared war against the enemies (phase 3)
  */
-export const PROTOCOL_VERSION = 1;
+import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
+
+export const PROTOCOL_VERSION = 2;
 export const DEFAULT_PORT = 8787;
 
 export const MODES = Object.freeze({
@@ -21,27 +27,47 @@ export const MODES = Object.freeze({
 export const LIMITS = Object.freeze({
     maxPlayers: 8,        // per room
     maxRooms: 32,         // per server
-    stateHz: 15,          // client → server plane updates per second
-    maxMsgBytes: 8192,    // hard cap per message (co-op world snapshots are the largest)
+    stateHz: 20,          // client → server plane reports per second
+    tickHz: 20,           // server → clients room snapshots per second
+    maxMsgBytes: 8192,    // hard cap per message
     maxMsgPerSec: 60,     // per client, all types; excess is dropped
     nameMax: 16, roomMax: 24,
     heartbeatMs: 10000,   // server pings; a client that misses one is dropped
+    respawnMs: 3000,      // shot down → SPAWN
 });
 
-/** Message types. Direction: C→S client to server, S→C server to client, relay = forwarded to other players. */
+/** Movement the server accepts (world units, seconds). Dive boost allows up to 1.8 × maxSpeed per 60 fps frame. */
+export const VALIDATION = Object.freeze({
+    maxUnitsPerSec: maxSpeed * 1.8 * 60,
+    slack: 1.25,          // × maxUnitsPerSec, for timer jitter
+    jitterUnits: 15,      // flat allowance per report
+    boundsMargin: 20,     // past MAP_BOUNDARY / ground / ceiling (the client crashes there anyway)
+    strikes: 3,           // consecutive rejected reports before the server sends CORRECT
+    minX: -MAP_BOUNDARY, maxX: MAP_BOUNDARY, minY: groundLevel, maxY: ceilingLevel,
+});
+
+/** Spawn slot i: a line abreast over the single-player start point, everyone heading +Z (identity rotation). */
+export function spawnSlot(i) {
+    return { p: [(i - (LIMITS.maxPlayers - 1) / 2) * 30, groundLevel + 40, 0], q: [0, 0, 0, 1] };
+}
+
+/** Message types. C→S client to server, S→C server to client. */
 export const MSG = Object.freeze({
     HELLO: 'hello',       // C→S  { v, mode, room, name, seed }
-    WELCOME: 'welcome',   // S→C  { id, mode, room, seed, hostId, players: [{ id, name }] }
+    WELCOME: 'welcome',   // S→C  { id, slot, mode, room, seed, hostId, spawn: {p, q}, players: [{ id, name, slot }] }
     REJECT: 'reject',     // S→C  { reason } then close
-    JOIN: 'join',         // S→C  { id, name }
+    JOIN: 'join',         // S→C  { id, name, slot }
     LEAVE: 'leave',       // S→C  { id }
     HOST: 'host',         // S→C  { hostId } — co-op authority moved (host left)
-    STATE: 'state',       // relay { p:[x,y,z], q:[x,y,z,w], s:speed, hp }                all modes
-    FIRE: 'fire',         // relay { w:'gun'|'missile'|'bomb'|..., p:[x,y,z], d:[x,y,z] }  cosmetic tracers / sounds
-    HIT: 'hit',           // pvp:  C→S { target, dmg, w } → delivered to `target` only
-    DOWN: 'down',         // relay { by } — sender was shot down (pvp) or crashed
-    WORLD: 'world',       // coop: host → others { tick, units: [...] } — authoritative enemy snapshot/delta
-    ACTION: 'action',     // coop: client → host { kind, ... } — e.g. damage dealt to a unit id
+    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp } — own plane, validated by the server
+    SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, alive }] } — the room, every tick
+    CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
+    DOWN: 'down',         // C→S  {} — I was shot down / crashed (server respawns me after LIMITS.respawnMs)
+    SPAWN: 'spawn',       // S→C  { p, q } — respawn here
+    FIRE: 'fire',         // relay { w, p:[x,y,z], d:[x,y,z] } — cosmetic tracers / sounds (phase 2)
+    HIT: 'hit',           // pvp:  C→S { target, dmg, w } → delivered to `target` only (phase 2)
+    WORLD: 'world',       // coop: host → others { tick, units: [...] } (phase 3)
+    ACTION: 'action',     // coop: client → host { kind, ... } (phase 3)
     PING: 'ping',         // C→S  { c: clientTime }
     PONG: 'pong',         // S→C  { c } — round-trip time
 });

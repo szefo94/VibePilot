@@ -28,6 +28,7 @@ import { createUnitLabel } from '../ui/labels.js';
 import { showNotification } from '../ui/notifications.js';
 import { destroyAirUnit } from './airUnits.js';
 import { difficulty, onSettingChange, rivalSkill, setSetting, settings } from '../core/settings.js';
+import { RULES } from '../game/rules.js';
 
 const CALLSIGNS = ['Strzyga', 'Upiór', 'Licho', 'Bies', 'Południca', 'Żmij', 'Wij'];
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -57,7 +58,7 @@ const _mslMat = new THREE.MeshBasicMaterial({ color: 0xff2233 });
 // --- Public API -------------------------------------------------------------------------------
 
 export function spawnRival() {
-    if (state.isGameOver || state.awaitingStart) return null;
+    if (!RULES.ace || state.isGameOver || state.awaitingStart) return null;
     aceLevel++;
     const callsign = CALLSIGNS[(aceLevel - 1) % CALLSIGNS.length];
     const group = createRivalVisual();
@@ -104,7 +105,7 @@ export function toggleRivalMode() {
 
 /** For the HUD: the ace in the air (or null), and whether / when the next one launches. */
 export function rivalStatus() {
-    return { hunt: settings.aceHunt, active: activeRival, nextIn: Math.max(0, respawnTimer / 60), downed: acesDowned, tier: rivalSkill() };
+    return { hunt: RULES.ace && settings.aceHunt, active: activeRival, nextIn: Math.max(0, respawnTimer / 60), downed: acesDowned, tier: rivalSkill() };
 }
 export const acesShotDown = () => acesDowned;
 /** Hostile missiles in flight — minimap blips. */
@@ -127,7 +128,7 @@ export function updateRivalSystem(dt) {
         else if (r.hp <= 0) { acesDowned++; banner(`★ ACE ${r.callsign.toUpperCase()} SHOT DOWN  +${r.xpValue} XP`, 'win'); }
         if (r === activeRival) { activeRival = null; respawnTimer = RIVAL.respawnDelay; }
     }
-    if (settings.aceHunt && !activeRival && !state.isGameOver && (respawnTimer -= dt) <= 0) spawnRival();
+    if (RULES.ace && settings.aceHunt && !activeRival && !state.isGameOver && (respawnTimer -= dt) <= 0) spawnRival();
     updateWarnings();
 }
 

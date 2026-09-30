@@ -749,12 +749,3 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 .skill-toggle button[aria-pressed="true"] { color: #000; background: var(--ace); border-color: var(--ace); text-shadow: none; }
 .skill-toggle button:hover, .skill-toggle button:focus-visible { outline: 2px solid var(--hud-amber); outline-offset: 2px; position: relative; }
 @media (max-width: 900px) { #rival-panel { top: 100px; min-width: 0; font-size: 10px; } }
-
-/* ── Multiplayer status chip (net/net.js) ──────────────────────── */
-#net-status {
-    position: fixed; top: 62px; left: 10px; z-index: 20; pointer-events: none;
-    padding: 3px 10px; font: 11px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--hud-amber); background: var(--hud-bg); border: 1px solid currentColor; white-space: nowrap;
-}
-#net-status[data-status="online"] { color: var(--hud-primary); }
-#net-status[data-status="error"] { color: var(--hud-red); }
