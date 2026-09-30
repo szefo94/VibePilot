@@ -181,7 +181,8 @@ export function updateRival(au, dt) {
     au.label.sprite.position.copy(pos).add(_tmp.set(0, RIVAL.collisionRadius + 8, 0));
 
     // 5. Same hard limits that end the player's run: ground, ceiling, map edge (counts as a kill)
-    if (pos.y < heightAt(pos.x, pos.z) + 1.5 || pos.y > ceilingLevel - 1.5 || Math.abs(pos.x) > MAP_BOUNDARY || Math.abs(pos.z) > MAP_BOUNDARY) {
+    if (pos.y > ceilingLevel - 2) pos.y = ceilingLevel - 2; // the same altitude limit as the player
+    if (pos.y < heightAt(pos.x, pos.z) + 1.5 || Math.abs(pos.x) > MAP_BOUNDARY || Math.abs(pos.z) > MAP_BOUNDARY) {
         au.crashed = true;
         destroyAirUnit(au, { reward: true });
         return;

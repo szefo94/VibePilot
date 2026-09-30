@@ -1,5 +1,5 @@
 /** Player settings, persisted through the safe storage wrapper. */
-import { DIFFICULTY_PRESETS, MOUSE_STEERING, RIVAL_SKILL } from '../config.js';
+import { DIFFICULTY_PRESETS, MOUSE_STEERING, RIVAL_SKILL, TIME_OF_DAY } from '../config.js';
 import { storageGet, storageSet } from './storage.js';
 
 const KEY = 'vibepilot_settings';
@@ -12,8 +12,9 @@ const DEFAULTS = Object.freeze({
     difficulty: 'normal',     // key of DIFFICULTY_PRESETS (config.js)
     aceHunt: true,            // Shift+H — hostile aces hunt the player (entities/rival.js)
     rivalSkill: 'medium',     // key of RIVAL_SKILL (config.js)
+    timeOfDay: 'day',         // key of TIME_OF_DAY (config.js); world/sky.js
 });
-const ENUMS = { difficulty: DIFFICULTY_PRESETS, rivalSkill: RIVAL_SKILL };
+const ENUMS = { difficulty: DIFFICULTY_PRESETS, rivalSkill: RIVAL_SKILL, timeOfDay: TIME_OF_DAY };
 
 function load() {
     let saved;

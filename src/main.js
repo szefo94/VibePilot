@@ -28,6 +28,7 @@ import * as perf from './debug/perf.js';
 import { DEBUG_PARAMS } from './debug/params.js';
 import { disableRealLights, updateLightBudget } from './effects/lightBudget.js';
 import { RULES } from './game/rules.js';
+import { updateSky } from './world/sky.js';
 import { runHooks } from './game/hooks.js';
 import './mp/index.js'; // multiplayer branch: the only core edit; everything else registers via game/hooks.js (no-op without ?mp)
 
@@ -165,6 +166,7 @@ function animate() {
     state._minimapTimer += rawDelta;
     if (state._minimapTimer >= MINIMAP_REFRESH_S) { updateMinimap(); state._minimapTimer = 0; }
     perf.end('minimap');
+    updateSky(rawDelta); // dome follows the camera (world/sky.js)
     perf.renderBegin(); renderer.render(scene, camera); perf.renderEnd();
     perf.begin('reticle'); _drawReticle(); perf.end('reticle');
     runHooks('frame', rawDelta); // optional systems (game/hooks.js)

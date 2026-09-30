@@ -5,7 +5,7 @@
  *   left wheel   up/down = throttle forward/back · left/right = yaw
  *   right wheel  up/down = pitch · left/right = roll
  *   buttons      GUN (hold) · MSL · FLR · BOMB · NAP · LASER, above the right wheel
- *   top right    ⏸ pause · TILT (the phone's tilt steers pitch/roll; "level" = how you hold it when tapped) · ⛶ fullscreen
+ *   top right    ⏸ pause · TILT (the phone's tilt steers pitch/roll; "level" = how you hold it when tapped) · ☾/☀ night/day · ⛶ fullscreen
  *
  * It switches on for touch screens (coarse pointer) or at the first touch anywhere. Values land in `touchAxes`,
  * which input.js adds to the gamepad axes, so flight.js needs no touch-specific code. Mouse steering is turned
@@ -13,7 +13,7 @@
  * Tilt needs a secure page (https:// or localhost); iPhones also ask for permission when TILT is tapped.
  */
 import { state } from '../state.js';
-import { settings } from '../core/settings.js';
+import { setSetting, settings } from '../core/settings.js';
 import { _steerCursorEl } from './dom.js';
 import { aimingLaser } from '../player/plane.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from '../combat/weapons.js';
@@ -78,6 +78,7 @@ function enable() {
         <div class="tc-system">
             <button type="button" data-tap="pause" aria-label="Pause">⏸</button>
             <button type="button" data-tap="tilt" aria-pressed="false">TILT</button>
+            <button type="button" data-tap="daynight" aria-label="Day or night">☾</button>
             <button type="button" data-tap="fullscreen" aria-label="Fullscreen">⛶</button>
         </div>
         <div class="tc-rotate">Turn your phone sideways ⟲</div>`;
@@ -108,6 +109,7 @@ function enable() {
 function tap(action, button) {
     if (action === 'pause') { togglePause(); return; }
     if (action === 'fullscreen') { toggleFullscreen(); return; }
+    if (action === 'daynight') { setSetting('timeOfDay', settings.timeOfDay === 'night' ? 'day' : 'night'); button.textContent = settings.timeOfDay === 'night' ? '☀' : '☾'; return; }
     if (action === 'tilt') { toggleTilt(button); return; }
     if (action === 'laser') { aimingLaser.visible = !aimingLaser.visible; button.setAttribute('aria-pressed', String(aimingLaser.visible)); return; }
     if (!flying()) return;

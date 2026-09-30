@@ -58,8 +58,9 @@ export const tankBarrelGeo = shared([
 // --- AA emplacement (scale 3): pad + sandbag ring, a twin-barrel mount on the pivot (y 1.25) --------------------
 export const aaBaseGeo = shared([
     cyl(2.2, 2.3, 0.3, 10, CONCRETE, { y: -0.6 }),
-    ...Array.from({ length: 11 }, (_, i) => { const a = (i / 12) * Math.PI * 2 + 0.3; return cyl(0.32, 0.36, 0.95, 6, 0xa89668, { x: Math.cos(a) * 1.85, y: -0.2, z: Math.sin(a) * 1.85, rx: Math.PI / 2, ry: -a }); }),
-    ...Array.from({ length: 9 }, (_, i) => { const a = (i / 12) * Math.PI * 2 + 0.55; return cyl(0.3, 0.34, 0.9, 6, 0x9a8a60, { x: Math.cos(a) * 1.8, y: 0.3, z: Math.sin(a) * 1.8, rx: Math.PI / 2, ry: -a }); }),
+    // Sandbags laid along the ring (bag axis = tangent): lie down with rx first, then turn about the vertical
+    ...Array.from({ length: 11 }, (_, i) => { const a = (i / 12) * Math.PI * 2 + 0.3; return cyl(0.32, 0.36, 0.95, 6, 0xa89668, { x: Math.cos(a) * 1.85, y: -0.2, z: Math.sin(a) * 1.85, rx: Math.PI / 2, ry: -a, order: 'ZYX' }); }),
+    ...Array.from({ length: 9 }, (_, i) => { const a = (i / 12) * Math.PI * 2 + 0.55; return cyl(0.3, 0.34, 0.9, 6, 0x9a8a60, { x: Math.cos(a) * 1.8, y: 0.3, z: Math.sin(a) * 1.8, rx: Math.PI / 2, ry: -a, order: 'ZYX' }); }),
     cyl(0.35, 0.45, 1.1, 8, GUNMETAL, { y: 0.4 }),                                       // pedestal
 ]);
 export const aaMountGeo = shared([
@@ -84,7 +85,8 @@ export const truckGeo = shared([
     box(0.3, 0.2, 0.08, 0xe0d8a0, { x: -0.6, y: 0.6, z: 3.37 }), box(0.3, 0.2, 0.08, 0xe0d8a0, { x: 0.6, y: 0.6, z: 3.37 }),
     box(1.8, 0.14, 3.6, TRUCK, { y: 0.3, z: -1.35 }),                                    // bed
     box(0.08, 0.5, 3.6, TRUCK, { x: -0.88, y: 0.6, z: -1.35 }), box(0.08, 0.5, 3.6, TRUCK, { x: 0.88, y: 0.6, z: -1.35 }),
-    part(new THREE.CylinderGeometry(0.9, 0.9, 3.5, 8, 1, false, 0, Math.PI), CANVAS, { y: 0.8, z: -1.35, rx: Math.PI / 2, rz: -Math.PI / 2 }), // canvas cover
+    part(new THREE.CylinderGeometry(0.9, 0.9, 3.5, 8, 1, false, 0, Math.PI), CANVAS, { y: 0.8, z: -1.35, rx: Math.PI / 2, rz: Math.PI / 2, order: 'ZYX' }), // canvas cover: axis along the bed, arch up
+    box(1.8, 0.9, 0.06, CANVAS, { y: 1.25, z: -3.12 }),                                  // cover's back flap
     box(0.5, 0.35, 0.6, GUNMETAL, { x: 0.95, y: 0.2, z: 0.1 }),                          // fuel tank
     ...[[2.5, 1], [-1.3, 1], [-2.5, 1]].flatMap(([z]) => [-1, 1].map(s => cyl(0.45, 0.45, 0.28, 8, TRACK, { x: s * 1.0, y: 0, z, rz: Math.PI / 2 }))),
 ]);
@@ -191,14 +193,21 @@ export const carrierGeo = shared([
 // --- Air units (scaled ×3 by airUnits.js) -------------------------------------------------------------------------
 // Fighter: +Z forward (airUnits.js turns them with lookAt)
 const JET = 0x55606e, JET_D = 0x3e4752, JET_L = 0x6f7b89;
+/** A fin: side profile [[z, y]…], then canted `cant` rad outward about the fuselage axis (Z). */
+const fin = (pts, thick, c, x, y, cant) => part(profile(pts, thick).rotateY(-Math.PI / 2).rotateZ(cant), c, { x, y });
+/** One wing from its root and tip chords (x = span, z = leading/trailing edge); mirror with s = -1. */
+const wing = (s, root, tip, span, thick, c, y) => top(
+    s > 0 ? [[root.x, root.lead], [span, tip.lead], [span, tip.trail], [root.x, root.trail]]
+          : [[-root.x, root.trail], [-span, tip.trail], [-span, tip.lead], [-root.x, root.lead]], thick, c, { y });
 export const fighterGeo = shared([
     side([[-7.5, -0.9], [4, -0.9], [8.4, -0.1], [4.6, 0.9], [-5.5, 1.1], [-8, 0.5]], 2.4, JET, {}),       // fuselage
     side([[1.6, 0.8], [5, 0.9], [3.6, 1.8], [2.4, 1.9]], 1.3, GLASS, {}),                                  // canopy
-    top([[-1.2, 3], [-10.5, -3.2], [-10.5, -5.2], [-1.2, -3.6], [1.2, -3.6], [10.5, -5.2], [10.5, -3.2], [1.2, 3]], 0.35, JET_L, { y: -0.2 }), // swept wings
-    top([[-1, -5], [-5, -7.6], [-5, -8.6], [5, -8.6], [5, -7.6], [1, -5]], 0.25, JET_D, { y: 0.1 }),      // tailplanes
-    ...[-1, 1].map(s => side([[-8.2, 0], [-5.2, 0], [-6.8, 3.6], [-8.4, 3.6]], 0.25, JET_D, { x: s * 0.9, y: 0.6, rz: s * 0.25 })), // twin fins
-    ...[-1, 1].map(s => box(0.8, 1.1, 3.2, JET_D, { x: s * 1.4, y: -0.3, z: 1.4 })),                     // intakes
+    ...[-1, 1].map(s => wing(s, { x: 1.1, lead: 2.8, trail: -4.2 }, { lead: -3.4, trail: -5.4 }, 10.3, 0.32, JET_L, -0.15)), // swept wings
+    ...[-1, 1].map(s => wing(s, { x: 0.9, lead: -5.2, trail: -8.4 }, { lead: -7.4, trail: -8.7 }, 4.8, 0.22, JET_D, 0.15)),  // tailplanes
+    ...[-1, 1].map(s => fin([[-8.2, 0], [-5.2, 0], [-6.9, 3.5], [-8.5, 3.5]], 0.24, JET_D, s * 0.95, 0.6, s * -0.3)),       // twin fins, canted out
+    ...[-1, 1].map(s => box(0.8, 1.1, 3.2, JET_D, { x: s * 1.45, y: -0.35, z: 1.4 })),                   // intakes
     cyl(0.8, 0.95, 1.2, 8, TRACK, { z: -8.2, rx: Math.PI / 2 }),                                          // nozzle
+    box(0.35, 0.35, 1.6, GUNMETAL, { x: 0.9, y: 0.1, z: 5.2 }),                                           // gun fairing
 ]);
 // Helicopter: the model faces +X inside airUnits.js's rotated inner group; here +Z is forward (the inner group turns it)
 const HELI = 0x4a5240, HELI_D = 0x353b2e;
@@ -242,4 +251,27 @@ export const balloonGeo = shared([
     part(new THREE.ConeGeometry(3.4, 4, 8, 1, true), 0xb2413a, { y: 2.6, rx: Math.PI }),                         // skirt
     box(3, 1.8, 3, 0x8a7050, { y: -1.2 }),                                                                        // basket
     ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => cyl(0.06, 0.06, 5, 4, 0x5a4a35, { x: sx * 1.3, y: 1.6, z: sz * 1.3, rx: sz * 0.16, rz: -sx * 0.16 })),
+]);
+
+// --- Player plane (unscaled, +Z forward): four baked pieces, one collision box each (player/plane.js) -------------
+// A light swept-wing jet in the player's white-and-blue. Span ±6 (wing trails), wing-tip rails at ±5.9 (missiles).
+const PL_WHITE = 0xdfe4ea, PL_GREY = 0xaab3bd, PL_BLUE = 0x1f4fa0, PL_DARK = 0x2a3038;
+export const playerFuselageGeo = shared([
+    side([[-2.4, -0.25], [1.8, -0.42], [3.35, -0.05], [2.2, 0.35], [-1.2, 0.45], [-2.5, 0.2]], 0.95, PL_WHITE, {}),
+    side([[0.35, 0.3], [1.95, 0.3], [1.35, 0.8], [0.6, 0.82]], 0.72, GLASS, {}),                         // canopy
+    part(new THREE.ConeGeometry(0.2, 0.5, 6), PL_DARK, { z: 3.45, rx: Math.PI / 2 }),                       // nose tip
+    ...[-1, 1].map(s => box(0.36, 0.46, 1.5, PL_GREY, { x: s * 0.6, y: -0.12, z: 0.35 })),                // intakes
+    box(0.98, 0.12, 3.2, PL_BLUE, { y: 0.06, z: 0.25 }),                                                    // cheat line
+    cyl(0.3, 0.34, 0.4, 8, PL_DARK, { z: -2.5, rx: Math.PI / 2 }),                                         // nozzle
+    cyl(0.28, 0.28, 2.0, 8, PL_DARK, { y: -0.72, z: 0.2, rx: Math.PI / 2 }),                               // bomb pod
+    ...[-1, 1].map(s => cyl(0.17, 0.2, 1.4, 6, PL_DARK, { x: s * 0.36, y: -0.62, z: -1.4, rx: Math.PI / 2 })), // napalm pods
+]);
+export const playerWingGeo = s => shared([
+    wing(s, { x: 0.45, lead: 1.15, trail: -1.35 }, { lead: 0.2, trail: -0.55 }, 5.9, 0.16, PL_WHITE, -0.12),
+    cyl(0.09, 0.09, 1.1, 6, PL_DARK, { x: s * 5.9, y: -0.12, z: 0.55, rx: Math.PI / 2 }),                // missile rail
+    box(0.14, 0.2, 0.8, PL_BLUE, { x: s * 5.95, y: -0.12, z: -0.15 }),                                      // tip cap
+]);
+export const playerTailGeo = shared([
+    fin([[-2.5, 0.2], [-1.25, 0.3], [-2.0, 1.75], [-2.65, 1.75]], 0.14, PL_BLUE, 0, 0, 0),
+    ...[-1, 1].map(s => wing(s, { x: 0.3, lead: -1.35, trail: -2.4 }, { lead: -1.95, trail: -2.45 }, 1.9, 0.1, PL_GREY, 0.05)),
 ]);

@@ -31,7 +31,7 @@
         - X: Napalm Bomb<br>
         - F: Toggle Aiming Laser<br>
         - Mouse: Steer · LMB Shoot · RMB Missile<br>
-        - Esc: Pause · V: Mute<br>
+        - Esc: Pause · V: Mute · T: Day/Night<br>
         - Shift+H: Ace Hunt · H: Spawn Ace<br>
         <strong style="color: #ffcc00;">(Watch out! Enemies shoot back!)</strong>
     </div>
@@ -151,7 +151,7 @@
         </div>
         <details class="menu-controls">
             <summary>Controls</summary>
-            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · Esc pause · V mute · Shift+H Ace Hunt</p>
+            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · T day/night · Esc pause · V mute · Shift+H Ace Hunt</p>
             <p><b>Mouse</b>: move to steer · left button gun · right button missiles</p>
             <p><b>Touch</b>: left wheel throttle (up/down) and yaw · right wheel pitch and roll · hold GUN · MSL / FLR / BOMB / NAP / LASER · TILT = steer by tilting the phone · ⛶ fullscreen</p>
             <p><b>Gamepad</b>: left stick yaw/throttle · right stick roll/pitch · RT gun · A/B bomb · X missiles · Y flares · LB napalm · RB laser · Start pause</p>
@@ -179,6 +179,12 @@
                 <option value="easy">Easy — guns only</option>
                 <option value="medium">Medium — + missiles, flares</option>
                 <option value="hard">Hard — full kit, sharp</option>
+            </select>
+        </label>
+        <label>Time of day (T)
+            <select data-setting="timeOfDay">
+                <option value="day">Day</option>
+                <option value="night">Night</option>
             </select>
         </label>
         <label>Show controls &amp; debug panels <input type="checkbox" data-setting="showReferencePanels"></label>

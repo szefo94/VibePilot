@@ -95,6 +95,8 @@ export const DIFFICULTY_PRESETS = Object.freeze({
     hard:   { enemyDamage: 1.5, enemyFireInterval: 0.7, interceptorDelay: 0.7 },
 });
 export const MISSION_COMPLETE_BONUS = 1000; // score for eliminating every base
+// Time of day (Settings, T key): presets live in world/sky.js
+export const TIME_OF_DAY = Object.freeze({ day: 'Day', night: 'Night' });
 
 // --- Ace rival (entities/rival.js) ---
 // Distances in world units, times in frames at 60 fps, angles in radians. Per-tier values live in RIVAL_SKILL.
