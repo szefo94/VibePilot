@@ -2,6 +2,7 @@
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, waterLevel } from '../config.js';
 import { scene } from '../core/scene.js';
 import { markShared, randomRange } from '../core/utils.js';
+import { initTerrain } from './terrain.js';
 
 // --- Environment ---
 export const caveWallMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.9 }));
@@ -18,15 +19,6 @@ const ISLET_ITERATIONS    = 4;    // A: 4 → 128 pts | B: 3 → 192 pts
 const ISLET_ROUGHNESS     = 0.35; // A only — radial displacement scale (0.2 = subtle, 0.5 = jagged)
 
 export const islets = [];
-const isletMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x556B2F }));
-const _hillMat = markShared(new THREE.MeshStandardMaterial({ color: 0x4a5530, roughness: 0.95 }));
-// Pre-baked hill shapes: wide-base cone, broad dome (squashed), narrow peak
-const _hillGeos = [
-    (() => { const g = new THREE.ConeGeometry(60, 45, 7); return g; })(),
-    (() => { const g = new THREE.ConeGeometry(85, 28, 8); return g; })(),
-    (() => { const g = new THREE.ConeGeometry(35, 60, 6); return g; })(),
-    (() => { const g = new THREE.ConeGeometry(50, 35, 9); return g; })(),
-];
 
 // Generate fractal polygon in world space, centred at (cx, cz) with given radius.
 // Returns array of { x, z } world-space points forming a closed polygon.
@@ -115,41 +107,22 @@ function _nearestOnPolygon(px, pz, poly) {
     return { x: bx, z: bz };
 }
 
+/**
+ * Islets: a fractal coastline polygon each (placement, fences, the minimap and coast distances use it) and a
+ * terrain heightfield inside it (world/terrain.js). The terrain meshes are built by finalizeTerrain() once
+ * every base has claimed its flat ground.
+ */
 export function createIslets(count) {
     for (let i = 0; i < count; i++) {
         const radius = randomRange(200, 500);
         const x = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
         const z = randomRange(-MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
         const polygon = _generateIsletPolygon(x, z, radius);
-
-        // Build ShapeGeometry from polygon. The Shape lives in local XY and is rotated -90° about X, which maps
-        // local (sx, sy) to world (x + sx, z - sy): shape Y must be the *negated* Z offset, otherwise the mesh is
-        // mirrored relative to the polygon used for placement, fences and the minimap.
-        // ShapeGeometry normalises the winding, so faces still point up.
-        const shape = new THREE.Shape();
-        shape.moveTo(polygon[0].x - x, -(polygon[0].z - z));
-        for (let k = 1; k < polygon.length; k++) shape.lineTo(polygon[k].x - x, -(polygon[k].z - z));
-        shape.closePath();
-        const geo = new THREE.ShapeGeometry(shape);
-        const mesh = new THREE.Mesh(geo, isletMaterial);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(x, groundLevel + 1, z);
-        scene.add(mesh);
         // Displacement can push the coastline past the nominal radius; quick rejection tests use the true bound
         const boundR = Math.max(...polygon.map(p => Math.hypot(p.x - x, p.z - z)));
-        islets.push({ x, z, radius, boundR, polygon, mesh });
-
-        // Scatter hills on this islet
-        const numHills = 3 + Math.floor(Math.random() * 5); // 3–7 per islet
-        for (let h = 0; h < numHills; h++) {
-            const a = Math.random() * Math.PI * 2;
-            const d = radius * 0.55 + Math.random() * radius * 0.35; // start at 55 % to stay outside fence perimeter
-            const geo = _hillGeos[Math.floor(Math.random() * _hillGeos.length)];
-            const hill = new THREE.Mesh(geo, _hillMat);
-            hill.position.set(x + Math.cos(a) * d, groundLevel + 1, z + Math.sin(a) * d);
-            hill.rotation.y = Math.random() * Math.PI * 2;
-            scene.add(hill);
-        }
+        const islet = { x, z, radius, boundR, polygon, mesh: null };
+        islets.push(islet);
+        initTerrain(islet);
     }
 }
 

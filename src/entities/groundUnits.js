@@ -1,103 +1,63 @@
 /** Ground/sea unit models (tanks, trucks, turrets, ships, airports) and their destruction. */
 import { GROUND_UNIT_TYPES, groundLevel, hostileUnitShootingCooldownTime, waterLevel } from '../config.js';
 import { scene } from '../core/scene.js';
-import { markShared, randomRange } from '../core/utils.js';
+import { randomRange } from '../core/utils.js';
 import { groundUnits } from './registry.js';
 import { _dyingGround, createExplosion } from '../effects/effects.js';
 import { createUnitLabel, destroyLabel } from '../ui/labels.js';
 import { notifyBase } from '../ui/notifications.js';
 import { awardKill } from '../game/progression.js';
 import { groundUnitWorldPos, refreshGroundUnitWorldPos } from '../combat/damage.js';
+import { kitMaterial } from '../core/meshkit.js';
+import { aaBarrelGeo, aaBaseGeo, aaMountGeo, archHangarGeo, boxHangarGeo, carrierGeo, controlTowerGeo, destroyerBarrelGeo, destroyerHullGeo, destroyerTurretGeo, runwayGeo, tankBarrelGeo, tankHullGeo, tankTurretGeo, terminalGeo, truckGeo } from './models.js';
 
 // --- Unit Creation & Spawning ---
-// Pre-baked tank part geometries
-const _tankLowerHullGeo = markShared(new THREE.BoxGeometry(4.4, 0.8, 5.5));
-const _tankUpperHullGeo = markShared(new THREE.BoxGeometry(3.5, 0.65, 4.8));
-const _tankTrackGeo     = markShared(new THREE.BoxGeometry(0.55, 0.65, 5.9));
-const _tankTurretGeo    = markShared(new THREE.CylinderGeometry(1.3, 1.55, 0.7, 8));
-const _tankHatchGeo     = markShared(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 8));
-const _tankBarrelGeo    = markShared((() => { const g = new THREE.CylinderGeometry(0.18, 0.28, 4.8, 8); g.rotateX(Math.PI / 2); g.translate(0, 0, 2.4); return g; })());
-// Pre-baked truck part geometries (shared across all truck instances)
-const _truckChassisGeo    = markShared(new THREE.BoxGeometry(1.8, 0.25, 6.5));
-const _truckHoodGeo       = markShared(new THREE.BoxGeometry(1.6, 0.75, 1.4));
-const _truckCabGeo        = markShared(new THREE.BoxGeometry(1.75, 1.4, 2.0));
-const _truckCargoFloorGeo = markShared(new THREE.BoxGeometry(1.75, 0.15, 3.2));
-const _truckCargoSideGeo  = markShared(new THREE.BoxGeometry(0.1,  0.7,  3.2));
-const _truckCargoWallGeo  = markShared(new THREE.BoxGeometry(1.75, 0.7,  0.1));
-const _truckWheelGeo      = markShared((() => { const g = new THREE.CylinderGeometry(0.45, 0.45, 0.22, 8); g.rotateZ(Math.PI / 2); return g; })());
+// Models: entities/models.js (baked, shared geometries); one kit material per unit, so damage tints stay per unit
 export function createGroundUnit(type) {
     const u = new THREE.Group();
     const stats = GROUND_UNIT_TYPES[type]; // config.js
     const l = Array.isArray(stats.level) ? ~~randomRange(stats.level[0], stats.level[1]) : stats.level;
     const hp = stats.perLevel ? stats.hp * l : stats.hp, xp = stats.perLevel ? stats.xp * l : stats.xp;
     let turretPivotRef = null, barrelPivotRef = null;
-    const unitMat = new THREE.MeshStandardMaterial({ color: stats.color }); // one material per call, not 6
+    const mat = kitMaterial();
+    const mesh = geo => new THREE.Mesh(geo, mat);
+    /** Turret on a pivot at `y`, barrel on its own pivot inside (ai.js aims both). */
+    const turretOn = (at, turretGeo, barrelGeo) => {
+        const tp = new THREE.Group(); tp.position.copy(at);
+        const bp = new THREE.Group(); bp.add(mesh(barrelGeo));
+        tp.add(mesh(turretGeo), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp;
+    };
     switch (type) {
         case 'tank':
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
-            {
-                const lowerHull = new THREE.Mesh(_tankLowerHullGeo, unitMat);
-                const upperHull = new THREE.Mesh(_tankUpperHullGeo, unitMat); upperHull.position.y = 0.72;
-                const trackL    = new THREE.Mesh(_tankTrackGeo, unitMat); trackL.position.set(-2.5, -0.02, 0);
-                const trackR    = new THREE.Mesh(_tankTrackGeo, unitMat); trackR.position.set( 2.5, -0.02, 0);
-                u.add(lowerHull, upperHull, trackL, trackR);
-                const tp = new THREE.Group(); tp.position.y = 1.38;
-                const hatch = new THREE.Mesh(_tankHatchGeo, unitMat); hatch.position.set(-0.25, 0.46, -0.2);
-                const bp = new THREE.Group();
-                bp.add(new THREE.Mesh(_tankBarrelGeo, unitMat));
-                tp.add(new THREE.Mesh(_tankTurretGeo, unitMat), hatch, bp);
-                u.add(tp); turretPivotRef = tp; barrelPivotRef = bp;
-            }
+            u.add(mesh(tankHullGeo));
+            turretOn(new THREE.Vector3(0, 1.38, 0), tankTurretGeo, tankBarrelGeo);
             u.scale.set(3, 3, 3); break;
-        case 'turret':
+        case 'turret': // anti-aircraft emplacement
             u.position.y = groundLevel + 2 + 1.5 * 3 / 2;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 4), unitMat));
-            { const tp = new THREE.Group(); tp.position.y = 1.25;
-              const bp = new THREE.Group(); const tb = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, 4, 12), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; bp.add(tb);
-              tp.add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
+            u.add(mesh(aaBaseGeo));
+            turretOn(new THREE.Vector3(0, 1.25, 0), aaMountGeo, aaBarrelGeo);
             u.scale.set(3, 3, 3); break;
         case 'truck':
             u.position.y = groundLevel + 2 + 2 * 2.5 / 2;
-            { // --- truck body ---
-                const chassis    = new THREE.Mesh(_truckChassisGeo,    unitMat);
-                const hood       = new THREE.Mesh(_truckHoodGeo,       unitMat); hood.position.set(0, 0.5,  2.8);
-                const cab        = new THREE.Mesh(_truckCabGeo,        unitMat); cab.position.set( 0, 0.95, 1.2);
-                const cargoFloor = new THREE.Mesh(_truckCargoFloorGeo, unitMat); cargoFloor.position.set(0, 0.2, -1.4);
-                const cargoL     = new THREE.Mesh(_truckCargoSideGeo,  unitMat); cargoL.position.set(-0.85, 0.55, -1.4);
-                const cargoR     = new THREE.Mesh(_truckCargoSideGeo,  unitMat); cargoR.position.set( 0.85, 0.55, -1.4);
-                const cargoFront = new THREE.Mesh(_truckCargoWallGeo,  unitMat); cargoFront.position.set(0, 0.55,  0.25);
-                const cargoTail  = new THREE.Mesh(_truckCargoWallGeo,  unitMat); cargoTail.position.set( 0, 0.55, -3.05);
-                const wFL = new THREE.Mesh(_truckWheelGeo, unitMat); wFL.position.set(-1.05, 0,  2.5);
-                const wFR = new THREE.Mesh(_truckWheelGeo, unitMat); wFR.position.set( 1.05, 0,  2.5);
-                const wRL = new THREE.Mesh(_truckWheelGeo, unitMat); wRL.position.set(-1.05, 0, -1.8);
-                const wRR = new THREE.Mesh(_truckWheelGeo, unitMat); wRR.position.set( 1.05, 0, -1.8);
-                u.add(chassis, hood, cab, cargoFloor, cargoL, cargoR, cargoFront, cargoTail, wFL, wFR, wRL, wRR);
-            }
+            u.add(mesh(truckGeo));
             u.scale.set(2.5, 2.5, 2.5); break;
         case 'airport': {
             u.position.y = groundLevel + 2;
-            const runway = new THREE.Mesh(new THREE.BoxGeometry(40, 0.5, 200), unitMat);
-            const mainBuilding = new THREE.Mesh(new THREE.BoxGeometry(10, 20, 10), unitMat); mainBuilding.position.set(25, 10, 0);
-            const towerBase = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 30, 8), unitMat); towerBase.position.set(25, 15, -25);
-            const towerCab = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 }));
-            towerCab.position.set(25, 34, -25);
-            u.add(runway, mainBuilding, towerBase, towerCab);
+            u.add(mesh(runwayGeo), mesh(terminalGeo), mesh(controlTowerGeo)); // separate meshes: one collision box each
             const t1 = createGroundUnit('turret'); t1.position.set(30, 0, 60); t1.userData.protector = u; u.add(t1); groundUnits.push(t1);
             const t2 = createGroundUnit('turret'); t2.position.set(-30, 0, -60); t2.userData.protector = u; u.add(t2); groundUnits.push(t2);
             break;
         }
         case 'destroyer':
             u.position.y = waterLevel;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(3, 2, 20), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 4), unitMat));
-            u.children[1].position.set(0, 2, -2);
-            { const tp = new THREE.Group(); tp.position.set(0, 1.5, 5);
-              const bp = new THREE.Group(); const tb = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 4, 8), unitMat); tb.position.set(0, 0, 2); tb.rotation.x = Math.PI / 2; bp.add(tb);
-              tp.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), unitMat), bp); u.add(tp); turretPivotRef = tp; barrelPivotRef = bp; }
+            u.add(mesh(destroyerHullGeo));
+            turretOn(new THREE.Vector3(0, 1.5, 5), destroyerTurretGeo, destroyerBarrelGeo);
             u.scale.set(5, 5, 5); break;
         case 'carrier':
             u.position.y = waterLevel;
-            u.add(new THREE.Mesh(new THREE.BoxGeometry(8, 3, 35), unitMat), new THREE.Mesh(new THREE.BoxGeometry(12, .5, 32), unitMat), new THREE.Mesh(new THREE.BoxGeometry(2, 3, 6), unitMat));
-            u.children[1].position.y = 1.75; u.children[2].position.set(5, 3.5, -2); u.scale.set(8, 8, 8); break;
+            u.add(mesh(carrierGeo));
+            u.scale.set(8, 8, 8); break;
     }
     const label = createUnitLabel(stats.name, l, hp, hp); scene.add(label.sprite);
     u.userData = { type, hp, maxHp: hp, collisionRadius: stats.collisionRadius, label, hpOffsetY: stats.hpOffsetY, isHostile: stats.hostile, shootCooldown: stats.hostile ? Math.random() * hostileUnitShootingCooldownTime : 0, xpValue: xp, id: THREE.MathUtils.generateUUID(), partBoxes: null, turretPivot: turretPivotRef, barrelPivot: barrelPivotRef, dependents: [] };
@@ -107,21 +67,7 @@ export function createGroundUnit(type) {
 }
 export function createHangar(variant = 'box') {
     const u = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 });
-    if (variant === 'arch') {
-        const r = 12, len = 44;
-        const archGeo = new THREE.CylinderGeometry(r, r, len, 16, 1, true, -Math.PI / 2, Math.PI);
-        archGeo.rotateX(-Math.PI / 2);
-        u.add(new THREE.Mesh(archGeo, mat));
-        const backWall = new THREE.Mesh(new THREE.BoxGeometry(r * 2, r, 0.8), mat); backWall.position.set(0, r / 2, -len / 2);
-        const frontWall = new THREE.Mesh(new THREE.BoxGeometry(r * 2, r, 0.8), mat); frontWall.position.set(0, r / 2, len / 2);
-        u.add(backWall, frontWall);
-    } else {
-        const base = new THREE.Mesh(new THREE.BoxGeometry(28, 1, 44), mat); base.position.y = 0.5;
-        const walls = new THREE.Mesh(new THREE.BoxGeometry(24, 10, 40), mat); walls.position.y = 6;
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(26, 3, 42), mat); roof.position.y = 12.5;
-        u.add(base, walls, roof);
-    }
+    u.add(new THREE.Mesh(variant === 'arch' ? archHangarGeo : boxHangarGeo, kitMaterial({ roughness: 0.7 })));
     u.position.y = groundLevel + 2;
     const hp = 200, n = 'Hangar', l = 3, xpVal = 150;
     const label = createUnitLabel(n, l, hp, hp); scene.add(label.sprite);

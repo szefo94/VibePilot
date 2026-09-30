@@ -12,57 +12,25 @@ import { createUnitLabel, destroyLabel } from '../ui/labels.js';
 import { notifyBase } from '../ui/notifications.js';
 import { awardKill } from '../game/progression.js';
 import { finaliseBase } from './bases.js';
+import { kitMaterial } from '../core/meshkit.js';
+import { ac130Geo, balloonGeo, fighterGeo, heliBodyGeo, heliRotorGeo, heliTailRotorGeo, tankerGeo } from './models.js';
 
-// --- Airborne Unit Visuals ---
+// --- Airborne Unit Visuals (models: entities/models.js) ---
 function createHelicopterVisual() {
-    const outer = new THREE.Group(), g = new THREE.Group();
+    const outer = new THREE.Group(), g = new THREE.Group(), mat = kitMaterial();
     g.rotation.y = -Math.PI / 2;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x4a5240, roughness: 0.7 });
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 10, 8), mat); fuselage.rotation.x = Math.PI / 2;
-    const rotorA = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorA.position.y = 2.2; rotorA.userData.spinY = 0.18;
-    const rotorB = new THREE.Mesh(new THREE.BoxGeometry(18, 0.3, 1.2), mat); rotorB.position.y = 2.2; rotorB.rotation.y = Math.PI / 2; rotorB.userData.spinY = 0.18;
-    const tailBoom = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 8), mat); tailBoom.position.set(0, -0.3, -7);
-    const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(5, 0.3, 0.8), mat); tailRotor.position.set(0, 0, -11); tailRotor.rotation.z = Math.PI / 2; tailRotor.userData.spinZ = 0.25;
-    g.add(fuselage, rotorA, rotorB, tailBoom, tailRotor); outer.add(g); return outer;
+    const rotor = new THREE.Mesh(heliRotorGeo, mat); rotor.position.y = 2.7; rotor.userData.spinY = 0.18;
+    const tailPivot = new THREE.Group(); tailPivot.position.set(0.75, 1.9, -12.1); tailPivot.rotation.y = Math.PI / 2; // spin axis across the boom
+    const tailRotor = new THREE.Mesh(heliTailRotorGeo, mat); tailRotor.userData.spinZ = 0.25; tailPivot.add(tailRotor);
+    g.add(new THREE.Mesh(heliBodyGeo, mat), rotor, tailPivot); outer.add(g); return outer;
 }
-function createBalloonVisual() {
-    const g = new THREE.Group();
-    const envelopeMat = new THREE.MeshStandardMaterial({ color: 0xdde8f0, roughness: 0.4 });
-    const gondolaMat = new THREE.MeshStandardMaterial({ color: 0x8a7050, roughness: 0.7 });
-    const envelope = new THREE.Mesh(new THREE.SphereGeometry(7, 12, 8), envelopeMat); envelope.position.y = 9;
-    const gondola = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), gondolaMat); gondola.position.y = -1;
-    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 10, 4), gondolaMat); cable.position.y = 4;
-    g.add(envelope, cable, gondola); return g;
-}
-function createFighterVisual() {
-    const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x1c4e80, roughness: 0.5 });
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 16, 8), mat); fuselage.rotation.x = Math.PI / 2;
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(22, 0.4, 7), mat);
-    const vTail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 4), mat); vTail.position.set(0, 2.5, -7);
-    const cockpit = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), mat); cockpit.position.set(0, 1.2, 3);
-    g.add(fuselage, wings, vTail, cockpit); return g;
-}
-function createTankerVisual() {
-    const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4 });
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 32, 10), mat); fuselage.rotation.x = Math.PI / 2;
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(50, 1.2, 12), mat);
-    const vTail = new THREE.Mesh(new THREE.BoxGeometry(1, 10, 6), mat); vTail.position.set(0, 5, -15);
-    const hTail = new THREE.Mesh(new THREE.BoxGeometry(20, 0.8, 5), mat); hTail.position.set(0, 3, -14);
-    const eng = ox => { const e = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 6, 8), mat); e.rotation.z = Math.PI / 2; e.position.set(ox, -2.5, 2); return e; };
-    g.add(fuselage, wings, vTail, hTail, eng(-10), eng(-6), eng(6), eng(10)); return g;
-}
+function createBalloonVisual() { const g = new THREE.Group(); g.add(new THREE.Mesh(balloonGeo, kitMaterial({ roughness: 0.5 }))); return g; }
+function createFighterVisual() { const g = new THREE.Group(); g.add(new THREE.Mesh(fighterGeo, kitMaterial({ metalness: 0.3 }))); return g; }
+function createTankerVisual() { const g = new THREE.Group(); g.add(new THREE.Mesh(tankerGeo, kitMaterial({ metalness: 0.3 }))); return g; }
 function createAC130Visual() {
     const outer = new THREE.Group(), g = new THREE.Group();
     g.rotation.y = -Math.PI / 2;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x3d3d2e, roughness: 0.8 });
-    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(32, 8, 10), mat); fuselage.rotation.y = Math.PI / 2;
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(55, 1.5, 13), mat); wings.position.y = -1;
-    const vTail = new THREE.Mesh(new THREE.BoxGeometry(1.5, 12, 6), mat); vTail.position.set(0, 6, -14);
-    const hTail = new THREE.Mesh(new THREE.BoxGeometry(22, 1, 6), mat); hTail.position.set(0, 4, -13);
-    const eng = ox => { const e = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 7, 8), mat); e.rotation.z = Math.PI / 2; e.position.set(ox, -3, 2); return e; };
-    g.add(fuselage, wings, vTail, hTail, eng(-12), eng(-7), eng(7), eng(12)); outer.add(g); return outer;
+    g.add(new THREE.Mesh(ac130Geo, kitMaterial())); outer.add(g); return outer;
 }
 
 // --- Air Unit Factory & Destruction ---

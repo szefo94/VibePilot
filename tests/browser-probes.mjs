@@ -524,19 +524,35 @@ const probes = {
         });
     },
     // #13 islet meshes match their polygons (not mirrored) and face up
+    // Islet terrain: a mesh per islet, beaches at sea level along the coastline, the mesh matches the collision
+    // heights, real mountains inland, and flying into a hillside ends the run
     async islets(page) {
         await worldReady(page);
         return page.evaluate(async () => {
             const { islets } = await import('./src/world/world.js');
-            let worst = 0, facesUp = true;
+            const { heightAt, TERRAIN } = await import('./src/world/terrain.js');
+            let coastDev = 0, peak = -Infinity, matched = 0, checked = 0;
+            // Islets may overlap; where they do, one islet's coast lies under the other's hills — skip those points
+            const nearOther = (isl, x, z) => islets.some(o => o !== isl && Math.hypot(x - o.x, z - o.z) < o.boundR + 40);
             for (const isl of islets) {
-                isl.mesh.updateMatrixWorld(true);
-                const pos = isl.mesh.geometry.attributes.position, v = new THREE.Vector3(), pts = [];
-                for (let i = 0; i < pos.count; i++) pts.push(v.fromBufferAttribute(pos, i).applyMatrix4(isl.mesh.matrixWorld).clone());
-                for (const p of isl.polygon) worst = Math.max(worst, Math.min(...pts.map(q => Math.hypot(q.x - p.x, q.z - p.z))));
-                facesUp = facesUp && new THREE.Vector3(0, 0, 1).applyQuaternion(isl.mesh.quaternion).y > 0.99;
+                for (const p of isl.polygon) if (!nearOther(isl, p.x, p.z)) coastDev = Math.max(coastDev, Math.abs(heightAt(p.x, p.z) - TERRAIN.surface));
+                const pos = isl.mesh.geometry.attributes.position;
+                for (let i = 0; i < pos.count; i += 37) {
+                    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+                    peak = Math.max(peak, y - TERRAIN.surface);
+                    if (y < TERRAIN.surface - 0.5 || nearOther(isl, x, z)) continue; // underwater shelf, overlaps
+                    checked++; if (Math.abs(heightAt(x, z) - y) < 0.05) matched++;
+                }
             }
-            return { islets: islets.length, worstVertexErr: +worst.toFixed(4), facesUp, pass: islets.length > 0 && worst < 0.01 && facesUp };
+            // Crash test: park the plane just under the highest ground found and step the simulation once
+            const { plane } = await import('./src/player/plane.js'); const { state } = await import('./src/state.js'); const { simulate } = await import('./src/game/simulation.js');
+            let best = null;
+            for (const isl of islets) for (let a = 0; a < 6.28; a += 0.4) for (const f of [0.2, 0.4, 0.6]) { const x = isl.x + Math.cos(a) * isl.radius * f, z = isl.z + Math.sin(a) * isl.radius * f, h = heightAt(x, z); if (!best || h > best.h) best = { x, z, h }; }
+            state._graceTimer = 0; plane.position.set(best.x, best.h - 0.5, best.z); simulate(1);
+            const crashed = state.isGameOver;
+            const matchRate = checked ? matched / checked : 0;
+            return { islets: islets.length, meshes: islets.filter(i => i.mesh).length, coastDeviation: +coastDev.toFixed(2), matchRate: +matchRate.toFixed(3), peakAboveSea: +peak.toFixed(1), crashIntoHill: crashed, hillTop: +best.h.toFixed(1),
+                pass: islets.length > 0 && islets.every(i => i.mesh) && coastDev < 4 && matchRate > 0.95 && peak > 20 && crashed };
         });
     },
     // #17 denied storage must not break startup or game over
