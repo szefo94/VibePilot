@@ -2,7 +2,8 @@
  * Bots in multiplayer (modes with enemies): aces flown by the room's host (entities/rival.js), seen by everyone else.
  *
  *   tdm       team bots: the host keeps each team at TEAM_SIZE pilots — players first, bots fill the rest — and
- *             respawns a bot a few seconds after it goes down. A bot hunts the nearest pilot of the other team
+ *             respawns a bot a few seconds after it goes down. Each spawn flies to the flag first (flag.js), then
+ *             patrols around it. A bot hunts the nearest pilot of the other team
  *             (player or bot); teammates are never targets. Bot-vs-bot fights are resolved on the host.
  *   pvp/coop  Ace Hunt as in single player (RULES.ace on the host), but its aces hunt every player.
  *
@@ -35,6 +36,7 @@ import { showNotification } from '../ui/notifications.js';
 import { MODES, MSG, PVP_KILL_XP, TEAM_SIZE, TEAMS, teamRespawn } from '../net/protocol.js';
 import { isHost, net, netSend, onNet } from '../net/net.js';
 import { buildLabel, drawLabel, remoteViews, sampleAt } from './remotePlanes.js';
+import { flagPatrol, flagWaypoint } from './flag.js';
 
 const SEND_MS = 100, INTERP_DELAY = 150, STALE_MS = 3000, LABEL_RANGE = 600, FIRING_MS = 250;
 const BOT_RESPAWN_MS = 8000, BOT_XP = 100, MAX_BOTS = 12;
@@ -115,7 +117,7 @@ function reconcileTeams(now) {
         if (e.au || now < e.respawnAt || state.awaitingStart) continue;
         const s = teamRespawn(e.team), heading = 2 * Math.atan2(s.q[1], s.q[3]);
         e.au = spawnAce({ callsign: e.name, position: new THREE.Vector3(...s.p), heading, color: TEAMS[e.team].bot,
-            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP });
+            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), patrol: flagPatrol() }); // to the flag first
         e.au.netBot = e.id;
     }
 }

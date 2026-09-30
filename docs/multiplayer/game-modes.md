@@ -39,6 +39,7 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 
 ### Team deathmatch
 - **Starts:** Red begins in the south of the map and Blue in the north.
+- **The flag:** a big red-and-blue flag stands in the middle of the map, with a white ⚑ marker on the minimap. Every bot flies to it first after it spawns, then patrols around it, so the fighting starts at the flag. Its pole is solid: flying into it crashes you.
 - **Teams:** you can't hit or lock onto your teammates, players or bots, and they can't hit you. Teammates are drawn in your team's colour.
 - **Score:** each kill of the other team scores for the killer's team, whoever makes it: a player, a bot, or a bot shooting a bot.
 - **Bots:**
