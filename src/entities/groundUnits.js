@@ -10,7 +10,7 @@ import { awardKill } from '../game/progression.js';
 import { groundUnitWorldPos, refreshGroundUnitWorldPos } from '../combat/damage.js';
 import { kitMaterial } from '../core/meshkit.js';
 import { onUnitKilled } from '../effects/fire.js';
-import { aaBarrelGeo, aaBaseGeo, aaMountGeo, archHangarGeo, boxHangarGeo, carrierGeo, controlTowerGeo, destroyerBarrelGeo, destroyerHullGeo, destroyerTurretGeo, runwayGeo, tankBarrelGeo, tankHullGeo, tankTurretGeo, terminalGeo, truckGeo } from './models.js';
+import { aaBarrelGeo, aaBaseGeo, aaMountGeo, archHangarGeo, boxHangarGeo, CARRIER_BOXES, carrierGeo, controlTowerGeo, destroyerBarrelGeo, destroyerHullGeo, destroyerTurretGeo, runwayGeo, tankBarrelGeo, tankHullGeo, tankTurretGeo, terminalGeo, truckGeo } from './models.js';
 
 // --- Unit Creation & Spawning ---
 // Models: entities/models.js (baked, shared geometries); one kit material per unit, so damage tints stay per unit
@@ -57,7 +57,7 @@ export function createGroundUnit(type) {
             u.scale.set(5, 5, 5); break;
         case 'carrier':
             u.position.y = waterLevel;
-            u.add(mesh(carrierGeo));
+            u.add(mesh(carrierGeo)); u.children.at(-1).userData.collisionBoxes = CARRIER_BOXES;
             u.scale.set(8, 8, 8); break;
     }
     const label = createUnitLabel(stats.name, l, hp, hp); scene.add(label.sprite);

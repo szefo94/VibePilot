@@ -170,6 +170,15 @@ export const destroyerBarrelGeo = shared([cyl(0.1, 0.13, 3.2, 6, GUNMETAL, { z: 
 
 // --- Carrier (scale 8): tapered hull, flight deck with markings, island, parked jets -----------------------------
 const CARRIER_HULL = [[-4, -17.5], [4, -17.5], [4.2, 10], [2.4, 16], [0, 17.8], [-2.4, 16], [-4.2, 10]];
+/** Carrier hitboxes (geometry space; entities/groundUnits.js puts them on the mesh): the merged model's bounding
+ *  box would span the island's height over the whole deck */
+export const CARRIER_BOXES = Object.freeze([
+    { min: [-4.2, -1.6, -17.5], max: [4.2, 2, 17.8] },     // hull
+    { min: [-6, 1.5, -16.5], max: [6, 2, 15.5] },          // flight deck
+    { center: [-3.5, 1.75, -6], size: [7, 0.5, 18], ry: -0.16 }, // angled landing deck
+    { min: [4, 2, -5], max: [6, 5.5, 1] },                 // island
+    { min: [4.4, 5, -4.1], max: [5.6, 8.2, -0.8] },        // funnel and mast
+]);
 export const carrierGeo = shared([
     top(CARRIER_HULL, 3, NAVY, {}),
     top(CARRIER_HULL.map(([x, z]) => [x * 1.02, z]), 0.4, BOOT, { y: -1.35 }),

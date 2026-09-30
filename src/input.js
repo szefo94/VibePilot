@@ -68,7 +68,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { if (!e.repeat) togglePause(); return; }
     // Display toggles work any time; ignore auto-repeat so holding a key doesn't flicker
     if (!e.repeat) {
-        if (k === 'b') state.debugCollision = !state.debugCollision;
+        if (k === 'b') { state.debugCollision = !state.debugCollision; showNotification(state.debugCollision ? 'Hitboxes shown (B)' : 'Hitboxes hidden (B)', false, { local: true }); }
         else if (k === 'm') { memDebugEl.classList.toggle('active'); state._memDebugTimer = 0; }
         else if (k === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
         else if (k === 'c') _toggleColorMode();
