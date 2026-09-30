@@ -20,8 +20,8 @@ Multiplayer development happens on the **`multiplayer`** branch. This file is th
 
 | Mode | What players share | Status |
 |---|---|---|
-| **1. Shared skies** | One map; everyone sees everyone's plane. No enemies. | **Phase 1: working locally** |
-| **2. PvP** | Shared skies, plus players can shoot each other | Phase 2 |
+| **1. Shared skies** | One map; everyone sees everyone's plane. No enemies. (`?mode=skies`) | Done |
+| **2. PvP** | Shared skies, plus every weapon hits other players; 0 HP → respawn nearby | **Default mode: working** |
 | **3. Co-op** | One war: the same enemies, bases and mission | Phase 3 |
 
 Principles:
@@ -130,11 +130,18 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [ ] Tuning from real play: interpolation delay, report rate, spawn layout (the spawn line can face an obstacle on some maps).
 
 **Phase 2: PvP**
-- [ ] Remote planes become targets for bullets, missiles and splash damage, and for the lock-on reticle (a `remote` kind in `entities/contract.js`).
-- [ ] A hit sends `HIT`. The victim applies it with `damagePlayer()` (flares and grace still apply) and reports `DOWN { by }`. This drives the kill feed and score.
+- [x] Remote planes are **proxy air units** (`au.proxy`, a seam on master): bullets, missiles, bombs and napalm, the lock-on reticle and missile homing all target them. `hits.js` hands each hit to the proxy, which sends `HIT` with the weapon's `PVP_DAMAGE` (gun 4 · missile 45 · bomb 60 · napalm 10); the server caps it.
+- [x] The victim applies it with `damagePlayer()` (flares stop gun and missile hits, spawn protection applies) and at 0 HP reports `DOWN { by }`. The server broadcasts it: kill feed, +150 score for the shooter, kills in the roster.
+- [x] Respawn at a random point 80–350 units from the player's start slot, 35–90 above the ground, random heading.
+- [x] Name tags carry an HP bar; the roster shows everyone's HP.
 - [ ] `FIRE` events show other players' tracers, missiles and flares.
-- [ ] Scoreboard (Tab). Collisions between players.
+- [ ] Scoreboard (Tab). Respawn points that avoid obstacles (the server doesn't know the map yet).
+- [x] Collisions between players: ramming counts as a crash for both.
 - [ ] Trust model: the shooter decides hits (fine among friends). The server already clamps damage and rate-limits messages.
+
+**Phones and tablets** (on master, so single-player too)
+- [x] Touch overlay: joystick (pitch/roll), throttle, GUN (hold), MSL/FLR/BOMB/NAP, pause, fullscreen. TILT steers with the motion sensor (needs `https://`, e.g. `--tls`).
+- [ ] Check the tilt directions on a real phone (they are untested on hardware).
 
 **Phase 3: Co-op**
 - [ ] Stable unit ids in the order the map generates them (`netId`, instead of UUIDs).
@@ -178,7 +185,7 @@ npm run test:browser # 27 single-player browser tests (needs Node 20+ for Playwr
 | `?mp=wss://host/` | Connect to a different server | – |
 | `room=` | Room name, `[a-z0-9_-]`, up to 24 characters | `lobby` |
 | `name=` | Your callsign, up to 16 characters | Asked on entry, then remembered |
-| `mode=` | `skies` (`pvp` and `coop` are reserved) | `skies` |
+| `mode=` | `pvp` (damage between players) or `skies` (no damage); `coop` is reserved | `pvp` |
 
 **Messages** (`src/net/protocol.js`, version 2): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `PING` · `PONG`, plus `FIRE` · `HIT` · `HOST` · `WORLD` · `ACTION`, reserved for phases 2–3.
 

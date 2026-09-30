@@ -4,7 +4,7 @@
  *
  *   ?mp                    connect to the server that served this page (ws:// or wss:// to the same host)
  *   ?mp=wss://host/        …or to another server
- *   &mode=skies|pvp|coop   default skies
+ *   &mode=pvp|skies|coop   default pvp (skies: no damage between players)
  *   &room=name             default "lobby"
  *   &name=Pilot            shown to other players
  *
@@ -20,7 +20,7 @@ const url = params.has('mp') ? (params.get('mp') || sameHost) : '';
 export const net = {
     enabled: !!url,
     url,
-    mode: Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : 'skies',
+    mode: Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : 'pvp',
     room: cleanRoom(params.get('room')) || 'lobby',
     name: cleanName(params.get('name')),
     status: url ? 'connecting' : 'off', // off · connecting · online · error
@@ -28,7 +28,7 @@ export const net = {
     id: null,
     hostId: null,
     rtt: 0,           // ms
-    peers: new Map(), // id → { id, name, slot, samples: [{ t, p, q, alive }] (server time, oldest first) }
+    peers: new Map(), // id → { id, name, slot, samples: [{ t, p, q, hp, alive }] (server time, oldest first) }
     clockOffset: Infinity, // min(local receive time − server time): local ms = server ms + clockOffset
 };
 export const isHost = () => net.status === 'online' && net.hostId === net.id;
@@ -98,7 +98,7 @@ function receive(m) {
                 if (!peer) continue; // ourselves, or a player we have not heard JOIN for yet
                 const last = peer.samples[peer.samples.length - 1];
                 if (last && last.t >= m.time) continue;
-                peer.samples.push({ t: m.time, p: s.p, q: s.q, alive: s.alive });
+                peer.samples.push({ t: m.time, p: s.p, q: s.q, hp: s.hp, alive: s.alive });
                 if (peer.samples.length > MAX_SAMPLES) peer.samples.shift();
             }
             break;

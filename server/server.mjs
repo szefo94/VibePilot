@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, VALIDATION, cleanName, cleanRoom, decode, encode, spawnSlot } from '../src/net/protocol.js';
+import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -77,9 +77,9 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     const send = (c, t, data) => { if (c.ws.readyState === c.ws.OPEN) c.ws.send(encode(t, data)); };
     const broadcast = (room, t, data, except = null) => { for (const c of room.players.values()) if (c !== except) send(c, t, data); };
 
-    /** Place `c` at its spawn slot: the accepted pose, alive, and a fresh validation baseline. */
-    function placeAtSpawn(c) {
-        const s = spawnSlot(c.slot);
+    /** Place `c` at its slot (join) or a random point near it (respawn): the accepted pose, alive, fresh validation baseline. */
+    function placeAtSpawn(c, respawn = false) {
+        const s = respawn ? respawnPoint(c.slot) : spawnSlot(c.slot);
         Object.assign(c, { p: s.p, q: s.q, s: 0.3, hp: 100, alive: true, at: Date.now(), strikes: 0, respawnAt: 0 });
         return s;
     }
@@ -145,17 +145,23 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         switch (m.t) {
             case MSG.PING: send(c, MSG.PONG, { c: m.c }); break;
             case MSG.STATE: acceptState(c, m); break;
-            case MSG.DOWN:
-                if (c.alive) { c.alive = false; c.respawnAt = Date.now() + LIMITS.respawnMs; log(`x ${c.name}#${c.id} down`); }
+            case MSG.DOWN: {
+                if (!c.alive) break;
+                const killer = mode.pvp && m.by !== c.id ? room.players.get(m.by) : null;
+                c.alive = false; c.hp = 0; c.respawnAt = Date.now() + LIMITS.respawnMs;
+                broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null });
+                log(`x ${c.name}#${c.id} down${killer ? ` (by ${killer.name}#${killer.id})` : ''}`);
                 break;
+            }
             case MSG.FIRE:
                 if (!isVec(m.p, 3) || !isVec(m.d, 3)) return;
                 broadcast(room, MSG.FIRE, { from: c.id, w: String(m.w).slice(0, 12), p: m.p, d: m.d }, c);
                 break;
             case MSG.HIT: {
                 if (!mode.pvp) return;
-                const target = room.players.get(m.target);
-                if (target && target !== c) send(target, MSG.HIT, { from: c.id, dmg: Math.min(100, Math.max(0, +m.dmg || 0)), w: String(m.w).slice(0, 12) });
+                const target = room.players.get(m.target), cap = PVP_DAMAGE[m.w];
+                if (!target || target === c || !target.alive || !c.alive || !cap) return;
+                send(target, MSG.HIT, { from: c.id, dmg: Math.min(cap, Math.max(0, +m.dmg || 0)), w: m.w });
                 break;
             }
             case MSG.WORLD:
@@ -174,7 +180,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         const now = Date.now();
         for (const room of rooms.values()) {
             room.tick++;
-            for (const c of room.players.values()) if (!c.alive && now >= c.respawnAt) send(c, MSG.SPAWN, placeAtSpawn(c));
+            for (const c of room.players.values()) if (!c.alive && now >= c.respawnAt) send(c, MSG.SPAWN, placeAtSpawn(c, true));
             const players = [...room.players.values()].map(c => ({ id: c.id, p: c.p, q: c.q, s: c.s, hp: c.hp, alive: c.alive }));
             const msg = encode(MSG.SNAP, { tick: room.tick, time: now, players });
             for (const c of room.players.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(msg);

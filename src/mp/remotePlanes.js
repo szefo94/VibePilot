@@ -1,10 +1,15 @@
 /**
- * Other players' planes (shared skies). Each peer is drawn from the server's room snapshots, INTERP_DELAY behind
- * the server clock so there are always two snapshots to blend between: position lerp, rotation slerp. When
- * snapshots run late it extrapolates along the last velocity for up to EXTRAPOLATE_MAX, then holds.
+ * Other players' planes. Each peer is drawn from the server's room snapshots, INTERP_DELAY behind the server
+ * clock so there are always two snapshots to blend between: position lerp, rotation slerp. When snapshots run
+ * late it extrapolates along the last velocity for up to EXTRAPOLATE_MAX, then holds.
+ *
+ * Each plane carries a name tag with an HP bar. In PvP a plane is also a proxy air unit in `airUnits`, so every
+ * weapon, the lock-on reticle and missile homing treat it as a target; hits.js hands its hits to `onHit`
+ * (which reports them to the server) instead of damaging it locally.
  */
 import { scene } from '../core/scene.js';
 import { createExplosion } from '../effects/effects.js';
+import { airUnits } from '../entities/registry.js';
 import { net, serverNow } from '../net/net.js';
 
 const INTERP_DELAY = 100;    // ms — two snapshots at 20 Hz, plus jitter
@@ -34,40 +39,71 @@ function buildPlane(slot) {
     return g;
 }
 
-/** Name tag: constant size on screen, drawn over terrain so a far-away friend stays findable. */
+/** Name tag + HP bar: constant size on screen, drawn over terrain so a far-away player stays findable. */
 function buildLabel(name, slot) {
-    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 8, 256, 48);
-    ctx.fillStyle = cssColor(slot); ctx.fillRect(0, 8, 8, 48);
-    ctx.font = 'bold 30px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
-    ctx.fillText(name, 132, 33);
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 160;
     const texture = new THREE.CanvasTexture(canvas);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false, sizeAttenuation: false }));
-    sprite.scale.set(0.16, 0.04, 1); sprite.renderOrder = 2;
-    return sprite;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
+    sprite.scale.set(0.34, 0.106, 1); sprite.renderOrder = 2;
+    const label = { sprite, canvas, texture, name, slot, hp: -1 };
+    drawLabel(label, 100);
+    return label;
+}
+function drawLabel(label, hp) {
+    hp = Math.max(0, Math.min(100, Math.round(hp)));
+    if (hp === label.hp) return;
+    label.hp = hp;
+    const ctx = label.canvas.getContext('2d');
+    ctx.clearRect(0, 0, 512, 160);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, 512, 160);
+    ctx.fillStyle = cssColor(label.slot); ctx.fillRect(0, 0, 14, 160);
+    ctx.font = 'bold 64px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+    ctx.fillText(label.name, 263, 52, 470);
+    const x = 34, y = 100, w = 458, h = 40;
+    ctx.fillStyle = 'rgba(255,68,68,0.45)'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = hp > 50 ? '#00ff88' : hp > 25 ? '#ffcc00' : '#ff4444'; ctx.fillRect(x, y, w * hp / 100, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
+    label.texture.needsUpdate = true;
 }
 
-const views = new Map(); // peer id → { group, label, alive, name, slot }
+const views = new Map(); // peer id → { group, label, alive, name, slot, unit }
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
+let onHit = null, targetable = false;
+
+/**
+ * PvP: make remote planes targets. `hit(peerId, amount, weapon)` is called for every hit a weapon lands on one;
+ * it reports the hit, and the damage is applied by that player and comes back in the next snapshots.
+ */
+export function enablePvpTargets(hit) { onHit = hit; targetable = true; }
 
 function viewFor(peer) {
     let v = views.get(peer.id);
     if (!v) {
-        v = { group: buildPlane(peer.slot), label: buildLabel(peer.name, peer.slot), alive: true, name: peer.name, slot: peer.slot };
-        v.group.visible = v.label.visible = false;
-        scene.add(v.group, v.label);
+        v = { group: buildPlane(peer.slot), label: buildLabel(peer.name, peer.slot), alive: true, name: peer.name, slot: peer.slot, unit: null };
+        v.group.visible = v.label.sprite.visible = false;
+        scene.add(v.group, v.label.sprite);
+        if (targetable) {
+            // A proxy air unit (entities/contract.js AirUnit shape): hits.js routes its hits to onHit, ai.js skips it
+            v.unit = {
+                id: `peer-${peer.id}`, type: 'fighter', group: v.group, hp: 0, maxHp: 100, xpValue: 0,
+                collisionRadius: 5, wingHalfSpan: 5, wingR: 3, wingType: 'q', // the airframe spans 12 units
+                isHostile: true, baseId: null, label: null, userData: { baseId: null }, shootCooldown: 0,
+                proxy: { damage: (amount, weapon) => onHit?.(peer.id, amount, weapon) },
+            };
+            airUnits.push(v.unit);
+        }
         views.set(peer.id, v);
     }
     return v;
 }
 function dispose(id, v) {
-    scene.remove(v.group, v.label);
-    v.label.material.map.dispose(); v.label.material.dispose();
+    scene.remove(v.group, v.label.sprite);
+    v.label.texture.dispose(); v.label.sprite.material.dispose();
+    if (v.unit) { const i = airUnits.indexOf(v.unit); if (i >= 0) airUnits.splice(i, 1); }
     views.delete(id);
 }
 
-/** Interpolated pose of `peer` at server time `t` into group; returns the sample's alive flag, or null if no data. */
+/** Interpolated pose of the samples at server time `t` into group; returns the sample, or null if there is no data. */
 function sampleAt(samples, t, group) {
     const n = samples.length;
     if (!n) return null;
@@ -78,14 +114,14 @@ function sampleAt(samples, t, group) {
         const k = (t - s0.t) / (s1.t - s0.t);
         group.position.lerpVectors(_a.fromArray(s0.p), _b.fromArray(s1.p), k);
         group.quaternion.slerpQuaternions(_qa.fromArray(s0.q), _qb.fromArray(s1.q), k);
-        return s0.alive && s1.alive;
+        return s0.alive && s1.alive ? s0 : (s0.alive ? s1 : s0); // report "down" as soon as either side is down
     }
     if (t > s0.t && n > 1) { // past the newest: extrapolate briefly along the last velocity
         const prev = samples[n - 2], ext = Math.min(t - s0.t, EXTRAPOLATE_MAX) / (s0.t - prev.t);
         group.position.fromArray(s0.p).addScaledVector(_b.fromArray(s0.p).sub(_a.fromArray(prev.p)), s0.alive && prev.alive ? ext : 0);
     } else group.position.fromArray(s0.p);
     group.quaternion.fromArray(s0.q);
-    return s0.alive;
+    return s0;
 }
 
 /** Once per rendered frame. */
@@ -93,16 +129,21 @@ export function updateRemotePlanes() {
     const now = serverNow(), t = now - INTERP_DELAY;
     for (const peer of net.peers.values()) {
         const v = viewFor(peer);
-        const alive = sampleAt(peer.samples, t, v.group);
+        const s = sampleAt(peer.samples, t, v.group);
         const newest = peer.samples[peer.samples.length - 1];
+        const alive = s ? s.alive : null;
         const shown = alive === true && now - newest.t < STALE_MS;
         if (v.alive && alive === false) createExplosion(v.group.position, 1); // shot down / crashed
         if (alive !== null) v.alive = alive;
-        v.group.visible = v.label.visible = shown;
-        if (shown) v.label.position.copy(v.group.position).y += 4;
+        v.group.visible = v.label.sprite.visible = shown;
+        if (shown) { v.label.sprite.position.copy(v.group.position).y += 4; drawLabel(v.label, newest.hp ?? 100); }
+        if (v.unit) v.unit.hp = shown ? Math.max(1, newest.hp ?? 100) : 0; // hp 0 = not targetable (down, respawning, stale)
     }
     for (const [id, v] of views) if (!net.peers.has(id)) dispose(id, v);
 }
+
+/** Current world position of a peer's plane (for hit-direction arcs), or null. */
+export const peerPosition = id => views.get(id)?.group.position ?? null;
 
 /** Minimap blips for visible peers (game/hooks.js 'radarBlips'). */
 export function remoteRadarBlips(blips) {

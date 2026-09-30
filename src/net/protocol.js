@@ -10,12 +10,12 @@
  *
  * Modes:
  *   skies  shared sky — same map, everyone sees everyone's plane, no enemies (phase 1)
- *   pvp    skies + players can shoot each other (phase 2)
+ *   pvp    skies + every weapon hits other players; 0 HP → respawn nearby (default)
  *   coop   one shared war against the enemies (phase 3)
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const DEFAULT_PORT = 8787;
 
 export const MODES = Object.freeze({
@@ -51,6 +51,19 @@ export function spawnSlot(i) {
     return { p: [(i - (LIMITS.maxPlayers - 1) / 2) * 30, groundLevel + 40, 0], q: [0, 0, 0, 1] };
 }
 
+/** Respawn area: a random point RESPAWN.min–max from slot i's start, at a safe height, with a random heading. */
+export const RESPAWN = Object.freeze({ min: 80, max: 350, minY: groundLevel + 35, maxY: groundLevel + 90 });
+export function respawnPoint(i, random = Math.random) {
+    const [sx, , sz] = spawnSlot(i).p;
+    const a = random() * Math.PI * 2, d = RESPAWN.min + random() * (RESPAWN.max - RESPAWN.min), h = random() * Math.PI * 2;
+    const p = [sx + Math.cos(a) * d, RESPAWN.minY + random() * (RESPAWN.maxY - RESPAWN.minY), sz + Math.sin(a) * d].map(v => +v.toFixed(2));
+    return { p, q: [0, +Math.sin(h / 2).toFixed(4), 0, +Math.cos(h / 2).toFixed(4)] }; // yaw-only rotation
+}
+
+/** PvP damage per hit, by weapon (hits.js names). The server caps every HIT at its weapon's value. Player HP is 100. */
+export const PVP_DAMAGE = Object.freeze({ bullet: 4, missile: 45, bomb: 60, napalm: 10 });
+export const PVP_KILL_XP = 150;
+
 /** Message types. C→S client to server, S→C server to client. */
 export const MSG = Object.freeze({
     HELLO: 'hello',       // C→S  { v, mode, room, name, seed }
@@ -62,10 +75,10 @@ export const MSG = Object.freeze({
     STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp } — own plane, validated by the server
     SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, alive }] } — the room, every tick
     CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
-    DOWN: 'down',         // C→S  {} — I was shot down / crashed (server respawns me after LIMITS.respawnMs)
-    SPAWN: 'spawn',       // S→C  { p, q } — respawn here
+    DOWN: 'down',         // C→S  { by } — I was shot down (by = player id) or crashed (by = null); S→C { id, by } to the room
+    SPAWN: 'spawn',       // S→C  { p, q } — respawn here (random point near your slot, respawnPoint())
     FIRE: 'fire',         // relay { w, p:[x,y,z], d:[x,y,z] } — cosmetic tracers / sounds (phase 2)
-    HIT: 'hit',           // pvp:  C→S { target, dmg, w } → delivered to `target` only (phase 2)
+    HIT: 'hit',           // pvp:  C→S { target, dmg, w } → S→C to `target` only { from, dmg, w }; dmg ≤ PVP_DAMAGE[w]
     WORLD: 'world',       // coop: host → others { tick, units: [...] } (phase 3)
     ACTION: 'action',     // coop: client → host { kind, ... } (phase 3)
     PING: 'ping',         // C→S  { c: clientTime }

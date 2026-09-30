@@ -19,3 +19,5 @@
 }
 #mp-lobby input:focus-visible { outline: 2px solid var(--hud-amber); outline-offset: 2px; }
 #mp-lobby button:disabled { opacity: 0.4; cursor: default; }
+/* Phones (ui/touch.js): under the pause / tilt / fullscreen buttons */
+body.touch #net-status { top: 58px; font-size: 9px; padding: 3px 8px; }

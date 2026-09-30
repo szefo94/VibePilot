@@ -2,7 +2,7 @@
 //   npm run test:mp
 import { WebSocket } from 'ws';
 import { startMpServer } from '../server/server.mjs';
-import { LIMITS, MSG, PROTOCOL_VERSION, encode, spawnSlot } from '../src/net/protocol.js';
+import { LIMITS, MSG, PROTOCOL_VERSION, PVP_DAMAGE, RESPAWN, encode, spawnSlot } from '../src/net/protocol.js';
 
 const srv = await startMpServer({ port: 0, log: () => {} });
 const WS = `ws://127.0.0.1:${srv.port}`, HTTP = `http://127.0.0.1:${srv.port}`;
@@ -63,17 +63,26 @@ await wait(120);
 check('downInSnap', inSnap(a, b.first.id)?.alive === false);
 b.ws.send(encode(MSG.STATE, { p: [0, 0, 0], q: [0, 0, 0, 1] }));
 await wait(LIMITS.respawnMs);
-check('respawn', got(b, MSG.SPAWN).length === 1 && JSON.stringify(got(b, MSG.SPAWN)[0].p) === JSON.stringify(spawnSlot(1).p) && inSnap(a, b.first.id)?.alive === true);
+const sp = got(b, MSG.SPAWN)[0], slot1 = spawnSlot(1).p, dist = sp && Math.hypot(sp.p[0] - slot1[0], sp.p[2] - slot1[2]);
+check('respawnNearSlot', got(b, MSG.SPAWN).length === 1 && dist >= RESPAWN.min - 0.1 && dist <= RESPAWN.max + 0.1 && sp.p[1] >= RESPAWN.minY && sp.p[1] <= RESPAWN.maxY && inSnap(a, b.first.id)?.alive === true, { dist, y: sp?.p[1] });
+check('downBroadcast', got(a, MSG.DOWN)[0]?.id === b.first.id && got(a, MSG.DOWN)[0]?.by === null);
 
 // PvP hits are skies no-ops, routed to the target in pvp
 a.ws.send(encode(MSG.HIT, { target: b.first.id, dmg: 10 }));
 const p1 = await client({ mode: 'pvp', room: 'duel', name: 'P1' });
 const p2 = await client({ mode: 'pvp', room: 'duel', name: 'P2' });
 const p3 = await client({ mode: 'pvp', room: 'duel', name: 'P3' });
-p1.ws.send(encode(MSG.HIT, { target: p2.first.id, dmg: 999, w: 'gun' }));
+p1.ws.send(encode(MSG.HIT, { target: p2.first.id, dmg: 999, w: 'bullet' }));
+p1.ws.send(encode(MSG.HIT, { target: p2.first.id, dmg: 30, w: 'laser' })); // unknown weapon: dropped
 await wait(80);
 check('skiesNoHits', got(b, MSG.HIT).length === 0);
-check('pvpHitRouted', got(p2, MSG.HIT)[0]?.dmg === 100 && got(p2, MSG.HIT)[0]?.from === p1.first.id && got(p3, MSG.HIT).length === 0);
+check('pvpHitRouted', got(p2, MSG.HIT).length === 1 && got(p2, MSG.HIT)[0].dmg === PVP_DAMAGE.bullet && got(p2, MSG.HIT)[0].from === p1.first.id && got(p3, MSG.HIT).length === 0, got(p2, MSG.HIT));
+p2.ws.send(encode(MSG.DOWN, { by: p1.first.id }));
+await wait(80);
+check('killCredit', got(p1, MSG.DOWN)[0]?.id === p2.first.id && got(p1, MSG.DOWN)[0]?.by === p1.first.id && got(p3, MSG.DOWN)[0]?.by === p1.first.id);
+p1.ws.send(encode(MSG.HIT, { target: p2.first.id, dmg: 4, w: 'bullet' }));
+await wait(80);
+check('noHitsOnTheDead', got(p2, MSG.HIT).length === 1);
 
 // Co-op host tracking and handover
 const h = await client({ mode: 'coop', room: 'war', name: 'Host' });

@@ -5,15 +5,23 @@
  * belongs to the server: the game rules switch to shared skies (no enemies, ace, interceptors or mission; respawn
  * instead of game over), the server's WELCOME / SPAWN / CORRECT place the player, and other players are drawn
  * from its snapshots. Everything plugs in through game/hooks.js.
+ *
+ * PvP (default mode): every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
+ * the victim applies it with damagePlayer() — its flares still stop gun and missile hits, spawn protection still
+ * applies — and at 0 HP reports DOWN with the attacker, which credits the kill. The server respawns the victim
+ * at a random point near its start.
  */
 import { setRules } from '../game/rules.js';
 import { onHook } from '../game/hooks.js';
 import { respawnPlayer } from '../game/respawn.js';
 import { state } from '../state.js';
 import { plane } from '../player/plane.js';
-import { MODES, MSG } from '../net/protocol.js';
+import { MODES, MSG, PVP_DAMAGE, PVP_KILL_XP } from '../net/protocol.js';
 import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
-import { clearRemotePlanes, cssColor, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
+import { clearRemotePlanes, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
+import { damagePlayer } from '../combat/collision.js';
+import { awardKill } from '../game/progression.js';
+import { showNotification } from '../ui/notifications.js';
 import { askName } from './lobby.js';
 
 if (net.enabled) {
@@ -33,7 +41,31 @@ if (net.enabled) {
     onNet(MSG.SPAWN, place);
     onNet(MSG.CORRECT, ({ p, q }) => { plane.position.fromArray(p); plane.quaternion.fromArray(q); }); // server rejected our reports
     onNet('offline', clearRemotePlanes);
-    onHook('playerDown', () => netSend(MSG.DOWN, {}));
+    // --- PvP ---
+    const pvp = MODES[net.mode].pvp, kills = new Map(); // player id → kills this session
+    let lastHit = null; // { by, at } — who to credit if we go down soon after
+    const nameOf = id => id === net.id ? net.name : net.peers.get(id)?.name ?? 'someone';
+    if (pvp) {
+        enablePvpTargets((peerId, amount, weapon) => { if (PVP_DAMAGE[weapon]) netSend(MSG.HIT, { target: peerId, dmg: PVP_DAMAGE[weapon], w: weapon }); });
+        onNet(MSG.HIT, m => {
+            if (state._playerDown) return;
+            if (state.flareTimer > 0 && (m.w === 'bullet' || m.w === 'missile')) return; // flares: like enemy fire
+            lastHit = { by: m.from, at: performance.now() };
+            damagePlayer(m.dmg, peerPosition(m.from) ?? plane.position); // at 0 HP → game over → respawn rules → playerDown
+        });
+    }
+    onHook('playerDown', () => {
+        const by = lastHit && performance.now() - lastHit.at < 10000 ? lastHit.by : null;
+        lastHit = null;
+        netSend(MSG.DOWN, { by });
+    });
+    onNet(MSG.DOWN, ({ id, by }) => {
+        if (by !== null) kills.set(by, (kills.get(by) ?? 0) + 1);
+        if (by === net.id) { awardKill(PVP_KILL_XP); showNotification(`★ You shot down ${nameOf(id)}  +${PVP_KILL_XP}`, true); }
+        else if (id === net.id) showNotification(by === null ? 'You crashed — respawning' : `Shot down by ${nameOf(by)} — respawning`);
+        else showNotification(by === null ? `${nameOf(id)} crashed` : `${nameOf(by)} shot down ${nameOf(id)}`);
+    });
+    onNet('peer-leave', p => kills.delete(p.id));
     onHook('radarBlips', remoteRadarBlips);
 
     const report = () => state._playerDown ? null : {
@@ -63,10 +95,11 @@ if (net.enabled) {
                 el.append(dot, `${name}${note}`);
                 return el;
             };
-            rows.push(row(net.name, mySlot, state._playerDown ? ' (you · respawning)' : ' (you)'));
+            const score = id => (kills.get(id) ? ` · ${kills.get(id)}★` : '');
+            rows.push(row(net.name, mySlot, `${state._playerDown ? ' (you · down)' : ` (you) · ${Math.max(0, state.planeHP)} HP`}${score(net.id)}`));
             for (const peer of net.peers.values()) {
                 const last = peer.samples[peer.samples.length - 1];
-                rows.push(row(peer.name, peer.slot, last && !last.alive ? ' (down)' : ''));
+                rows.push(row(peer.name, peer.slot, `${last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : ''}${score(peer.id)}`));
             }
         }
         chip.replaceChildren(...rows);
