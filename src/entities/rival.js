@@ -30,6 +30,9 @@ import { destroyAirUnit } from './airUnits.js';
 import { difficulty, onSettingChange, rivalSkill, setSetting, settings } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
 import { heightAt } from '../world/terrain.js';
+import { aceGeo } from './models.js';
+import { kitMaterial } from '../core/meshkit.js';
+import { markShared } from '../core/utils.js';
 import { runHooks } from '../game/hooks.js';
 
 // --- Targets: who the aces hunt ----------------------------------------------------------------------------
@@ -486,17 +489,12 @@ function updateWarnings() {
 
 // --- Visual -----------------------------------------------------------------------------------
 
-/** The player's airframe in dark red (or `color`) and black, scaled up so it is hittable. */
-export function createRivalVisual(color = 0x7a0d12) {
+const aceMats = new Map(); // colour → kit material (shared by every ace in that colour)
+/** The ace airframe (entities/models.js aceGeo) tinted dark red, or `color`, scaled up so it is hittable. */
+export function createRivalVisual(color = 0x9a1a22) {
+    if (!aceMats.has(color)) aceMats.set(color, markShared(kitMaterial({ color, metalness: 0.3, roughness: 0.55 }))); // never disposed with an ace
     const g = new THREE.Group();
-    const body = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-    const trim = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-    const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 4, 12).rotateX(Math.PI / 2), body);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.2, 12).rotateX(Math.PI / 2), trim); nose.position.z = 2.6;
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(12, 0.2, 1.5), body);
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1), trim); fin.position.set(0, 0.75, -1.8);
-    const hStab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.15, 0.8), body); hStab.position.z = -1.8;
-    g.add(fus, nose, wings, fin, hStab);
+    g.add(new THREE.Mesh(aceGeo, aceMats.get(color)));
     g.scale.setScalar(RIVAL.scale);
     return g;
 }
