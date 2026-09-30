@@ -18,7 +18,7 @@ npm ci                      # 2. dependencies (once, and after pulling updates)
 npm run mp-server           # 3. start on the default port 8787
 ```
 
-Open `http://localhost:8787/`. The bare address goes straight into multiplayer (`?mp=pvp`, room `lobby`) under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
+Open `http://localhost:8787/`. The bare address goes straight into multiplayer: team deathmatch (`?mp=tdm`, room `lobby`), Red against Blue with five pilots a side, where bots fill any place a player hasn't taken. Other modes are `?mp=pvp` (everyone for themselves), `?mp=coop` and `?mp=skies`. You play under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
 
 Address options:
 

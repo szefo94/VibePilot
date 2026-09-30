@@ -2,7 +2,7 @@
  * Multiplayer client: connection, room membership, peer table and message hooks (see MULTIPLAYER.md).
  * Off unless the page is opened with ?mp — the single-player game never touches the network.
  *
- *   ?mp=pvp                connect to the server that served this page in that mode (pvp · coop · skies);
+ *   ?mp=tdm                connect to the server that served this page in that mode (tdm · pvp · coop · skies);
  *                          a bare ?mp means pvp. The multiplayer server sends its bare address here.
  *   ?mp=wss://host/        …or to another server (&mode= picks the mode then)
  *   &room=name             default "lobby"
@@ -11,13 +11,13 @@
  * Joining a room whose map seed differs from ours reloads the page onto the room's seed, so everyone flies the
  * same world. Peers are updated from the server's room snapshots (SNAP); src/mp/ renders them.
  */
-import { LIMITS, MODES, MSG, PROTOCOL_VERSION, cleanName, cleanRoom, decode, encode } from './protocol.js';
+import { cleanName, cleanRoom, decode, DEFAULT_MODE, encode, LIMITS, MODES, MSG, PROTOCOL_VERSION } from './protocol.js';
 
 const params = new URLSearchParams(location.search);
 const sameHost = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/`;
 const mpParam = params.get('mp');
 const url = mpParam === null ? '' : /^wss?:\/\//.test(mpParam) ? mpParam : sameHost;
-const modeParam = Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : Object.hasOwn(MODES, mpParam) ? mpParam : 'pvp';
+const modeParam = Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : Object.hasOwn(MODES, mpParam) ? mpParam : DEFAULT_MODE;
 
 export const net = {
     enabled: !!url,
@@ -69,7 +69,7 @@ function connect() {
 }
 function fail(reason) { rejected = true; setStatus('error', reason); }
 
-const addPeer = p => net.peers.set(p.id, { id: p.id, name: p.name, slot: p.slot, samples: [] });
+const addPeer = p => net.peers.set(p.id, { id: p.id, name: p.name, slot: p.slot, team: p.team ?? null, samples: [] });
 
 function receive(m) {
     switch (m.t) {
@@ -82,7 +82,7 @@ function receive(m) {
                 location.replace(u.href);
                 return;
             }
-            Object.assign(net, { id: m.id, hostId: m.hostId });
+            Object.assign(net, { id: m.id, hostId: m.hostId, team: m.team ?? null, score: m.score ?? [0, 0] });
             retry = 0;
             m.players.forEach(addPeer);
             setStatus('online');
@@ -92,6 +92,7 @@ function receive(m) {
         case MSG.JOIN: addPeer(m); emit('peer-join', m); break;
         case MSG.LEAVE: { const p = net.peers.get(m.id); net.peers.delete(m.id); emit('peer-leave', p || m); break; }
         case MSG.HOST: net.hostId = m.hostId; break;
+        case MSG.SCORE: if (Array.isArray(m.score)) net.score = m.score; break;
         case MSG.PONG: net.rtt = Math.round(performance.now() - m.c); emit('status', net); break;
         case MSG.SNAP: {
             net.clockOffset = Math.min(net.clockOffset + 0.05, performance.now() - m.time); // +0.05 ms/tick: follow slow clock drift

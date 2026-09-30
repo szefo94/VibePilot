@@ -11,7 +11,10 @@
  * fighters stay off (they spawn at random, so they can't be shared yet).
  * Notifications: every gameplay notification is also shown to the others with the player's name (EVENT).
  *
- * PvP (default mode): every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
+ * Team deathmatch (default mode, tdm): Red against Blue, five a side; the host's bots fill the empty places (bots.js).
+ * No damage between teammates; the server keeps the score (kills of the other team), shown in the roster.
+ *
+ * PvP: every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
  * the victim applies it with damagePlayer() — its flares still stop gun and missile hits, spawn protection still
  * applies — and at 0 HP reports DOWN with the attacker, which credits the kill. The server respawns the victim
  * at a random point near its start.
@@ -21,9 +24,9 @@ import { onHook } from '../game/hooks.js';
 import { respawnPlayer } from '../game/respawn.js';
 import { state } from '../state.js';
 import { aimingLaser, plane } from '../player/plane.js';
-import { FLAGS, MODES, MSG, PVP_DAMAGE, PVP_KILL_XP } from '../net/protocol.js';
+import { FLAGS, MODES, MSG, PVP_DAMAGE, PVP_KILL_XP, TEAMS } from '../net/protocol.js';
 import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
-import { clearRemotePlanes, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
+import { clearRemotePlanes, colorKey, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
 import { clearRemoteFx, onRemoteFire, updateRemoteFx } from './remoteFx.js';
 import { damagePlayer } from '../combat/collision.js';
 import { awardKill } from '../game/progression.js';
@@ -31,13 +34,13 @@ import { showNotification } from '../ui/notifications.js';
 import { askName } from './lobby.js';
 import { defaultCallsign, saveCallsign } from './callsigns.js';
 import { startCoop, updateCoop } from './coop.js';
-import { botRoster, recentAceHit, startBots, updateBots } from './bots.js';
+import { botKiller, botRoster, startBots, updateBots } from './bots.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
     setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, mission: enemies, respawn: true });
     if (enemies) startCoop();
-    startBots(enemies); // turns RULES.ace on while this player hosts
+    startBots(net.mode); // tdm: team bots on the host; pvp/coop: Ace Hunt on the host (RULES.ace)
     if (!new URLSearchParams(location.search).get('name')) net.name = defaultCallsign();
 
     const css = document.createElement('link');
@@ -49,8 +52,8 @@ if (net.enabled) {
 
     const _p = new THREE.Vector3(), _q = new THREE.Quaternion();
     const place = ({ p, q }) => respawnPlayer(_p.fromArray(p), _q.fromArray(q));
-    let mySlot = 0;
-    onNet('online', m => { mySlot = m.slot; place(m.spawn); });
+    let myKey = 0; // colour key: slot, or team in tdm
+    onNet('online', m => { myKey = colorKey(m); place(m.spawn); });
     onNet(MSG.SPAWN, place);
     onNet(MSG.CORRECT, ({ p, q }) => { plane.position.fromArray(p); plane.quaternion.fromArray(q); }); // server rejected our reports
     onNet('offline', () => { clearRemotePlanes(); clearRemoteFx(); });
@@ -84,13 +87,17 @@ if (net.enabled) {
     onHook('playerDown', () => {
         const by = lastHit && performance.now() - lastHit.at < 10000 ? lastHit.by : null;
         lastHit = null;
-        netSend(MSG.DOWN, { by });
+        netSend(MSG.DOWN, { by, ...(by === null ? botKiller() ?? {} : {}) }); // a bot's kill scores for its team
     });
-    onNet(MSG.DOWN, ({ id, by }) => {
+    onNet(MSG.DOWN, ({ id, by, bot }) => {
         if (by !== null) kills.set(by, (kills.get(by) ?? 0) + 1);
+        if (by === null && bot) { // a bot got them
+            showNotification(id === net.id ? `Shot down by ${bot} — respawning` : `${bot} shot down ${nameOf(id)}`, false, { local: true });
+            return;
+        }
         const feed = (text, hl = false) => showNotification(text, hl, { local: true }); // everyone sees DOWN already
         if (by === net.id) { awardKill(PVP_KILL_XP); feed(`★ You shot down ${nameOf(id)}  +${PVP_KILL_XP}`, true); }
-        else if (id === net.id) feed(by !== null ? `Shot down by ${nameOf(by)} — respawning` : recentAceHit() ? `Shot down by ${recentAceHit()} — respawning` : 'You went down — respawning');
+        else if (id === net.id) feed(by !== null ? `Shot down by ${nameOf(by)} — respawning` : 'You went down — respawning');
         else feed(by === null ? `${nameOf(id)} went down` : `${nameOf(by)} shot down ${nameOf(id)}`);
     });
     onNet('peer-leave', p => kills.delete(p.id));
@@ -125,19 +132,32 @@ if (net.enabled) {
             : net.status === 'error' ? `✕ Multiplayer: ${net.error}` : `○ ${mode} · connecting${net.error ? ` — ${net.error}` : '…'}`;
         const rows = [head];
         if (net.status === 'online') {
-            const row = (name, slot, note) => {
+            const row = (name, key, note) => {
                 const el = document.createElement('div'); el.className = 'net-pilot';
-                const dot = document.createElement('span'); dot.className = 'net-dot'; dot.style.background = cssColor(slot);
+                const dot = document.createElement('span'); dot.className = 'net-dot'; dot.style.background = cssColor(key);
                 el.append(dot, `${name}${note}`);
                 return el;
             };
             const score = id => (kills.get(id) ? ` · ${kills.get(id)}★` : '');
-            rows.push(row(net.name, mySlot, `${state._playerDown ? ' (you · down)' : ` (you) · ${Math.max(0, state.planeHP)} HP`}${score(net.id)}`));
+            const pilots = [{ team: net.team, el: row(net.name, myKey, `${state._playerDown ? ' (you · down)' : ` (you) · ${Math.max(0, state.planeHP)} HP`}${score(net.id)}`) }];
             for (const peer of net.peers.values()) {
                 const last = peer.samples[peer.samples.length - 1];
-                rows.push(row(peer.name, peer.slot, `${last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : ''}${score(peer.id)}`));
+                pilots.push({ team: peer.team, el: row(peer.name, colorKey(peer), `${last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : ''}${score(peer.id)}`) });
             }
-            for (const ace of botRoster()) rows.push(row(`☠ ACE ${ace.name}`, 'ace', ` · LV ${ace.lvl} · ${ace.hp} HP${ace.target != null ? ` → ${nameOf(ace.target)}` : ''}`)); // the host's bots
+            for (const b of botRoster()) { // the host's bots
+                const key = b.team === null ? 'ace' : `t${b.team}`, target = b.target != null && b.team === null ? ` → ${nameOf(b.target)}` : '';
+                pilots.push({ team: b.team, el: row(b.team === null ? `☠ ${b.name}` : `${b.name} · bot`, key, b.down ? ' (down)' : ` · ${b.hp} HP${target}`) });
+            }
+            if (MODES[net.mode].teams) { // scoreboard, then each team
+                const board = document.createElement('div'); board.className = 'net-score';
+                board.innerHTML = TEAMS.map((t, i) => `<span style="color:${t.css}">${t.name.toUpperCase()} ${net.score?.[i] ?? 0}</span>`).join(' : ');
+                rows.push(board);
+                for (const team of [0, 1]) {
+                    const h = document.createElement('div'); h.className = 'net-team'; h.style.color = TEAMS[team].css;
+                    h.textContent = `${TEAMS[team].name} team${team === net.team ? ' (yours)' : ''}`;
+                    rows.push(h, ...pilots.filter(p => p.team === team).map(p => p.el));
+                }
+            } else rows.push(...pilots.map(p => p.el));
         }
         chip.replaceChildren(...rows);
     }

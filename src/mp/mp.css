@@ -9,6 +9,8 @@
 #net-status[data-status="error"] { color: var(--hud-red); }
 #net-status .net-pilot { margin-top: 2px; color: #fff; text-transform: none; }
 #net-status .net-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+#net-status .net-score { margin: 4px 0 2px; font-size: 15px; font-weight: bold; letter-spacing: 0.08em; }
+#net-status .net-team { margin-top: 5px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
 /* Callsign prompt (src/mp/lobby.js) — above the start menu */
 #mp-lobby { z-index: 950; background: rgba(0, 8, 4, 0.94); }
 #mp-lobby h2 { margin: 0; letter-spacing: 0.15em; text-transform: uppercase; }

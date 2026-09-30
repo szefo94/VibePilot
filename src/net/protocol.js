@@ -9,24 +9,29 @@
  * report and broadcasts one SNAP of the whole room per tick. See MULTIPLAYER.md.
  *
  * Modes:
- *   pvp    the default: the enemy bases fight everyone (co-op), and every weapon also hits other players
+ *   tdm    the default: team deathmatch, Red against Blue, TEAM_SIZE a side — bots (flown by the host) fill the places
+ *          players don't take. No damage between teammates; the enemy bases fight everyone and give XP as usual.
+ *          The server keeps the score (kills of the other team; unlimited for now).
+ *   pvp    every player for themselves: the enemy bases fight everyone (co-op), and every weapon also hits other players
  *   coop   the same shared war, without damage between players
  *   skies  just flying together: no enemies, no damage
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const DEFAULT_PORT = 8787;
 
 // pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
+// teams: two teams, no friendly fire, bots fill the teams, the server keeps the score
 export const MODES = Object.freeze({
+    tdm:   { label: 'Team deathmatch', pvp: true, enemies: true, hostAuthority: true, teams: true },
     pvp:   { label: 'PvP + co-op', pvp: true,  enemies: true,  hostAuthority: true },
     coop:  { label: 'Co-op',       pvp: false, enemies: true,  hostAuthority: true },
     skies: { label: 'Shared skies', pvp: false, enemies: false, hostAuthority: false },
 });
 
 export const LIMITS = Object.freeze({
-    maxPlayers: 8,        // per room
+    maxPlayers: 10,       // per room (two teams of TEAM_SIZE in tdm)
     maxRooms: 32,         // per server
     stateHz: 20,          // client → server plane reports per second
     tickHz: 20,           // server → clients room snapshots per second
@@ -63,6 +68,25 @@ export function respawnPoint(i, random = Math.random) {
     return { p, q: [0, +Math.sin(h / 2).toFixed(4), 0, +Math.cos(h / 2).toFixed(4)] }; // yaw-only rotation
 }
 
+// --- Teams (tdm) ---
+export const DEFAULT_MODE = 'tdm';
+export const TEAM_SIZE = 5;
+export const TEAMS = Object.freeze([
+    { name: 'Red', color: 0xff4d4d, css: '#ff4d4d', bot: 0x8c1a1a },
+    { name: 'Blue', color: 0x4da6ff, css: '#4da6ff', bot: 0x1a4d8c },
+]);
+const TEAM_Z = 0.55 * MAP_BOUNDARY, TEAM_Y = groundLevel + 95; // clears the island peaks, like RESPAWN.minY
+/** Team start k (0…TEAM_SIZE-1): Red in the south heading north, Blue in the north heading south, a line abreast. */
+export function teamSpawn(team, k) {
+    return { p: [(k - (TEAM_SIZE - 1) / 2) * 40, TEAM_Y, team ? TEAM_Z : -TEAM_Z], q: team ? [0, 1, 0, 0] : [0, 0, 0, 1] };
+}
+/** Team respawn: a random point up to 250 from the team's start, heading roughly towards the middle. */
+export function teamRespawn(team, random = Math.random) {
+    const a = random() * Math.PI * 2, d = random() * 250, h = (team ? Math.PI : 0) + (random() - 0.5) * 0.8;
+    const p = [Math.cos(a) * d, TEAM_Y + random() * 20, (team ? TEAM_Z : -TEAM_Z) + Math.sin(a) * d].map(v => +v.toFixed(2));
+    return { p, q: [0, +Math.sin(h / 2).toFixed(4), 0, +Math.cos(h / 2).toFixed(4)] };
+}
+
 /** PvP damage per hit, by weapon (hits.js names). The server caps every HIT at its weapon's value. Player HP is 100. */
 export const PVP_DAMAGE = Object.freeze({ bullet: 4, missile: 45, bomb: 60, napalm: 10 });
 /** Max HP a client may report (100 + 5 per level, game/progression.js); anything above is capped. */
@@ -83,24 +107,26 @@ export const FIRE_WEAPONS = Object.freeze(['missile', 'bomb', 'napalm', 'flare']
 /** Message types. C→S client to server, S→C server to client. */
 export const MSG = Object.freeze({
     HELLO: 'hello',       // C→S  { v, mode, room, name, seed }
-    WELCOME: 'welcome',   // S→C  { units: { n: { weapon: damage } }, id, slot, mode, room, seed, hostId, spawn: {p, q}, players: [{ id, name, slot }] }
+    WELCOME: 'welcome',   // S→C  { units: { n: { weapon: damage } }, id, slot, team, score, mode, room, seed, hostId, spawn: {p, q}, players: [{ id, name, slot, team }] }
     REJECT: 'reject',     // S→C  { reason } then close
-    JOIN: 'join',         // S→C  { id, name, slot }
+    JOIN: 'join',         // S→C  { id, name, slot, team } (team: 0/1 in tdm, else null)
     LEAVE: 'leave',       // S→C  { id }
     HOST: 'host',         // S→C  { hostId } — co-op authority moved (host left)
     STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, mh: max hp, f } — own plane (f: FLAGS bits), validated
     SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, mh, f, alive }] } — the room, every tick
     CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
-    DOWN: 'down',         // C→S  { by } — I was shot down (by = player id) or crashed (by = null); S→C { id, by } to the room
+    DOWN: 'down',         // C→S  { by, byTeam?, bot? } — shot down by a player (by = id), a bot (byTeam, bot = its name) or crashed; S→C { id, by, byTeam, bot } to the room
     SPAWN: 'spawn',       // S→C  { p, q } — respawn here (random point near your slot, respawnPoint())
     FIRE: 'fire',         // relay { w: FIRE_WEAPONS, p, p2?, d?, v?, tg? } → others get { from, … } — shots to draw (src/mp/remoteFx.js)
     HIT: 'hit',           // pvp:  C→S { target, dmg, w } → S→C to `target` only { from, dmg, w }; dmg ≤ PVP_DAMAGE[w]
     UNIT_HIT: 'uhit',     // enemies: C→S { n: unit net id, dmg, w } → others { from, n, dmg, w }; the server keeps the totals
     WORLD: 'world',       // enemies: host → others { u: [[n, x, y, z, vx, vy, vz] | [n, orbitAngle]] } — moving units, 2 Hz
-    BOT: 'bot',           // enemies: host → others { bots: [{ id, name, lvl, p, q, s, hp, mh, f, tg }], m: [[id, x, y, z, target]] } — the host's aces and their missiles, 10 Hz
+    BOT: 'bot',           // enemies: host → others { bots: [{ id, name, lvl, team, p, q, s, hp, mh, f, tg }], m: [[id, x, y, z, target]] } — the host's aces / team bots and their missiles, 10 Hz;
+                          //   its hits: [{ target, dmg, w, bot, team }] go to each target only, as BOT_FIRE
     BOT_HIT: 'bothit',    // enemies: C→host { bot, dmg, w } — a guest hit an ace (the host applies it)
-    BOT_FIRE: 'botfire',  // enemies: host→target { target, dmg, w, bot } — an ace hit that player
-    BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, by, xp } — an ace was shot down (by = player id) or crashed
+    BOT_FIRE: 'botfire',  // enemies: S→C { dmg, w, bot, team } — a bot hit you (from BOT.hits; never from a bot's teammate)
+    BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, team, by, byBot, byTeam, xp, gone } — shot down (by player id / by a bot), crashed, or gone (removed)
+    SCORE: 'score',       // tdm: S→C { score: [red, blue] } — after every kill of the other team
     EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
     ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }

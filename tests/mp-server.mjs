@@ -2,7 +2,7 @@
 //   npm run test:mp
 import { WebSocket } from 'ws';
 import { startMpServer } from '../server/server.mjs';
-import { LIMITS, MSG, PROTOCOL_VERSION, PVP_DAMAGE, RESPAWN, encode, spawnSlot } from '../src/net/protocol.js';
+import { LIMITS, MSG, PROTOCOL_VERSION, PVP_DAMAGE, RESPAWN, encode, spawnSlot, teamSpawn } from '../src/net/protocol.js';
 
 const srv = await startMpServer({ port: 0, log: () => {} });
 const WS = `ws://127.0.0.1:${srv.port}`, HTTP = `http://127.0.0.1:${srv.port}`;
@@ -29,7 +29,7 @@ const inSnap = (c, id) => lastSnap(c)?.players.find(p => p.id === id);
 const status = async path => (await fetch(HTTP + path)).status;
 check('servesGame', await status('/') === 200 && await status('/src/main.js') === 200 && await status('/three.min.js') === 200);
 const bare = await fetch(`${HTTP}/?room=x`, { redirect: 'manual' });
-check('bareAddressOpensMultiplayer', bare.status === 302 && bare.headers.get('location') === '/?room=x&mp=pvp', bare.headers.get('location'));
+check('bareAddressOpensMultiplayer', bare.status === 302 && bare.headers.get('location') === '/?room=x&mp=tdm', bare.headers.get('location'));
 check('singlePlayerOptOut', (await fetch(`${HTTP}/?sp`, { redirect: 'manual' })).status === 200);
 check('hidesPrivate', await status('/package.json') === 404 && await status('/server/server.mjs') === 404 && await status('/.git/config') === 404 && await status('/src/../package.json') === 404);
 
@@ -128,20 +128,40 @@ check('actionToHost', got(h, MSG.ACTION)[0]?.unit === 'u1' && got(g2, MSG.ACTION
 // Aces (bots): the host shares them and reports their hits; guests' hits on them go to the host only
 g.ws.send(encode(MSG.BOT, { bots: [] }));                                                    // not the host: dropped
 h.ws.send(encode(MSG.BOT, { bots: [{ id: 'b1', name: 'Licho', p: [0, 100, 0], q: [0, 0, 0, 1], hp: 90 }], m: [] }));
-h.ws.send(encode(MSG.BOT, { bots: new Array(9).fill({ id: 'b2' }) }));                       // too many: dropped
+h.ws.send(encode(MSG.BOT, { bots: new Array(13).fill({ id: 'b2' }) }));                      // too many: dropped
 g.ws.send(encode(MSG.BOT_HIT, { bot: 'b1', dmg: 999, w: 'missile' }));
 g.ws.send(encode(MSG.BOT_HIT, { bot: 'b1', dmg: 5, w: 'laser' }));                            // unknown weapon
-h.ws.send(encode(MSG.BOT_FIRE, { target: g.first.id, dmg: 500, w: 'gun', bot: 'ACE Licho' }));
-g.ws.send(encode(MSG.BOT_FIRE, { target: g2.first.id, dmg: 5, w: 'gun', bot: 'ACE Licho' }));  // not the host
+h.ws.send(encode(MSG.BOT, { bots: [], hits: [{ target: g.first.id, dmg: 500, w: 'gun', bot: 'ACE Licho' }] }));
+g.ws.send(encode(MSG.BOT, { bots: [], hits: [{ target: g2.first.id, dmg: 5, w: 'gun', bot: 'ACE Licho' }] }));  // not the host
 h.ws.send(encode(MSG.BOT_DOWN, { bot: 'b1', name: 'Licho', by: g.first.id, xp: 400 }));
 await wait(80);
-check('botFromHostOnly', got(g2, MSG.BOT).length === 1 && got(g2, MSG.BOT)[0].bots[0].name === 'Licho' && got(h, MSG.BOT).length === 0);
+check('botFromHostOnly', got(g2, MSG.BOT).length === 2 && got(g2, MSG.BOT)[0].bots[0].name === 'Licho' && !('hits' in got(g2, MSG.BOT)[1]) && got(h, MSG.BOT).length === 0);
 check('botHitToHost', got(h, MSG.BOT_HIT).length === 1 && got(h, MSG.BOT_HIT)[0].dmg === 200 && got(h, MSG.BOT_HIT)[0].from === g.first.id && got(g2, MSG.BOT_HIT).length === 0);
 check('botFireToTarget', got(g, MSG.BOT_FIRE).length === 1 && got(g, MSG.BOT_FIRE)[0].dmg === 60 && got(g2, MSG.BOT_FIRE).length === 0);
 check('botDownBroadcast', got(g2, MSG.BOT_DOWN)[0]?.by === g.first.id && got(g, MSG.BOT_DOWN).length === 1);
 h.ws.close();
 await wait(100);
 check('hostHandover', got(g, MSG.HOST)[0]?.hostId === g.first.id);
+
+// Team deathmatch: balanced teams, team spawns, no friendly fire, the server keeps the score
+const r1 = await client({ mode: 'tdm', room: 'war', name: 'Red1' });
+const b1 = await client({ mode: 'tdm', room: 'war', name: 'Blue1' });
+const r2 = await client({ mode: 'tdm', room: 'war', name: 'Red2' });
+check('tdmTeams', r1.first.team === 0 && b1.first.team === 1 && r2.first.team === 0 && b1.first.players.find(p => p.id === r1.first.id)?.team === 0 && got(r1, MSG.JOIN)[0]?.team === 1, [r1.first.team, b1.first.team, r2.first.team]);
+check('tdmSpawns', JSON.stringify(r1.first.spawn) === JSON.stringify(teamSpawn(0, 0)) && JSON.stringify(b1.first.spawn) === JSON.stringify(teamSpawn(1, 0)) && JSON.stringify(r2.first.spawn) === JSON.stringify(teamSpawn(0, 1)) && r1.first.spawn.p[2] < 0 && b1.first.spawn.p[2] > 0);
+check('tdmScoreInWelcome', JSON.stringify(r1.first.score) === '[0,0]');
+r1.ws.send(encode(MSG.HIT, { target: r2.first.id, dmg: 4, w: 'bullet' }));   // teammate: dropped
+r1.ws.send(encode(MSG.HIT, { target: b1.first.id, dmg: 4, w: 'bullet' }));   // enemy: delivered
+await wait(80);
+check('tdmNoFriendlyFire', got(r2, MSG.HIT).length === 0 && got(b1, MSG.HIT).length === 1);
+b1.ws.send(encode(MSG.DOWN, { by: r1.first.id }));                           // Red scores
+r2.ws.send(encode(MSG.DOWN, { by: null, byTeam: 1, bot: 'Viper' }));         // shot down by a Blue bot: Blue scores
+await wait(80);
+check('tdmScore', JSON.stringify(got(r1, MSG.SCORE).at(-1)?.score) === '[1,1]' && got(b1, MSG.DOWN).find(d => d.id === r2.first.id)?.bot === 'Viper', got(r1, MSG.SCORE));
+r1.ws.send(encode(MSG.BOT_DOWN, { bot: 'r3', name: 'Hawk', team: 1, by: r1.first.id, byTeam: 0, xp: 100 })); // host (first in) reports a bot kill
+b1.ws.send(encode(MSG.BOT_DOWN, { bot: 'r4', name: 'Hawk', team: 0, byTeam: 1 }));                          // not the host: dropped
+await wait(80);
+check('tdmBotKillScores', JSON.stringify(got(b1, MSG.SCORE).at(-1)?.score) === '[2,1]' && got(b1, MSG.BOT_DOWN).length === 1);
 
 // Limits and validation
 const wrongVersion = await client({ v: 1, room: 'x' });
@@ -154,9 +174,9 @@ check('roomCap', extra.first.t === MSG.REJECT && extra.first.reason === 'room fu
 const pong = new Promise(r => a.ws.on('message', raw => { const m = JSON.parse(raw); if (m.t === MSG.PONG) r(m); }));
 a.ws.send(encode(MSG.PING, { c: 42 }));
 check('ping', (await pong).c === 42);
-check('health', srv.stats().players === 2 + 3 + 2 + LIMITS.maxPlayers, srv.stats().players);
+check('health', srv.stats().players === 2 + 3 + 2 + 3 + LIMITS.maxPlayers, srv.stats().players);
 
-for (const c of [a, b, p1, p2, p3, g, g2, ...crowd]) c.ws.close();
+for (const c of [a, b, p1, p2, p3, g, g2, r1, b1, r2, ...crowd]) c.ws.close();
 await wait(150);
 check('roomsCleanedUp', srv.stats().rooms.length === 0, srv.stats().rooms);
 await srv.close();

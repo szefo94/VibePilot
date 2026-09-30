@@ -5,14 +5,14 @@
  *
  * Each plane carries a name tag with an HP bar, sized in the world like the plane and shown only within LABEL_RANGE
  * (faded out towards its end), and the aiming laser when its pilot has it on (STATE.f). In PvP a plane is also a proxy air unit in `airUnits`, so every
- * weapon, the lock-on reticle and missile homing treat it as a target; hits.js hands its hits to `onHit`
+ * weapon, the lock-on reticle and missile homing treat it as a target (not a teammate's, in tdm); hits.js hands its hits to `onHit`
  * (which reports them to the server) instead of damaging it locally.
  */
 import { camera, scene } from '../core/scene.js';
 import { createExplosion } from '../effects/effects.js';
 import { airUnits } from '../entities/registry.js';
 import { net, serverNow } from '../net/net.js';
-import { FLAGS } from '../net/protocol.js';
+import { FLAGS, TEAMS } from '../net/protocol.js';
 import { kitMaterial } from '../core/meshkit.js';
 import { playerFuselageGeo, playerTailGeo, playerWingGeo } from '../entities/models.js';
 
@@ -21,7 +21,10 @@ const EXTRAPOLATE_MAX = 250; // ms
 const STALE_MS = 3000;       // no snapshot for this long: hide the plane
 const LABEL_RANGE = 320, LABEL_FADE = 90; // name tags: fully visible up to RANGE − FADE, gone beyond RANGE
 const COLORS = [0xff5555, 0x55aaff, 0xffcc33, 0x66dd66, 0xcc66ff, 0xff9933, 0x33dddd, 0xff66aa];
-export const colorOf = slot => (slot === 'ace' ? 0xff33cc : COLORS[(slot ?? 0) % COLORS.length]); // 'ace': bots.js
+// slot: a player's colour index, 't0'/'t1' a team's colour (tdm), 'ace' an Ace Hunt ace (bots.js)
+export const colorOf = slot => (slot === 'ace' ? 0xff33cc : slot === 't0' || slot === 't1' ? TEAMS[slot[1]].color : COLORS[(slot ?? 0) % COLORS.length]);
+/** A player's colour key: their team's in tdm, else their slot's. */
+export const colorKey = peer => (peer.team === 0 || peer.team === 1 ? `t${peer.team}` : peer.slot);
 export const cssColor = slot => `#${colorOf(slot).toString(16).padStart(6, '0')}`;
 
 // The player's own model (entities/models.js), tinted in each player's colour: the kit material's colour multiplies
@@ -81,10 +84,11 @@ export function enablePvpTargets(hit) { onHit = hit; targetable = true; }
 function viewFor(peer) {
     let v = views.get(peer.id);
     if (!v) {
-        v = { id: peer.id, group: buildPlane(peer.slot), label: buildLabel(peer.name, peer.slot), alive: true, name: peer.name, slot: peer.slot, unit: null };
+        const key = colorKey(peer);
+        v = { id: peer.id, group: buildPlane(key), label: buildLabel(peer.name, key), alive: true, name: peer.name, slot: key, unit: null };
         v.group.visible = v.label.sprite.visible = false;
         scene.add(v.group, v.label.sprite);
-        if (targetable) {
+        if (targetable && !(peer.team !== null && peer.team === net.team)) { // teammates are never targets
             // A proxy air unit (entities/contract.js AirUnit shape): hits.js routes its hits to onHit, ai.js skips it
             v.unit = {
                 id: `peer-${peer.id}`, type: 'fighter', group: v.group, hp: 0, maxHp: 100, xpValue: 0,

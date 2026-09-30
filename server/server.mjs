@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_PORT, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, UNIT_ID, UNIT_WEAPONS, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
+import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -48,7 +48,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         const reqUrl = new URL(req.url, 'http://x'), path = reqUrl.pathname;
         // The bare address opens multiplayer (?sp keeps the single-player game reachable)
         if ((path === '/' || path === '/index.html') && !reqUrl.searchParams.has('mp') && !reqUrl.searchParams.has('sp')) {
-            const q = new URLSearchParams(reqUrl.search); q.set('mp', 'pvp'); // default mode
+            const q = new URLSearchParams(reqUrl.search); q.set('mp', DEFAULT_MODE);
             res.writeHead(302, { Location: `/?${q}` }).end();
             return;
         }
@@ -79,7 +79,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
 
     /** Place `c` at its slot (join) or a random point near it (respawn): the accepted pose, alive, fresh validation baseline. */
     function placeAtSpawn(c, respawn = false) {
-        const s = respawn ? respawnPoint(c.slot) : spawnSlot(c.slot);
+        const s = c.team === null ? (respawn ? respawnPoint(c.slot) : spawnSlot(c.slot))
+            : respawn ? teamRespawn(c.team) : teamSpawn(c.team, [...c.room.players.values()].filter(p => p.team === c.team).indexOf(c));
         Object.assign(c, { p: s.p, q: s.q, s: 0.3, hp: c.mh ?? 100, f: 0, alive: true, at: Date.now(), strikes: 0, respawnAt: 0 });
         return s;
     }
@@ -94,19 +95,25 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {} }; // units: damage log for late joiners
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0] }; // units: damage log for late joiners
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
         const taken = new Set([...room.players.values()].map(p => p.slot));
         c.slot = 0; while (taken.has(c.slot)) c.slot++;
         c.room = room; c.name = cleanName(m.name);
+        c.team = null;
+        if (MODES[room.mode].teams) { // the smaller team (Red on a tie)
+            const n = t => [...room.players.values()].filter(p => p.team === t).length;
+            if (n(0) >= TEAM_SIZE && n(1) >= TEAM_SIZE) return reject(c, 'both teams full');
+            c.team = n(1) < n(0) ? 1 : 0;
+        }
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
         const spawn = placeAtSpawn(c);
-        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
-            players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot })) });
-        broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot }, c);
+        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, team: c.team, score: room.score, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+            players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot, team: p.team })) });
+        broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot, team: c.team }, c);
         log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot} (${room.players.size})`);
     }
     function reject(c, reason) { send(c, MSG.REJECT, { reason }); c.ws.close(4000, reason.slice(0, 100)); }
@@ -147,9 +154,12 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             case MSG.STATE: acceptState(c, m); break;
             case MSG.DOWN: {
                 if (!c.alive) break;
-                const killer = mode.pvp && m.by !== c.id ? room.players.get(m.by) : null;
+                let killer = mode.pvp && m.by !== c.id ? room.players.get(m.by) : null;
+                if (killer && mode.teams && killer.team === c.team) killer = null; // no friendly fire, so no teamkill credit
+                const byTeam = mode.teams ? (killer ? killer.team : (m.byTeam === 0 || m.byTeam === 1) && m.byTeam !== c.team ? m.byTeam : null) : null;
                 c.alive = false; c.hp = 0; c.respawnAt = Date.now() + LIMITS.respawnMs;
-                broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null });
+                broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null, byTeam, bot: !killer && byTeam !== null ? String(m.bot ?? '').slice(0, 24) : null });
+                if (byTeam !== null) score(room, byTeam);
                 log(`x ${c.name}#${c.id} down${killer ? ` (by ${killer.name}#${killer.id})` : ''}`);
                 break;
             }
@@ -166,6 +176,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 if (!mode.pvp) return;
                 const target = room.players.get(m.target), cap = PVP_DAMAGE[m.w];
                 if (!target || target === c || !target.alive || !c.alive || !cap) return;
+                if (mode.teams && target.team === c.team) return; // no friendly fire
                 send(target, MSG.HIT, { from: c.id, dmg: Math.min(cap, Math.max(0, +m.dmg || 0)), w: m.w });
                 break;
             }
@@ -186,19 +197,26 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 break;
             }
             // Aces (bots) belong to the host's game: it shares them, is told of hits on them, and reports theirs
-            case MSG.BOT:
+            case MSG.BOT: {
+                // The host's bots: shared with everyone; their hits on players go to each target only (as BOT_FIRE)
+                if (!mode.enemies || room.hostId !== c.id || !Array.isArray(m.bots) || m.bots.length > 12 || (m.m !== undefined && (!Array.isArray(m.m) || m.m.length > 12))) return;
+                for (const h of Array.isArray(m.hits) ? m.hits.slice(0, 20) : []) {
+                    const target = room.players.get(h?.target);
+                    if (target && target !== c && target.alive && (h.w === 'gun' || h.w === 'missile') && !(mode.teams && h.team === target.team)) {
+                        send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +h.dmg || 0)), w: h.w, bot: String(h.bot ?? 'ACE').slice(0, 24), team: h.team === 0 || h.team === 1 ? h.team : null });
+                    }
+                }
+                broadcast(room, MSG.BOT, { bots: m.bots, m: m.m, from: c.id }, c);
+                break;
+            }
             case MSG.BOT_DOWN:
-                if (m.t === MSG.BOT && (!Array.isArray(m.bots) || m.bots.length > 8 || (m.m !== undefined && (!Array.isArray(m.m) || m.m.length > 8)))) return;
-                if (mode.enemies && room.hostId === c.id) broadcast(room, m.t, { ...m, t: undefined, from: c.id }, c);
+                if (!mode.enemies || room.hostId !== c.id) return;
+                broadcast(room, MSG.BOT_DOWN, { ...m, t: undefined, from: c.id }, c);
+                if (mode.teams && (m.byTeam === 0 || m.byTeam === 1) && m.byTeam !== m.team && !m.gone) score(room, m.byTeam);
                 break;
             case MSG.BOT_HIT: {
                 const host = mode.enemies && room.players.get(room.hostId);
-                if (host && host !== c && typeof m.bot === 'string' && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOT_HIT, { from: c.id, bot: m.bot.slice(0, 16), dmg: Math.min(200, Math.max(0, +m.dmg || 0)), w: m.w });
-                break;
-            }
-            case MSG.BOT_FIRE: {
-                const target = mode.enemies && room.hostId === c.id && room.players.get(m.target);
-                if (target && target.alive && (m.w === 'gun' || m.w === 'missile')) send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +m.dmg || 0)), w: m.w, bot: String(m.bot ?? 'ACE').slice(0, 24) });
+                if (host && host !== c && c.alive && typeof m.bot === 'string' && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOT_HIT, { from: c.id, bot: m.bot.slice(0, 16), dmg: Math.min(200, Math.max(0, +m.dmg || 0)), w: m.w });
                 break;
             }
             case MSG.WORLD:
@@ -210,6 +228,12 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 break;
             }
         }
+    }
+
+    /** tdm: one more kill for `team`; everyone gets the new score. */
+    function score(room, team) {
+        room.score[team]++;
+        broadcast(room, MSG.SCORE, { score: room.score });
     }
 
     /** One server tick: respawns due, then one snapshot of every room. */
