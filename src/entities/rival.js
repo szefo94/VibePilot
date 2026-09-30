@@ -249,6 +249,7 @@ export function updateRival(au, dt) {
     else _des.copy(patrolPoint(au)).sub(pos);
     if (_des.lengthSq() < 1e-6) _des.copy(_fwd);
     _des.normalize();
+    avoidTraffic(au, _des);
     applySafety(au, _des);
 
     // 4. Fly — same rate limits, rotational acceleration and throttle constants as the player
@@ -320,6 +321,19 @@ function setThrottle(au, dist, offBore, dt) {
     }
     if (fl.speed < target - 0.005) fl.speed = Math.min(target, fl.speed + acceleration * dt);
     else if (fl.speed > target + 0.005) fl.speed = Math.max(minSpeed, fl.speed - deceleration * dt);
+}
+
+/** Keep clear of other aircraft (not the one being attacked): steer away from anything within RIVAL.separation. */
+function avoidTraffic(au, des) {
+    const pos = au.group.position, sepSq = RIVAL.separation ** 2;
+    _tmp2.set(0, 0, 0);
+    for (const other of airUnits) {
+        if (other === au || !(other.hp > 0) || (au.ai.mode === 'engage' && other.group.position === T.position)) continue;
+        _tmp.subVectors(pos, other.group.position);
+        const dSq = _tmp.lengthSq();
+        if (dSq < sepSq && dSq > 1e-6) _tmp2.addScaledVector(_tmp, (sepSq - dSq) / (sepSq * Math.sqrt(dSq))); // stronger the closer it is
+    }
+    if (_tmp2.lengthSq() > 0) des.addScaledVector(_tmp2, 1.5).normalize();
 }
 
 /** Bend the desired heading away from the floor, ceiling and map edge (1 s look-ahead). */

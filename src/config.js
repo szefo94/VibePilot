@@ -118,6 +118,7 @@ export const RIVAL = Object.freeze({
     rotAccelScale: 0.6,       // × the player's rotational acceleration: aces wind up their turns more slowly
     // Collisions and growth
     collisionScale: 0.8,      // × (sum of collision radii): aircraft this close collide and both explode
+    separation: 70,           // aces steer away from other aircraft closer than this (except the one they attack)
     xpPerLevel: 250,          // × the ace's level: XP to its next level (kills, markers)
     maxLevel: 10,
     pickupRange: 18,          // flying through a collectible heals (+ a missile); a marker gives XP
