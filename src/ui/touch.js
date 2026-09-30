@@ -1,17 +1,19 @@
 /**
  * Phone / tablet controls: an on-screen overlay with two wheels, plus optional tilt steering from the motion sensor.
  *
- *   left wheel   up/down = pitch · left/right = roll
- *   right wheel  up/down = throttle forward/back · left/right = yaw
+ *   left wheel   up/down = pitch · left/right = yaw
+ *   right wheel  up/down = throttle forward/back · left/right = roll
  *   buttons      GUN (hold) beside the right wheel · MSL · FLR · BOMB · NAP · LASER above it
- *   indicator    between the thumbs: a ball for pitch/roll input, a bar for yaw, a gauge for throttle
+ *   indicator    between the thumbs (ui/motionIndicator.js, shared with desktop)
+ *   objective    compact on phones; tap it to expand or collapse
  *   top right    ⏸ pause · TILT · ☾/☀ night/day · ⛶ fullscreen
  *
  * TILT: tilting the phone steers pitch and roll, relative to however you hold it when you switch it on (LEVEL
  * recentres). It reads the accelerometer's gravity vector (DeviceMotionEvent.accelerationIncludingGravity), turned
  * into the screen's frame and low-passed so hand shake doesn't register — the usual approach for tilt games; it has
  * no compass drift and none of the landscape gimbal problems of orientation angles. Response is soft: a wide range,
- * a dead zone and an expo curve. The left wheel hides; the right wheel (yaw, throttle) stays.
+ * a dead zone and an expo curve. The left wheel hides and the right wheel is throttle only (a little yaw follows the
+ * roll, so turns stay coordinated).
  * Phones that report no accelerometer data fall back to orientation angles (DeviceOrientationEvent).
  *
  * It switches on for touch screens (coarse pointer) or at the first touch anywhere. Values land in `touchAxes`,
@@ -42,7 +44,6 @@ const TILT = Object.freeze({
 });
 let enabled = false, tilt = null, laserButton = null; // tilt: { g, ref, samples, pitch, roll, source } while tilt steering is on
 const wheels = {};         // name → { id, x, y, release, lockX }
-let indicator = null;      // { ball, yaw, thr }
 
 const flying = () => !state.awaitingStart && !state.isPaused && !state.isGameOver && !document.getElementById('splash-screen');
 const clamp1 = v => Math.max(-1, Math.min(1, v));
@@ -80,13 +81,8 @@ function enable() {
     const root = document.createElement('div');
     root.id = 'touch-controls';
     root.innerHTML = `
-        <div class="tc-wheel tc-left" aria-label="Pitch and roll"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left-hint">ROLL</span><div class="tc-knob"></div></div>
-        <div class="tc-wheel tc-right" aria-label="Throttle and yaw"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left-hint">YAW</span><div class="tc-knob"></div></div>
-        <div class="tc-indicator" aria-hidden="true">
-            <div class="tc-ind-ring"><div class="tc-ind-cross"></div><div class="tc-ind-ball"></div></div>
-            <div class="tc-ind-yaw"><div></div></div>
-            <div class="tc-ind-thr"><div></div></div>
-        </div>
+        <div class="tc-wheel tc-left" aria-label="Pitch and yaw"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left-hint">YAW</span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-right" aria-label="Throttle and roll"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left-hint tc-roll-hint">ROLL</span><div class="tc-knob"></div></div>
         <div class="tc-weapons">
             <button type="button" class="tc-gun" data-hold="shoot">GUN</button>
             <button type="button" data-tap="missile">MSL</button>
@@ -107,7 +103,10 @@ function enable() {
     makeWheel('left', root.querySelector('.tc-left'));
     makeWheel('right', root.querySelector('.tc-right'));
     laserButton = root.querySelector('[data-tap="laser"]');
-    indicator = { ball: root.querySelector('.tc-ind-ball'), yaw: root.querySelector('.tc-ind-yaw div'), thr: root.querySelector('.tc-ind-thr div') };
+    // Objective panel: one compact line on phones; tap to expand or collapse
+    const objective = document.getElementById('objective');
+    objective?.classList.add('compact');
+    objective?.addEventListener('click', () => objective.classList.toggle('compact'));
 
     // Hold button (gun)
     for (const b of root.querySelectorAll('[data-hold]')) {
@@ -219,6 +218,7 @@ function onOrientation(e) {
 }
 function setTiltMode(on) {
     document.body.classList.toggle('tilt-on', on);
+    wheels.right.lockX = on; // throttle only: the phone does the roll
     wheels.left.release(); wheels.right.release();
 }
 async function toggleTilt(button) {
@@ -253,21 +253,15 @@ export function updateTouchAxes() {
     if (tilt) {
         touchAxes.pitch = clamp1(tilt.pitch);
         touchAxes.roll = clamp1(tilt.roll);
-        touchAxes.yaw = clamp1(-dead(R.x) - touchAxes.roll * TILT.yawMix);
+        touchAxes.yaw = clamp1(-touchAxes.roll * TILT.yawMix);
     } else {
         touchAxes.pitch = dead(L.y);
-        touchAxes.roll = dead(L.x);
-        touchAxes.yaw = -dead(R.x);
+        touchAxes.yaw = -dead(L.x);
+        touchAxes.roll = dead(R.x);
     }
     const thrust = -dead(R.y); // right wheel up = forward
     touchAxes.throttleUp = Math.max(0, thrust);
     touchAxes.throttleDown = Math.max(0, -thrust);
-    // Movement indicator: the ball shows pitch/roll input (up = nose up), the bar yaw, the gauge throttle
-    if (indicator) {
-        indicator.ball.style.transform = `translate(${touchAxes.roll * 22}px, ${touchAxes.pitch * 22}px)`;
-        indicator.yaw.style.transform = `translateX(${-touchAxes.yaw * 22}px)`;
-        indicator.thr.style.height = `${Math.round((state.speed / 0.8) * 100)}%`;
-    }
 }
 
 // Switch on for touch-first devices, or at the first touch on anything else (e.g. a touch-screen laptop)

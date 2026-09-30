@@ -30,6 +30,33 @@ import { destroyAirUnit } from './airUnits.js';
 import { difficulty, onSettingChange, rivalSkill, setSetting, settings } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
 import { heightAt } from '../world/terrain.js';
+import { runHooks } from '../game/hooks.js';
+
+// --- Targets: who the aces hunt ----------------------------------------------------------------------------
+// By default only the local player. Multiplayer's host adds the other players (setRivalTargets): an ace hunts the
+// nearest living target, and hits on a remote one are handed to `remoteHit` (that player applies the damage).
+const localTarget = {
+    id: 'local', local: true, position: plane.position, quaternion: plane.quaternion,
+    get speed() { return state.speed; }, get alive() { return !state.isGameOver && !state._playerDown; }, get flares() { return state.flareTimer > 0; },
+};
+let targetsFn = () => [localTarget], remoteHit = null;
+/** targets(): [{ id, local, position, quaternion, speed, alive, flares }]; onRemoteHit(targetId, damage, weapon). */
+export function setRivalTargets(targets, onRemoteHit) { targetsFn = targets || (() => [localTarget]); remoteHit = onRemoteHit || null; }
+export const localRivalTarget = localTarget;
+let T = localTarget; // the target of the ace being updated this frame
+function pickTarget(au) {
+    let best = null, bestD = Infinity;
+    for (const t of targetsFn()) {
+        if (!t.alive) continue;
+        const d = t.position.distanceToSquared(au.group.position) * (t.id === au.ai.targetId ? 0.5 : 1); // sticky: switch only for a clearly closer target
+        if (d < bestD) { bestD = d; best = t; }
+    }
+    au.ai.targetId = best ? best.id : null;
+    return best;
+}
+const targetById = id => targetsFn().find(t => t.id === id) || null;
+/** Every ace in the air (multiplayer's host shares them with the other players). */
+export const rivalList = () => rivals;
 
 const CALLSIGNS = ['Strzyga', 'Upiór', 'Licho', 'Bies', 'Południca', 'Żmij', 'Wij'];
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -125,6 +152,7 @@ export function updateRivalSystem(dt) {
         const r = rivals[i];
         if (airUnits.includes(r)) continue;
         rivals.splice(i, 1);
+        runHooks('rivalDown', r);
         if (r.crashed) { acesDowned++; banner(`✈ ACE ${r.callsign.toUpperCase()} CRASHED`, 'win'); }
         else if (r.hp <= 0) { acesDowned++; banner(`★ ACE ${r.callsign.toUpperCase()} SHOT DOWN  +${r.xpValue} XP`, 'win'); }
         if (r === activeRival) { activeRival = null; respawnTimer = RIVAL.respawnDelay; }
@@ -135,11 +163,12 @@ export function updateRivalSystem(dt) {
 
 /** Per-frame brain + flight for one ace. Called from the airUnits loop in ai.js. */
 export function updateRival(au, dt) {
-    const { ai, fl, wpn, group } = au, pos = group.position, alive = !state.isGameOver;
+    const { ai, fl, wpn, group } = au, pos = group.position, target = pickTarget(au), alive = !!target && !state.isGameOver;
+    T = target || localTarget;
     _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
-    _pFwd.set(0, 0, 1).applyQuaternion(plane.quaternion);
-    _pVel.copy(_pFwd).multiplyScalar(state.speed);
-    _toP.subVectors(plane.position, pos);
+    _pFwd.set(0, 0, 1).applyQuaternion(T.quaternion);
+    _pVel.copy(_pFwd).multiplyScalar(T.speed);
+    _toP.subVectors(T.position, pos);
     const dist = _toP.length(), tier = rivalSkill();
 
     // 1. Sensors — continuous in visual range, otherwise a map-wide radar ping every scanInterval
@@ -147,11 +176,11 @@ export function updateRival(au, dt) {
     ai.sinceFix += dt; ai.scan -= dt;
     if (visual || (alive && ai.scan <= 0)) {
         if (!visual) ai.scan = tier.scanInterval;
-        if (visual || plane.position.y > groundLevel + RIVAL.radarFloor) {
-            ai.lastKnown.copy(plane.position); ai.lastVel.copy(_pVel); ai.sinceFix = 0;
+        if (visual || T.position.y > groundLevel + RIVAL.radarFloor) {
+            ai.lastKnown.copy(T.position); ai.lastVel.copy(_pVel); ai.sinceFix = 0;
         }
     }
-    if (visual && !ai.contact) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
+    if (visual && !ai.contact && T.local) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
     ai.contact = visual;
     tickWeapons(wpn, dt);
 
@@ -228,7 +257,7 @@ function setThrottle(au, dist, offBore, dt) {
     let target = top;
     if (au.ai.mode === 'engage' && !state.isGameOver) {
         if (offBore > RIVAL.cornerAngle) target = top * RIVAL.cornerSpeed;                    // rates are per frame → slower = tighter turn
-        else if (dist < RIVAL.parkRange && offBore < 0.5) target = Math.min(top, Math.max(state.speed, maxSpeed * 0.35)); // on the six: match speed, don't overshoot
+        else if (dist < RIVAL.parkRange && offBore < 0.5) target = Math.min(top, Math.max(T.speed, maxSpeed * 0.35)); // on the six: match speed, don't overshoot
     }
     if (fl.speed < target - 0.005) fl.speed = Math.min(target, fl.speed + acceleration * dt);
     else if (fl.speed > target + 0.005) fl.speed = Math.max(minSpeed, fl.speed - deceleration * dt);
@@ -252,11 +281,11 @@ function applySafety(au, des) {
 
 /** Where to point for guns: bullet-time lead inside ~gun range, a short pursuit lead beyond it. */
 function leadPoint(au, dist, out) {
-    if (dist > RIVAL.gunRange * 1.5) return out.copy(plane.position).addScaledVector(_pVel, RIVAL.pursuitLead);
+    if (dist > RIVAL.gunRange * 1.5) return out.copy(T.position).addScaledVector(_pVel, RIVAL.pursuitLead);
     const v = RIVAL.bulletSpeed + au.fl.speed;
-    out.copy(plane.position).addScaledVector(_pVel, dist / v);
+    out.copy(T.position).addScaledVector(_pVel, dist / v);
     const t = out.distanceTo(au.group.position) / v; // one refinement pass
-    return out.copy(plane.position).addScaledVector(_pVel, t);
+    return out.copy(T.position).addScaledVector(_pVel, t);
 }
 
 function checkThreats(au, dist) {
@@ -283,12 +312,12 @@ function checkThreats(au, dist) {
     }
     // Head-on merge / ram avoidance
     if (dist < 35 || (dist < 90 && _fwd.dot(_pFwd) < -0.5)) {
-        startBreak(au, _tmp.subVectors(pos, plane.position).normalize(), 40, true);
+        startBreak(au, _tmp.subVectors(pos, T.position).normalize(), 40, true);
         return;
     }
     // Player's nose is on the ace inside gun range → break turn
     if (tier.evades && ai.mode !== 'evade' && ai.evadeCd <= 0 && dist < RIVAL.gunRange && reacts) {
-        _tmp.subVectors(pos, plane.position).normalize();
+        _tmp.subVectors(pos, T.position).normalize();
         if (_pFwd.dot(_tmp) > Math.cos(RIVAL.threatCone)) {
             startBreak(au, _tmp, RIVAL.breakTime[0] + Math.random() * (RIVAL.breakTime[1] - RIVAL.breakTime[0]));
         }
@@ -341,14 +370,18 @@ function fireGuns(au, dist) {
     if (w.burstLeft <= 0) w.burstLeft = RIVAL.burst;
     const spread = (1 - skillOf()) * dist * RIVAL.aimSpread;
     _aim.x += (Math.random() - 0.5) * spread; _aim.y += (Math.random() - 0.5) * spread; _aim.z += (Math.random() - 0.5) * spread;
-    au.group.localToWorld(_muzzle.set(0, 0, 3.2));
-    const n = enemyBullets.length;
-    spawnEnemyBullet(_muzzle, _aim); // pooled mesh, muzzle flash, range-gated sound, flare deflection all come for free
-    if (enemyBullets.length > n) {
-        const b = enemyBullets[n];
-        b.velocity.setLength(RIVAL.bulletSpeed + au.fl.speed); // player-grade muzzle velocity + own speed (1.2 can't catch a fleeing player)
-        b.userData.damage = Math.max(1, Math.round(RIVAL.gunDamage * rivalSkill().gunDamage * difficulty().enemyDamage));
-    }
+    const damage = Math.max(1, Math.round(RIVAL.gunDamage * rivalSkill().gunDamage * difficulty().enemyDamage));
+    au.firingAt = performance.now(); // multiplayer shows the ace's tracers
+    if (T.local) {
+        au.group.localToWorld(_muzzle.set(0, 0, 3.2));
+        const n = enemyBullets.length;
+        spawnEnemyBullet(_muzzle, _aim); // pooled mesh, muzzle flash, range-gated sound, flare deflection all come for free
+        if (enemyBullets.length > n) {
+            const b = enemyBullets[n];
+            b.velocity.setLength(RIVAL.bulletSpeed + au.fl.speed); // player-grade muzzle velocity + own speed (1.2 can't catch a fleeing player)
+            b.userData.damage = damage;
+        }
+    } else if (!T.flares && Math.random() < 0.25 + 0.45 * skillOf()) remoteHit?.(T.id, damage, 'gun'); // aimed round: hit roll by skill
     w.burstLeft--;
     if (--w.gunAmmo <= 0) w.gunReload = RIVAL.gunReload;
     w.gunCd = w.burstLeft > 0 ? RIVAL.gunInterval : RIVAL.burstPause * difficulty().enemyFireInterval;
@@ -369,7 +402,7 @@ function launchMissile(au, side) {
     const m = new THREE.Mesh(_mslGeo, _mslMat);
     au.group.localToWorld(m.position.set(side * 5.9, -0.3, 0.5));
     const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(au.group.quaternion);
-    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false };
+    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id };
     m.quaternion.setFromUnitVectors(_up3, dir);
     scene.add(m); rivalMissiles.push(m);
 }
@@ -388,15 +421,17 @@ function updateRivalMissiles(dt) {
         const m = rivalMissiles[i], d = m.userData;
         d.life -= dt;
         d.speed = Math.min(RIVAL.mslMaxSpeed, d.speed + RIVAL.mslAccel * dt);
-        // Player flares only spoof it in the terminal phase → timing matters, not spamming
-        if (!d.decoyed && (state.isGameOver || (state.flareTimer > 0 && m.position.distanceToSquared(plane.position) < flareSq))) d.decoyed = true;
+        const t = targetById(d.targetId);
+        // Its target's flares only spoof it in the terminal phase → timing matters, not spamming
+        if (!d.decoyed && (!t || !t.alive || state.isGameOver || (t.flares && m.position.distanceToSquared(t.position) < flareSq))) d.decoyed = true;
         // Turn rate is capped: a hard break perpendicular to the missile makes it overshoot
-        if (!d.decoyed) turnToward(d.dir, _tmp.subVectors(plane.position, m.position).normalize(), RIVAL.mslTurnRate * dt);
+        if (!d.decoyed) turnToward(d.dir, _tmp.subVectors(t.position, m.position).normalize(), RIVAL.mslTurnRate * dt);
         m.position.addScaledVector(d.dir, d.speed * dt);
         m.quaternion.setFromUnitVectors(_up3, d.dir);
         let hit = false;
-        if (!d.decoyed && m.position.distanceToSquared(plane.position) < fuseSq) {
-            damagePlayer(Math.max(1, Math.round(RIVAL.mslDamage * difficulty().enemyDamage)), m.position);
+        if (!d.decoyed && m.position.distanceToSquared(t.position) < fuseSq) {
+            const damage = Math.max(1, Math.round(RIVAL.mslDamage * difficulty().enemyDamage));
+            if (t.local) damagePlayer(damage, m.position); else remoteHit?.(t.id, damage, 'missile');
             hit = true;
         }
         const out = d.life <= 0 || m.position.y < groundLevel || m.position.y > ceilingLevel
@@ -424,15 +459,15 @@ function setWarning(text) {
 }
 
 function updateWarnings() {
-    const missile = rivalMissiles.some(m => !m.userData.decoyed);
-    const locking = rivals.some(r => r.wpn.lock > 0);
+    const missile = rivalMissiles.some(m => !m.userData.decoyed && m.userData.targetId === 'local'); // only threats to this player
+    const locking = rivals.some(r => r.wpn.lock > 0 && r.ai.targetId === 'local');
     setWarning(state.isGameOver ? '' : missile ? '⚠ MISSILE — FLARES (Q) / BREAK TURN' : locking ? '⚠ ACE LOCKING ON' : '');
 }
 
 // --- Visual -----------------------------------------------------------------------------------
 
 /** The player's airframe in dark red / black, scaled up so it is hittable. */
-function createRivalVisual() {
+export function createRivalVisual() {
     const g = new THREE.Group();
     const body = new THREE.MeshStandardMaterial({ color: 0x7a0d12, roughness: 0.6 });
     const trim = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });

@@ -29,6 +29,7 @@ import { DEBUG_PARAMS } from './debug/params.js';
 import { disableRealLights, updateLightBudget } from './effects/lightBudget.js';
 import { RULES } from './game/rules.js';
 import { updateSky } from './world/sky.js';
+import { updateMotionIndicator } from './ui/motionIndicator.js';
 import { updateCivilianCollisions } from './entities/civilians.js';
 import { runHooks } from './game/hooks.js';
 
@@ -79,7 +80,7 @@ function animate() {
         perf.markSimulated();
         simulate(dt); // bounded sub-steps: game/simulation.js
         if (!state._playerDown && !state.isGameOver) { updateBasePerimeters(); updateCivilianCollisions(); } // base alarms; towers and buildings are solid
-        perf.begin('hud'); updateHUD(); updateMission(rawDelta); updateRivalHud(rawDelta); updateFlightWarnings(); perf.end('hud');
+        perf.begin('hud'); updateHUD(); updateMotionIndicator(); updateMission(rawDelta); updateRivalHud(rawDelta); updateFlightWarnings(); perf.end('hud');
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;
         markerDistanceElement.textContent = 'N/A'; groundDistanceElement.textContent = 'N/A'; enemyDistanceElement.textContent = 'N/A';
