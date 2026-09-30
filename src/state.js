@@ -1,5 +1,5 @@
 /** Mutable session state shared between systems (player stats, flight rates, ammo, timers). */
-import { BOMB_MAX_AMMO, FLARE_MAX_AMMO, GRACE_PERIOD, GUN_MAX_AMMO, MISSILE_MAX_AMMO, NAPALM_MAX_AMMO, TARGET_FPS } from './config.js';
+import { BOMB_MAX_AMMO, FLARE_MAX_AMMO, GRACE_PERIOD, PLAYER_BASE_HP, GUN_MAX_AMMO, MISSILE_MAX_AMMO, NAPALM_MAX_AMMO, TARGET_FPS } from './config.js';
 import { storageGetInt } from './core/storage.js';
 import { difficulty } from './core/settings.js';
 
@@ -10,7 +10,8 @@ export const state = {
     _radarCycleTimer: 3.0, // trigger snapshot immediately on first frame
     // Player
     score: 0,
-    planeHP: 100,
+    planeHP: PLAYER_BASE_HP,
+    maxHP: PLAYER_BASE_HP, // + HP_PER_LEVEL per level (game/progression.js)
     level: 1,
     xp: 0,
     xpToNextLevel: 100,
