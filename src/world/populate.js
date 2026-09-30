@@ -8,6 +8,9 @@ import { numCollectibleChains, spawnCollectibleChains, spawnHoopChains } from '.
 import { spawnTube } from '../entities/tubes.js';
 import { createObstacles, numHoopChains } from '../entities/obstacles.js';
 import { RULES } from '../game/rules.js';
+import { addTerrainPad, finalizeTerrain, maxHeightNear } from './terrain.js';
+import { groundUnits } from '../entities/registry.js';
+import { waterLevel } from '../config.js';
 
 const MAX_PLACEMENT_TRIES = 200;
 // Base footprints, from how far each spawner places its units: land bases need that much clearance inland
@@ -73,10 +76,29 @@ export function createAllUnits() {
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
     // Spawn challenge tubes (cyan, one-pass with orb ratio scoring) and free tubes (orange, open entry)
-    for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'challenge'); }
-    for (let _ti = 0; _ti < 3; _ti++) { spawnTube(randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), randomRange(groundLevel + 55, ceilingLevel - 55), randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), 'free'); }
+    for (let _ti = 0; _ti < 6; _ti++) { // 3 challenge + 3 free; kept clear of the mountains below
+        const tx = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75), ty = randomRange(groundLevel + 55, ceilingLevel - 55), tz = randomRange(-MAP_BOUNDARY * 0.75, MAP_BOUNDARY * 0.75);
+        spawnTube(tx, Math.min(ceilingLevel - 40, Math.max(ty, maxHeightNear(tx, tz, 220) + 45)), tz, _ti < 3 ? 'challenge' : 'free');
+    }
+    shapeTerrain();
     if (!RULES.enemies) return;
     const sz2_100 = 400 * 400;
     for (let i = 0; i < numHoverWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x += 500; p.z += 500; } spawnHoverWing(p.x, p.z); }
     for (let i = 0; i < numStrikeWings; i++) { const p = { x: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), z: randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8) }; if (p.x * p.x + p.z * p.z < sz2_100) { p.x -= 500; p.z -= 500; } spawnStrikeWing(p.x, p.z); }
+}
+
+/**
+ * Flat ground where things stand, then build the terrain meshes: the start area (players spawn low over it),
+ * a plateau under every land base, and a small pad under every ground unit on an islet.
+ */
+const BASE_PAD = { airbase: 150, forwardBase: 110 };
+function shapeTerrain() {
+    addTerrainPad(0, 0, 170, 150);
+    for (const b of placementReport.bases) if (BASE_PAD[b.kind]) addTerrainPad(b.x, b.z, BASE_PAD[b.kind], 80);
+    const p = new THREE.Vector3();
+    for (const u of groundUnits) {
+        u.getWorldPosition(p);
+        if (p.y > waterLevel + 1) addTerrainPad(p.x, p.z, Math.max(10, (u.userData.collisionRadius || 8) + 4), 22);
+    }
+    finalizeTerrain();
 }

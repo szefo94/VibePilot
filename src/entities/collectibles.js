@@ -1,4 +1,5 @@
 /** Collectible heart chains, markers and hoop chains. */
+import { heightAt } from '../world/terrain.js';
 import { MAP_BOUNDARY, ceilingLevel, groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
 import { markShared, randomRange, rng } from '../core/utils.js';
@@ -25,7 +26,7 @@ export const collectibleMat = markShared(new THREE.MeshStandardMaterial({ color:
 function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
     m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
-    y = Math.max(groundLevel + 8, Math.min(ceilingLevel - 8, y));
+    y = Math.max(heightAt(x, z) + 10, Math.min(ceilingLevel - 8, y)); // never inside a hill
     m.position.set(x, y, z);
     m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null, originY: y, bobPhase: Math.random() * Math.PI * 2 };
     collectibles.push(m); scene.add(m);
@@ -75,7 +76,7 @@ function _addHoopAxis(torusMesh, r) {
 export function spawnHoopChains(count) {
     const addHoop = (x, y, z, corridorId) => {
         const r = randomRange(15, 30);
-        y = Math.max(groundLevel + r + 8, Math.min(ceilingLevel - r - 8, y));
+        y = Math.max(heightAt(x, z) + r + 8, Math.min(ceilingLevel - r - 8, y));
         const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
         m.position.set(x, y, z); m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
         _addHoopAxis(m, r);
@@ -107,7 +108,7 @@ export function spawnSingleHoopWithMarker() {
     const x = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
     const r = randomRange(15, 30);
     const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
-    m.position.set(x, randomRange(groundLevel + r + 15, ceilingLevel - r - 15), z);
+    m.position.set(x, Math.max(heightAt(x, z) + r + 10, randomRange(groundLevel + r + 15, ceilingLevel - r - 15)), z);
     m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
     _addHoopAxis(m, r);
     const mk = new THREE.Mesh(markerGeometry, markerMaterial); mk.position.copy(m.position);

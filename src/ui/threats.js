@@ -6,6 +6,7 @@ import { MAP_BOUNDARY, ceilingLevel, groundLevel } from '../config.js';
 import { state } from '../state.js';
 import { plane } from '../player/plane.js';
 import { relativeBearing } from '../game/mission.js';
+import { heightAt } from '../world/terrain.js';
 
 const container = document.getElementById('hit-indicators');
 const warningEl = document.getElementById('flight-warning');
@@ -31,7 +32,7 @@ export function showHitDirection(source) {
 export function updateFlightWarnings() {
     const p = plane.position;
     let text = '';
-    if (p.y < groundLevel + 15) text = 'PULL UP';
+    if (p.y < heightAt(p.x, p.z) + 15 || p.y < groundLevel + 15) text = 'PULL UP';
     else if (p.y > ceilingLevel - 15) text = 'CEILING';
     else if (Math.max(Math.abs(p.x), Math.abs(p.z)) > MAP_BOUNDARY - 200) text = 'BOUNDARY — TURN BACK';
     else if (state.planeHP <= 30) text = 'LOW HP';

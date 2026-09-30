@@ -18,7 +18,7 @@ import { _statHp, _statLvl, _statScore, _statXp } from './ui/debrief.js';
 import { _drawReticle } from './ui/reticle.js';
 import { runSplash, splashActive } from './ui/splash.js';
 import { updateMinimap, updateRadarSnapshot } from './ui/minimap.js';
-import { _searchlights, buildBaseFences } from './entities/fences.js';
+import { _searchlights, buildBaseFences, updateBasePerimeters } from './entities/fences.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { createAllUnits } from './world/populate.js';
 import { updateCamera } from './player/camera.js';
@@ -77,6 +77,7 @@ function animate() {
     if (!state.isGameOver && !state.isPaused && !splashActive && !state.awaitingStart) {
         perf.markSimulated();
         simulate(dt); // bounded sub-steps: game/simulation.js
+        if (!state._playerDown && !state.isGameOver) updateBasePerimeters(); // base alarms, watchtower collisions
         perf.begin('hud'); updateHUD(); updateMission(rawDelta); updateRivalHud(rawDelta); updateFlightWarnings(); perf.end('hud');
     } else if (state.isGameOver) {
         markerArrow.visible = false; groundTargetArrow.visible = false; enemyArrow.visible = false;

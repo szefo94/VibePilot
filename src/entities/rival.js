@@ -29,6 +29,7 @@ import { showNotification } from '../ui/notifications.js';
 import { destroyAirUnit } from './airUnits.js';
 import { difficulty, onSettingChange, rivalSkill, setSetting, settings } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
+import { heightAt } from '../world/terrain.js';
 
 const CALLSIGNS = ['Strzyga', 'Upiór', 'Licho', 'Bies', 'Południca', 'Żmij', 'Wij'];
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -180,7 +181,7 @@ export function updateRival(au, dt) {
     au.label.sprite.position.copy(pos).add(_tmp.set(0, RIVAL.collisionRadius + 8, 0));
 
     // 5. Same hard limits that end the player's run: ground, ceiling, map edge (counts as a kill)
-    if (pos.y < groundLevel + 1.5 || pos.y > ceilingLevel - 1.5 || Math.abs(pos.x) > MAP_BOUNDARY || Math.abs(pos.z) > MAP_BOUNDARY) {
+    if (pos.y < heightAt(pos.x, pos.z) + 1.5 || pos.y > ceilingLevel - 1.5 || Math.abs(pos.x) > MAP_BOUNDARY || Math.abs(pos.z) > MAP_BOUNDARY) {
         au.crashed = true;
         destroyAirUnit(au, { reward: true });
         return;
@@ -237,7 +238,8 @@ function applySafety(au, des) {
     const p = au.group.position;
     _tmp.set(0, 0, 1).applyQuaternion(au.group.quaternion);
     const yAhead = p.y + _tmp.y * au.fl.speed * 60;
-    const floor = groundLevel + RIVAL.groundMargin, roof = ceilingLevel - RIVAL.ceilingMargin;
+    // Floor: the terrain under the ace and 1 s ahead of it
+    const floor = Math.max(heightAt(p.x, p.z), heightAt(p.x + _tmp.x * au.fl.speed * 60, p.z + _tmp.z * au.fl.speed * 60)) + RIVAL.groundMargin, roof = ceilingLevel - RIVAL.ceilingMargin;
     if (p.y < floor || yAhead < floor) des.y = Math.max(des.y, 0.5);
     else if (p.y > roof || yAhead > roof) des.y = Math.min(des.y, -0.3);
     const lim = MAP_BOUNDARY * RIVAL.boundaryFrac;

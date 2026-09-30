@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### World and base redesign
+- **Terrain** (`world/terrain.js`): every islet is a heightfield inside its coastline, built the usual way for natural islands: an island mask from the distance to the coast (scanline fill and a chamfer distance transform), fBm hills, ridged-noise mountain ranges inland, and a `pow` elevation curve. Beaches, grass, scrub, rock on steep slopes and pale peaks come from vertex colours with flat shading. Bases and ground units stand on flattened plateaus, and the start area stays low. The plane, the ace and the PULL UP warning use the terrain height; collectibles, hoops and tubes spawn above it. Everything is seeded, so multiplayer players share the same terrain.
+- **Base compounds** (`entities/fences.js`): a chain-link and barbed-wire perimeter around each land base's core, fitted as the smallest rectangle with the tanks patrolling outside. Watchtowers with searchlights stand at the corners, and the gate faces the map centre (striped pillars, a boom barrier, a guard booth and a sandbag chicane). Flying low inside a perimeter trips that base's alarm. Towers are solid, and bombs or missiles knock down towers and fence sections.
+- **Models** (`entities/models.js`, `core/meshkit.js`): new low-poly tanks, AA emplacements, trucks, arch and box hangars, the airport (runway markings, terminal, control tower), destroyers, the carrier, fighters, helicopters, the tanker, the AC-130 and balloons. They're built from extruded profiles and primitives and baked into one vertex-coloured, shared geometry per moving part. Draw calls drop from about 340 to about 295.
+- The `islets` browser probe now checks the terrain: beaches at sea level, the mesh matching the collision heights, real mountains, and a crash when flying into a hill.
+
 ### Ace rival
 - `src/entities/rival.js`: a hostile ace with the player's flight model and kit (gun bursts, paired homing missiles, flares) hunts the player across the map. It uses radar pings out of visual range, is masked by low flying, break-turns, and crashes on the same ground, ceiling and boundary limits.
 - **Ace Hunt** (Settings, Shift+H, on by default): the first ace launches 90 s in and a stronger one follows 25 s after each kill. H spawns one immediately.

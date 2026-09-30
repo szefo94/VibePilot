@@ -1,5 +1,5 @@
 /** Player flight physics: throttle, rotation rates, mouse steering, boundaries. */
-import { GUN_RELOAD_TIME, MAP_BOUNDARY, STEER_AUTO_BANK_K, STEER_BANK_SMOOTH, STEER_CURSOR_RADIUS, STEER_DEADZONE, STEER_LEVEL_RATE, STEER_MAX_ANGLE, STEER_MAX_TURN_RATE, STEER_SMOOTHING, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, naturalDeceleration, rotAccel, rotDamping, shootCooldownTime } from '../config.js';
+import { GUN_RELOAD_TIME, MAP_BOUNDARY, STEER_AUTO_BANK_K, STEER_BANK_SMOOTH, STEER_CURSOR_RADIUS, STEER_DEADZONE, STEER_LEVEL_RATE, STEER_MAX_ANGLE, STEER_MAX_TURN_RATE, STEER_SMOOTHING, acceleration, ceilingLevel, deceleration, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, naturalDeceleration, rotAccel, rotDamping, shootCooldownTime } from '../config.js';
 import { state } from '../state.js';
 import { _sq1, _sq2, _sv1, _sv2, _sv3 } from '../core/scratch.js';
 import { _playEmptyClip } from '../audio.js';
@@ -9,6 +9,7 @@ import { triggerGameOver } from '../game/gameOver.js';
 import { fireBullet } from '../combat/weapons.js';
 import { _gpAxes, _mouseLMB, keys } from '../input.js';
 import { settings } from '../core/settings.js';
+import { heightAt } from '../world/terrain.js';
 
 // --- Sub-System Functions (§1.2) ---
 export function updatePhysics(dt) {
@@ -100,5 +101,5 @@ export function updatePhysics(dt) {
     updateWingTrail(wingTrailL, _wingTipL);
     updateWingTrail(wingTrailR, _wingTipR);
     // Boundary check
-    if (plane.position.y < groundLevel + 1.5 || plane.position.y > ceilingLevel - 1.5 || Math.abs(plane.position.x) > MAP_BOUNDARY || Math.abs(plane.position.z) > MAP_BOUNDARY) triggerGameOver();
+    if (plane.position.y < heightAt(plane.position.x, plane.position.z) + 1.5 || plane.position.y > ceilingLevel - 1.5 || Math.abs(plane.position.x) > MAP_BOUNDARY || Math.abs(plane.position.z) > MAP_BOUNDARY) triggerGameOver();
 }
