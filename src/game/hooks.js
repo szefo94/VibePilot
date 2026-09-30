@@ -8,7 +8,7 @@
  *   unitHit     (target, amount, weapon, shooter)  a unit was damaged here: by the player (shooter null) or an ace (combat/hits.js; not for remote-applied hits)
  *   rivalDown   (ace)        an ace left the sky: shot down or crashed (entities/rival.js)
  *   aceLevelUp  (ace)        an ace gained a level (entities/rival.js rewardAce)
- *   aceDropped  (ace, weapon, pos)  an ace released a bomb or napalm (entities/rival.js)
+ *   aceDropped  (ace, weapon, pos, velocity)  an ace released a bomb or napalm (entities/rival.js)
  *   aceImpact   (weapon, pos)        an ace's bomb or napalm hit the ground
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them

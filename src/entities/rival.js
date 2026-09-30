@@ -595,8 +595,9 @@ function tryBombRelease(au) {
     if (weapon === 'napalm') mesh.scale.setScalar(2.2);
     mesh.position.copy(pos).addScaledVector(WORLD_UP, -1.5);
     scene.add(mesh);
-    aceBombs.push({ mesh, v: _tmp.clone(), weapon, owner: au });
-    runHooks('aceDropped', au, weapon, mesh.position);
+    const v = _tmp.clone();
+    aceBombs.push({ mesh, v, weapon, owner: au });
+    runHooks('aceDropped', au, weapon, mesh.position, v);
 }
 
 /** Falling bombs and napalm: on the ground or water they burst, damaging the ground units around (the ace is paid). */
