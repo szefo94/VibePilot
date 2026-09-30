@@ -107,5 +107,18 @@ for (const c of [a, b, p1, p2, p3, g, g2, ...crowd]) c.ws.close();
 await wait(150);
 check('roomsCleanedUp', srv.stats().rooms.length === 0, srv.stats().rooms);
 await srv.close();
+
+// TLS: https:// page and wss:// connection with a self-signed certificate
+const { default: selfsigned } = await import('selfsigned');
+const pems = await selfsigned.generate([{ name: 'commonName', value: 'test' }], { keySize: 2048, algorithm: 'sha256' });
+const tlsSrv = await startMpServer({ port: 0, log: () => {}, tls: { cert: pems.cert, key: pems.private } });
+const tlsWelcome = await new Promise((done, fail) => {
+    const ws = new WebSocket(`wss://127.0.0.1:${tlsSrv.port}`, { rejectUnauthorized: false });
+    ws.on('open', () => ws.send(encode(MSG.HELLO, { v: PROTOCOL_VERSION, mode: 'skies', room: 'tls', name: 'T', seed: 7 })));
+    ws.on('message', raw => { ws.close(); done(JSON.parse(raw)); });
+    ws.on('error', fail);
+});
+check('tlsWss', tlsWelcome.t === MSG.WELCOME && tlsWelcome.seed === 7);
+await tlsSrv.close();
 console.log(failures ? `${failures} failure(s)` : 'all passed');
 process.exit(failures ? 1 : 0);

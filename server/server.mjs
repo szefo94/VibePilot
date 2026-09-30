@@ -12,11 +12,13 @@
 // PvP hits are routed to their target; in co-op the server tracks the host and hands it over (phases 2–3).
 // GET /health returns room and player counts as JSON. Only the game's own files are served over HTTP.
 import { createServer } from 'node:http';
+import { createServer as createTlsServer } from 'node:https';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join as joinPath, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
+import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_PORT, LIMITS, MODES, MSG, PROTOCOL_VERSION, VALIDATION, cleanName, cleanRoom, decode, encode, spawnSlot } from '../src/net/protocol.js';
 
@@ -29,7 +31,8 @@ const isVec = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isF
 const round = (a, d) => a.map(v => +v.toFixed(d));
 
 /** Start the server; resolves with { port, close(), stats() }. `port: 0` picks a free port (tests). */
-export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, log = console.log } = {}) {
+/** `tls: { cert, key }` (PEM strings) serves https:// and wss:// instead of http:// and ws://. */
+export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, tls = null, log = console.log } = {}) {
     const rooms = new Map();   // `${mode}:${room}` → { key, mode, name, seed, hostId, tick, players: Map<id, client> }
     const clients = new Set(); // every connection, joined or not
     let nextId = 1;
@@ -41,7 +44,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0),
     });
 
-    const http = createServer(async (req, res) => {
+    const handler = async (req, res) => {
         const reqUrl = new URL(req.url, 'http://x'), path = reqUrl.pathname;
         // The bare address opens multiplayer (?sp keeps the single-player game reachable)
         if ((path === '/' || path === '/index.html') && !reqUrl.searchParams.has('mp') && !reqUrl.searchParams.has('sp')) {
@@ -61,7 +64,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             } catch { /* 404 below */ }
         }
         res.writeHead(404).end('Not found');
-    });
+    };
+    const http = tls ? createTlsServer({ cert: tls.cert, key: tls.key }, handler) : createServer(handler);
     const wss = new WebSocketServer({
         server: http,
         maxPayload: LIMITS.maxMsgBytes,
@@ -212,39 +216,67 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
 
 const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/server.mjs [options])
 
-  --port <n>        port for the game and WebSocket (default ${DEFAULT_PORT}; env PORT)
-  --host <addr>     127.0.0.1 = this computer only (default), 0.0.0.0 = whole network (env HOST)
-  --origins <list>  comma-separated extra page origins allowed to connect, e.g. https://example.com (env ALLOWED_ORIGINS)
-  --help            show this help
+  --port <n>          port for the game and WebSocket (default ${DEFAULT_PORT}; env PORT)
+  --host <addr>       127.0.0.1 = this computer only (default), 0.0.0.0 = whole network (env HOST)
+  --tls               serve https:// with a self-signed certificate (made once, kept in ${CERT_DIR})
+  --public <hosts>    comma-separated public IPs / names to put in that certificate, e.g. 88.156.90.62
+  --tls-cert <file>   use your own certificate instead (PEM; with --tls-key; env TLS_CERT / TLS_KEY)
+  --tls-key <file>
+  --origins <list>    comma-separated extra page origins allowed to connect (env ALLOWED_ORIGINS)
+  --help              show this help
 Command-line options win over environment variables.`;
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     let args;
     try {
-        ({ values: args } = parseArgs({ options: { port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' }, help: { type: 'boolean', short: 'h' } } }));
-    } catch (e) { console.error(`${e.message}
-
-${USAGE}`); process.exit(1); }
+        ({ values: args } = parseArgs({ options: {
+            port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' },
+            tls: { type: 'boolean' }, public: { type: 'string' }, 'tls-cert': { type: 'string' }, 'tls-key': { type: 'string' },
+            help: { type: 'boolean', short: 'h' },
+        } }));
+    } catch (e) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
     if (args.help) { console.log(USAGE); process.exit(0); }
     const port = Number(args.port ?? process.env.PORT ?? DEFAULT_PORT);
     if (!Number.isInteger(port) || port < 1 || port > 65535) { console.error(`Invalid port "${args.port ?? process.env.PORT}" — use a number from 1 to 65535.`); process.exit(1); }
     const host = args.host ?? process.env.HOST ?? '127.0.0.1';
     const allowedOrigins = (args.origins ?? process.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    const publicHosts = (args.public ?? '').split(',').map(s => s.trim()).filter(Boolean);
+
+    // TLS: own certificate files, or a reusable self-signed one
+    let tls = null, tlsNote = '';
+    const certFile = args['tls-cert'] ?? process.env.TLS_CERT, keyFile = args['tls-key'] ?? process.env.TLS_KEY;
+    try {
+        if (certFile || keyFile) {
+            if (!certFile || !keyFile) throw new Error('--tls-cert and --tls-key go together');
+            tls = { cert: await readFile(certFile, 'utf8'), key: await readFile(keyFile, 'utf8') };
+            tlsNote = `certificate ${certFile}`;
+        } else if (args.tls || publicHosts.length) {
+            const c = await ensureSelfSignedCert(certHosts(publicHosts));
+            tls = c;
+            tlsNote = `self-signed certificate (${c.generated ? 'new' : 'reused'}): browsers warn once — Advanced → Proceed`;
+        }
+    } catch (e) { console.error(`TLS: ${e.message}`); process.exit(1); }
+
     let srv;
-    try { srv = await startMpServer({ port, host, allowedOrigins }); } catch (e) {
+    try { srv = await startMpServer({ port, host, allowedOrigins, tls }); } catch (e) {
         console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — stop the other program or choose another port: --port ${port + 1}`
-            : e.code === 'EACCES' ? `No permission to use port ${port} — ports below 1024 need admin rights; use e.g. --port 8787` : e.message);
+            : e.code === 'EACCES' ? `No permission to use port ${port} — use a port above 1024, e.g. --port 8787` : e.message);
         process.exit(1);
     }
+    const scheme = tls ? 'https' : 'http';
     const everywhere = host === '0.0.0.0' || host === '::';
     const lan = everywhere ? Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address) : [];
     const shown = everywhere ? 'localhost' : host;
-    console.log(`VibePilot multiplayer server — port ${srv.port}, ${everywhere ? 'reachable from your network' : `listening on ${host} only`}
-  game:    http://${shown}:${srv.port}/?mp&room=test&name=Alpha
-${lan.map(ip => `  network: http://${ip}:${srv.port}/?mp&room=test&name=Bravo
-`).join('')}  health:  http://${shown}:${srv.port}/health
-  origins: ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (use --origins to restrict)'}
-Stop with Ctrl+C.`);
+    console.log([
+        `VibePilot multiplayer server — ${scheme}, port ${srv.port}, ${everywhere ? 'reachable from your network' : `listening on ${host} only`}`,
+        `  game:     ${scheme}://${shown}:${srv.port}/`,
+        ...lan.map(ip => `  network:  ${scheme}://${ip}:${srv.port}/`),
+        ...publicHosts.map(h => `  internet: ${scheme}://${h}/   (if your router forwards public port ${tls ? 443 : 80} to ${srv.port}; otherwise add :<public port>)`),
+        `  health:   ${scheme}://${shown}:${srv.port}/health`,
+        ...(tlsNote ? [`  tls:      ${tlsNote}`] : []),
+        `  origins:  ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (use --origins to restrict)'}`,
+        'Stop with Ctrl+C.',
+    ].join('\n'));
     const stop = () => srv.close().then(() => process.exit(0));
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

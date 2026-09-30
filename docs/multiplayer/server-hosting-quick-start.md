@@ -43,6 +43,9 @@ npm run mp-server -- --help
 |---|---|---|
 | `--port <n>` (`-p`) | `8787` | Port for the game page **and** the multiplayer connection (1–65535) |
 | `--host <addr>` | `127.0.0.1` | `127.0.0.1`: only this computer. `0.0.0.0`: every device on your network. |
+| `--tls` | off | Serve `https://` with a self-signed certificate (see [HTTPS](#https)) |
+| `--public <hosts>` | – | Public IPs or names to include in that certificate, e.g. `88.156.90.62` |
+| `--tls-cert <file>` + `--tls-key <file>` | – | Use your own certificate instead |
 | `--origins <list>` | any | Extra websites allowed to connect, comma-separated (only needed if the game is served from somewhere else) |
 | `--help` (`-h`) | – | Show the options |
 
@@ -92,6 +95,18 @@ npm run mp-server -- --port 8787 --host 0.0.0.0
 
    Linux: `sudo ufw allow 8787/tcp`.
 
+### HTTPS
+
+Plain `http://` works on home networks and most phones. But **VPNs, company networks and security software often allow only encrypted traffic on port 443**, and some browsers insist on `https://`. Serve HTTPS instead:
+
+```sh
+npm run mp-server -- --port 8443 --host 0.0.0.0 --tls --public 88.156.90.62
+```
+
+- The certificate is generated **once** (including localhost, your LAN IPs and every `--public` address) and reused on later starts. It is stored in `~/.vibepilot/certs/`, outside the repo.
+- It is self-signed, so **each browser shows a warning once**: *Advanced → Proceed to … (unsafe)*. After that, the game and its `wss://` connection work.
+- For no warning at all, use a real certificate for a domain via `--tls-cert` / `--tls-key`, or a tunnel (setup D or E).
+
 ### C. The internet: port forwarding on your router (this PC)
 
 Use this if your router forwards a public port to this PC (e.g. public `88.156.90.62:443` → `192.168.0.16`).
@@ -104,9 +119,15 @@ Use this if your router forwards a public port to this PC (e.g. public `88.156.9
    ```
 
    Turn it off and on with `Disable-NetFirewallRule -DisplayName "VibePilot MP"` and `Enable-NetFirewallRule -DisplayName "VibePilot MP"`.
-3. **Start:** `npm run mp-server -- --port 443 --host 0.0.0.0`.
-4. **Test from outside:** use a phone on **mobile data** (Wi-Fi off). Your public IP often doesn't work from inside your own network. Open `http://<public-ip>:443/health`, then `http://<public-ip>:443/`.
-5. **Share** `http://<public-ip>:443/`. Type `http://` explicitly: there is no certificate, so `https://` fails. If the browser warns that the connection isn't secure, choose *Continue*.
+3. **Start** on the **internal** port your router forwards to (check the router: public 443 is often forwarded to e.g. 8443), with HTTPS:
+
+   ```sh
+   npm run mp-server -- --port 8443 --host 0.0.0.0 --tls --public <public-ip>
+   ```
+
+   The firewall rule in step 2 must use that same internal port.
+4. **Test from outside:** use a phone on **mobile data** (Wi-Fi off). Your public IP often doesn't work from inside your own network. Open `https://<public-ip>/health`, accept the warning once, then open `https://<public-ip>/`.
+5. **Share** `https://<public-ip>/`. Without `--tls`, share `http://<public-ip>:443/` instead (with `http://` typed explicitly), but that version is blocked by some VPNs and browsers.
 
 Notes:
 - Anyone with the address can join. Stop the server and disable the rule when you're not playing.
@@ -152,6 +173,7 @@ Then run `sudo systemctl daemon-reload && sudo systemctl restart vibepilot-mp cl
 | `Port 8787 is already in use` | Another server is running: close it, or use the suggested `--port`. |
 | `No permission to use port 80` | Ports below 1024 need admin rights. Use 8787 (or similar), plus a tunnel for a clean address. |
 | `Invalid port "…"` | Use a whole number from 1 to 65535. |
+| Works on the phone, not on a PC with a VPN | The VPN drops plain HTTP on port 443: start with `--tls` and use `https://`. |
 | Other devices can't open the page | Use `--host 0.0.0.0`, the `network:` address (not `localhost`), and the firewall rule from B or C. On Windows, check that the rule exists: `Get-NetFirewallRule -DisplayName "VibePilot MP"`. |
 | Roster says `✕ MULTIPLAYER: protocol …` | The browser has old files cached: hard refresh (Ctrl+F5). |
 | Roster stuck on `connecting…` | The server stopped, or you opened the game from another port or server (e.g. GitHub Pages or `npm run serve`). Open it from the multiplayer server's own address. |
