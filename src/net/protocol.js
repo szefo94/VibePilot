@@ -15,7 +15,7 @@
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const DEFAULT_PORT = 8787;
 
 export const MODES = Object.freeze({
@@ -64,6 +64,9 @@ export function respawnPoint(i, random = Math.random) {
 export const PVP_DAMAGE = Object.freeze({ bullet: 4, missile: 45, bomb: 60, napalm: 10 });
 export const PVP_KILL_XP = 150;
 
+/** Weapons shown on other players' screens via FIRE (the gun travels as STATE.f instead). */
+export const FIRE_WEAPONS = Object.freeze(['missile', 'bomb', 'napalm', 'flare']);
+
 /** Message types. C→S client to server, S→C server to client. */
 export const MSG = Object.freeze({
     HELLO: 'hello',       // C→S  { v, mode, room, name, seed }
@@ -72,12 +75,12 @@ export const MSG = Object.freeze({
     JOIN: 'join',         // S→C  { id, name, slot }
     LEAVE: 'leave',       // S→C  { id }
     HOST: 'host',         // S→C  { hostId } — co-op authority moved (host left)
-    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp } — own plane, validated by the server
-    SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, alive }] } — the room, every tick
+    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, f } — own plane (f = 1 while the gun fires), validated
+    SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, f, alive }] } — the room, every tick
     CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
     DOWN: 'down',         // C→S  { by } — I was shot down (by = player id) or crashed (by = null); S→C { id, by } to the room
     SPAWN: 'spawn',       // S→C  { p, q } — respawn here (random point near your slot, respawnPoint())
-    FIRE: 'fire',         // relay { w, p:[x,y,z], d:[x,y,z] } — cosmetic tracers / sounds (phase 2)
+    FIRE: 'fire',         // relay { w: FIRE_WEAPONS, p, p2?, d?, v?, tg? } → others get { from, … } — shots to draw (src/mp/remoteFx.js)
     HIT: 'hit',           // pvp:  C→S { target, dmg, w } → S→C to `target` only { from, dmg, w }; dmg ≤ PVP_DAMAGE[w]
     WORLD: 'world',       // coop: host → others { tick, units: [...] } (phase 3)
     ACTION: 'action',     // coop: client → host { kind, ... } (phase 3)

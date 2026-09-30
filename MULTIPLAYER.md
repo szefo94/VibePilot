@@ -134,7 +134,7 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [x] The victim applies it with `damagePlayer()` (flares stop gun and missile hits, spawn protection applies) and at 0 HP reports `DOWN { by }`. The server broadcasts it: kill feed, +150 score for the shooter, kills in the roster.
 - [x] Respawn at a random point 80–350 units from the player's start slot, 35–90 above the ground, random heading.
 - [x] Name tags carry an HP bar; the roster shows everyone's HP.
-- [ ] `FIRE` events show other players' tracers, missiles and flares.
+- [x] Other players' shots are drawn on your screen (`src/mp/remoteFx.js`): gun tracers (a firing flag in `STATE`), missile pairs that home on their target, flares, bombs and napalm (`FIRE` messages, checked by the server). They are visuals only; hits stay shooter-decided.
 - [ ] Scoreboard (Tab). Respawn points that avoid obstacles (the server doesn't know the map yet).
 - [x] Collisions between players: ramming counts as a crash for both.
 - [ ] Trust model: the shooter decides hits (fine among friends). The server already clamps damage and rate-limits messages.

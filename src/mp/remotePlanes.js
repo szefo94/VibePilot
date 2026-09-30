@@ -138,9 +138,13 @@ export function updateRemotePlanes() {
         v.group.visible = v.label.sprite.visible = shown;
         if (shown) { v.label.sprite.position.copy(v.group.position).y += 4; drawLabel(v.label, newest.hp ?? 100); }
         if (v.unit) v.unit.hp = shown ? Math.max(1, newest.hp ?? 100) : 0; // hp 0 = not targetable (down, respawning, stale)
+        v.shown = shown; v.firing = shown && newest.f === 1; v.speed = newest?.s ?? 0; // no snapshot yet for a player who just joined
     }
     for (const [id, v] of views) if (!net.peers.has(id)) dispose(id, v);
 }
+
+/** Every remote plane view: { group, shown, firing, speed, … } (remoteFx.js draws their gunfire). */
+export const remoteViews = () => views.values();
 
 /** Current world position of a peer's plane (for hit-direction arcs), or null. */
 export const peerPosition = id => views.get(id)?.group.position ?? null;

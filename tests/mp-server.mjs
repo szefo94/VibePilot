@@ -57,6 +57,18 @@ a.ws.send(encode(MSG.STATE, { p: [sx, sy, 99999], q: [0, 0, 0, 1] }));
 await wait(80);
 check('outOfBoundsRejected', inSnap(b, a.first.id)?.p[2] === sz + 5);
 
+// Shots for the others' screens: the gun flag rides in snapshots; FIRE is checked and relayed
+a.ws.send(encode(MSG.STATE, { p: [sx, sy, sz + 8], q: [0, 0, 0, 1], s: 0.5, hp: 90, f: 1 }));
+await wait(120);
+check('gunFlagInSnap', inSnap(b, a.first.id)?.f === 1);
+a.ws.send(encode(MSG.FIRE, { w: 'missile', p: [sx - 5, sy, sz + 8], p2: [sx + 5, sy, sz + 8], d: [0, 0, 1], tg: b.first.id }));
+a.ws.send(encode(MSG.FIRE, { w: 'nuke', p: [sx, sy, sz + 8] }));          // unknown weapon
+a.ws.send(encode(MSG.FIRE, { w: 'flare', p: [sx + 500, sy, sz] }));       // far from the shooter
+a.ws.send(encode(MSG.FIRE, { w: 'flare', p: [sx, sy, sz + 8], tg: 999 })); // unknown target is dropped, shot kept
+await wait(80);
+const fires = got(b, MSG.FIRE);
+check('fireRelayed', fires.length === 2 && fires[0].w === 'missile' && fires[0].from === a.first.id && fires[0].tg === b.first.id && fires[0].p2 && fires[1].w === 'flare' && !('tg' in fires[1]) && got(a, MSG.FIRE).length === 0, fires);
+
 // Life: DOWN → dead in snapshots → SPAWN at the slot after respawnMs, alive again
 b.ws.send(encode(MSG.DOWN, {}));
 await wait(120);

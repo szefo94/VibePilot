@@ -19,6 +19,7 @@ import { plane } from '../player/plane.js';
 import { MODES, MSG, PVP_DAMAGE, PVP_KILL_XP } from '../net/protocol.js';
 import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
 import { clearRemotePlanes, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
+import { clearRemoteFx, onRemoteFire, updateRemoteFx } from './remoteFx.js';
 import { damagePlayer } from '../combat/collision.js';
 import { awardKill } from '../game/progression.js';
 import { showNotification } from '../ui/notifications.js';
@@ -40,7 +41,21 @@ if (net.enabled) {
     onNet('online', m => { mySlot = m.slot; place(m.spawn); });
     onNet(MSG.SPAWN, place);
     onNet(MSG.CORRECT, ({ p, q }) => { plane.position.fromArray(p); plane.quaternion.fromArray(q); }); // server rejected our reports
-    onNet('offline', clearRemotePlanes);
+    onNet('offline', () => { clearRemotePlanes(); clearRemoteFx(); });
+
+    // --- Shots, both ways: ours go out (gun as STATE.f, the rest as FIRE), theirs are drawn by remoteFx.js ---
+    let lastGunAt = -1e9;
+    const vec = v => v.toArray().map(x => +x.toFixed(2));
+    onHook('playerFired', (weapon, d) => {
+        if (weapon === 'gun') { lastGunAt = performance.now(); return; }
+        if (weapon === 'missile') {
+            const tg = typeof d.target?.id === 'string' && d.target.id.startsWith('peer-') ? Number(d.target.id.slice(5)) : undefined;
+            netSend(MSG.FIRE, { w: weapon, p: vec(d.origins[0]), p2: vec(d.origins[1]), d: vec(d.d), tg });
+        } else if (weapon === 'flare') netSend(MSG.FIRE, { w: weapon, p: vec(d.p) });
+        else if (weapon === 'bomb') netSend(MSG.FIRE, { w: weapon, p: vec(d.p), v: vec(d.v) });
+        else if (weapon === 'napalm') netSend(MSG.FIRE, { w: weapon, p: vec(d.p), v: vec(d.d.clone().setY(0).normalize().multiplyScalar(d.speed)) });
+    });
+    onNet(MSG.FIRE, onRemoteFire);
     // --- PvP ---
     const pvp = MODES[net.mode].pvp, kills = new Map(); // player id → kills this session
     let lastHit = null; // { by, at } — who to credit if we go down soon after
@@ -72,11 +87,13 @@ if (net.enabled) {
         p: plane.position.toArray().map(v => +v.toFixed(2)),
         q: plane.quaternion.toArray().map(v => +v.toFixed(4)),
         s: +state.speed.toFixed(3), hp: Math.max(0, state.planeHP),
+        f: performance.now() - lastGunAt < 150 ? 1 : 0, // gun firing: others draw the tracers
     };
     let chipTimer = 0;
     onHook('frame', rawDelta => {
         updateNet(rawDelta, report);
         updateRemotePlanes();
+        updateRemoteFx(Math.min(rawDelta * 60, 6));
         if ((chipTimer -= rawDelta) <= 0) { chipTimer = 0.25; renderChip(); }
     });
 
