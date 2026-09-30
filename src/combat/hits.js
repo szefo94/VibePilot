@@ -11,6 +11,9 @@
  * A bullet damages the fighter part it struck (`{ part }`); splash damages every part.
  * `beginHits(weapon, { remote: true })` applies damage that happened elsewhere (another player's hit, synced):
  * no hook, no rewards, no hit marker or sound, and no notifications.
+ * `beginHits(weapon, { shooter })` is damage by someone else in this game (an ace): the unitHit hook runs (so
+ * multiplayer syncs it), but no player reward, marker, sound or notification; finish() reports the XP of what
+ * died so the shooter can be paid.
  * Deaths are applied in finish(), after the caller's scans, because removal mutates the arrays being
  * scanned; a target killed twice in one blast dies — and rewards — once.
  */
@@ -25,7 +28,7 @@ import { runHooks } from '../game/hooks.js';
 import { quietly } from '../ui/notifications.js';
 import { onUnitDamaged } from '../effects/fire.js';
 
-export function beginHits(weapon, { remote = false } = {}) {
+export function beginHits(weapon, { remote = false, shooter = null } = {}) {
     const dead = new Set();
     let anyHit = false;
     return {
@@ -52,24 +55,25 @@ export function beginHits(weapon, { remote = false } = {}) {
                 updateUnitLabel(target.label, hp);
                 if (hp <= 0) dead.add(target);
             }
-            if (!remote) runHooks('unitHit', target, amount, weapon);
+            if (!remote) runHooks('unitHit', target, amount, weapon, shooter);
             anyHit = true;
             return true;
         },
         finish() {
             const kill = () => {
                 for (const target of dead) {
-                    const kind = entityKind(target), reward = !remote;
+                    const kind = entityKind(target), reward = !remote && !shooter;
                     if (kind === 'ground') killGroundUnit(target, { reward });
                     else if (kind === 'air') destroyAirUnit(target, { reward });
                     else destroyLogicalEnemy(target.id, { reward });
                 }
             };
-            if (remote) { quietly(kill); return { hit: anyHit, kills: dead.size }; }
+            const xp = [...dead].reduce((sum, t) => sum + (t.userData?.xpValue ?? t.xpValue ?? 0), 0);
+            if (remote || shooter) { quietly(kill); return { hit: anyHit, kills: dead.size, xp }; }
             kill();
             if (dead.size) { state._killMarkerTimer = 20; state._hitMarkerTimer = Math.max(state._hitMarkerTimer, 20); _playKillConfirm(); } // kill: gold marker
             else if (anyHit) { state._hitMarkerTimer = 9; _playKeyClick(); } // idea 4: hit confirm
-            return { hit: anyHit, kills: dead.size };
+            return { hit: anyHit, kills: dead.size, xp };
         },
     };
 }

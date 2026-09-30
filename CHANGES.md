@@ -22,13 +22,16 @@
 - The `islets` browser probe now checks the terrain: beaches at sea level, the mesh matching the collision heights, real mountains, and a crash when flying into a hill.
 
 ### Ace rival
-- `src/entities/rival.js`: a hostile ace with the player's flight model and kit (gun bursts, paired homing missiles, flares) hunts the player across the map. It uses radar pings out of visual range, is masked by low flying, break-turns, and crashes on the same ground, ceiling and boundary limits.
+- `src/entities/rival.js`: a hostile ace with its own airframe (a twin-tail delta with canards), the player's flight model and kit (gun bursts, paired homing missiles, flares). It must **see** a target before attacking: within visual range and a forward cone, or very close. Until then it flies to a rough radar fix and searches. It break-turns, and crashes on the same ground, ceiling and boundary limits.
+- It turns more gently than the player, steers clear of other aircraft, and explodes, together with the other plane, in a mid-air collision. Ramming an aircraft takes both planes down.
+- Aces gain XP from kills and gold markers; each level gives more HP, sharper skill and full ammo. They heal on collectibles. Hurt or out of ammo, they head for pickups.
 - **Ace Hunt** (Settings, Shift+H, on by default): the first ace launches 90 s in and a stronger one follows 25 s after each kill. H spawns one immediately.
-- **Ace AI** (Settings and the start-menu toggle, Medium by default), from `RIVAL_SKILL` in `config.js`:
-  - **Easy:** guns only, slow reactions, softer turn envelope, no break turns.
-  - **Medium:** adds one missile pair and flares.
-  - **Hard:** full turn rate and speed, two missile pairs, faster lock, 2 flares, sharper aim.
-  - Changing the tier mid-fight takes effect immediately.
+- **Difficulty** (Settings and the start-menu toggle) also sets the ace tier, from `RIVAL_SKILL` in `config.js`; there is no separate Ace AI setting:
+  - **Easy:** guns only, slow reactions, softest turn envelope, no break turns.
+  - **Normal:** adds one missile pair and flares.
+  - **Hard:** faster turns and speed, two missile pairs, faster lock, 2 flares, sharper aim.
+  - Changing it mid-fight takes effect immediately.
+- `spawnAce()` (used by multiplayer team bots): its own colour, level, first waypoint and patrol area; allies are ignored by the player's weapons. Farming bots attack the enemy bases' units for XP when no enemy pilot is close (`beginHits(weapon, { shooter })` pays the bot, not the player).
 - UI: an ace panel (callsign, tier, HP, bearing, distance, state, next-ace countdown), MISSILE / LOCKING warnings, call-out banners, a magenta ACE minimap blip plus hostile missile blips, and the aces-downed count on game over.
 - `damagePlayer()` in `combat/collision.js` is now the shared player-damage path (grace, invulnerable, hit arc, game over).
 

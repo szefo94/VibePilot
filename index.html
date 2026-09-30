@@ -143,11 +143,11 @@
             <button type="button" data-action="start">Start</button>
             <button type="button" data-action="settings">Settings</button>
         </div>
-        <div class="skill-toggle" role="group" aria-label="Ace AI">
-            <span class="skill-toggle-label">☠ Ace AI</span>
-            <button type="button" data-action="rival-skill" data-value="easy">Easy</button>
-            <button type="button" data-action="rival-skill" data-value="medium">Medium</button>
-            <button type="button" data-action="rival-skill" data-value="hard">Hard</button>
+        <div class="skill-toggle" role="group" aria-label="Difficulty">
+            <span class="skill-toggle-label">Difficulty</span>
+            <button type="button" data-action="difficulty" data-value="easy">Easy</button>
+            <button type="button" data-action="difficulty" data-value="normal">Normal</button>
+            <button type="button" data-action="difficulty" data-value="hard">Hard</button>
         </div>
         <details class="menu-controls">
             <summary>Controls</summary>
@@ -166,21 +166,14 @@
         <label>Mute (V) <input type="checkbox" data-setting="muted"></label>
         <label>Mouse steering <input type="checkbox" data-setting="mouseSteering"></label>
         <label>Invert pitch <input type="checkbox" data-setting="invertPitch"></label>
-        <label>Difficulty
+        <label>Difficulty (enemies and aces)
             <select data-setting="difficulty">
-                <option value="easy">Easy</option>
-                <option value="normal">Normal</option>
-                <option value="hard">Hard</option>
+                <option value="easy">Easy — softer fire, aces guns only</option>
+                <option value="normal">Normal — aces add missiles, flares</option>
+                <option value="hard">Hard — hard-hitting, sharp aces, full kit</option>
             </select>
         </label>
         <label>Ace Hunt (Shift+H) <input type="checkbox" data-setting="aceHunt"></label>
-        <label>Ace AI
-            <select data-setting="rivalSkill">
-                <option value="easy">Easy — guns only</option>
-                <option value="medium">Medium — + missiles, flares</option>
-                <option value="hard">Hard — full kit, sharp</option>
-            </select>
-        </label>
         <label>Time of day (T)
             <select data-setting="timeOfDay">
                 <option value="day">Day</option>
