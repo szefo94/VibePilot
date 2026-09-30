@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Multiplayer groundwork (MULTIPLAYER.md)
+- `src/net/protocol.js`: wire protocol shared by browser and Node, covering the modes (skies / pvp / coop), message types and limits.
+- `server/server.mjs` (`npm run mp-server`): WebSocket relay with rooms, a room map seed, state/fire relay, PvP hit routing, co-op host tracking and handover, flood/size/room caps, heartbeat, origin allowlist and `/health`. Deploy unit for a Raspberry Pi in `server/deploy/`.
+- `src/net/net.js`: `?mp` client with seed sync, reconnect, a peer table, `onNet` / `netSend` hooks, 15 Hz plane streaming and a status chip. Single-player is unchanged without `?mp`.
+- `npm run test:mp`: 16 relay checks.
+
 ### Ace rival
 - `src/entities/rival.js`: a hostile ace with the player's flight model and kit (gun bursts, paired homing missiles, flares) hunts the player across the map. It uses radar pings out of visual range, is masked by low flying, break-turns, and crashes on the same ground, ceiling and boundary limits.
 - **Ace Hunt** (Settings, Shift+H, on by default): the first ace launches 90 s in and a stronger one follows 25 s after each kill. H spawns one immediately.

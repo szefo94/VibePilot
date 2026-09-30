@@ -7,14 +7,19 @@
   "scripts": {
     "serve": "node scripts/serve.mjs",
     "check": "node scripts/check.mjs",
-    "lint": "eslint src scripts tests",
+    "lint": "eslint src scripts tests server",
     "test:browser": "node tests/browser-probes.mjs",
-    "bench": "node tests/perf-bench.mjs"
+    "bench": "node tests/perf-bench.mjs",
+    "mp-server": "node server/server.mjs",
+    "test:mp": "node tests/mp-server.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.10.0",
     "globals": "^17.12.0",
     "playwright-core": "^1.63.0"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
   }
 }

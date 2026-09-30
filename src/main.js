@@ -5,6 +5,7 @@ import { updateEngineSound } from './audio.js';
 import { updateMission } from './game/mission.js';
 import { updateFlightWarnings } from './ui/threats.js';
 import { updateRivalHud } from './ui/rivalHud.js';
+import { updateNet } from './net/net.js';
 import { state } from './state.js';
 import { camera, renderer, scene } from './core/scene.js';
 import { _sv1 } from './core/scratch.js';
@@ -162,6 +163,7 @@ function animate() {
     perf.end('minimap');
     perf.renderBegin(); renderer.render(scene, camera); perf.renderEnd();
     perf.begin('reticle'); _drawReticle(); perf.end('reticle');
+    updateNet(rawDelta); // multiplayer: no-op unless ?mp
     perf.frameEnd();
 }
 // Start rendering immediately — script is at end of <body> so DOM is ready.
