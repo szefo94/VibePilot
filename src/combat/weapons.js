@@ -10,6 +10,7 @@ import { entityPosition, isAlive, missileTargets, nearestAlive } from '../entiti
 import { _bombBodyGeo, _bombFinGeo, _bombNoseGeo, _createMissileMesh, _flarePGeo, _flarePMatBase, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial, bombRadius } from './resources.js';
 import { _tracerMat } from '../effects/effects.js';
 import { markShared } from '../core/utils.js';
+import { runHooks } from '../game/hooks.js';
 
 // --- Shared player-bullet resources (avoids per-shot alloc) ---
 const _playerBulletGeo = markShared(new THREE.SphereGeometry(.3, 8, 8));
@@ -31,6 +32,7 @@ export function tryFireMissile() {
 export function tryDeployFlares() {
     if (state.flareAmmo <= 0) return;
     state.flareTimer = FLARE_DURATION; deployFlareEffect();
+    runHooks('playerFired', 'flare', { p: plane.position });
     if (--state.flareAmmo <= 0) state.flareReloadTimer = FLARE_RELOAD_TIME;
 }
 export function tryDropNapalm() {
@@ -54,6 +56,7 @@ export function fireBullet() {
     b.tracer = new THREE.Line(_tGeo, _tracerMat); scene.add(b.tracer);
     _playGunShot();
     _playerMuzzleLight.intensity = 2.5; // V13
+    runHooks('playerFired', 'gun', { p: b.position, d: _sv1 });
 }
 function _createBombMesh(mat) {
     const g = new THREE.Group();
@@ -74,6 +77,7 @@ export function dropBomb() {
     b.userData = { type: 'bomb', collisionRadius: bombRadius, damage: Math.round(bombDamage * state.playerDamageMultiplier), aoERadius: bombAoERadius };
     bombs.push(b); scene.add(b);
     _playBombDrop();
+    runHooks('playerFired', 'bomb', { p: b.position, v: b.velocity });
 }
 export function fireMissile() {
     // Home on the nearest living missile target — the same rule the lock-on reticle shows (entities/contract.js)
@@ -101,6 +105,7 @@ export function fireMissile() {
     spawnOne(_wv1); // lTip
     spawnOne(_sv3); // rTip
     _playMissileLaunch();
+    runHooks('playerFired', 'missile', { origins: [_wv1, _sv3], d: _sv1, target: entity });
 }
 export function dropNapalm() {
     _wv1.set(0, 0, 1).applyQuaternion(plane.quaternion); // forward
@@ -117,6 +122,7 @@ export function dropNapalm() {
         napalmBombs.push(orb); scene.add(orb);
     }
     _playNapalmDrop();
+    runHooks('playerFired', 'napalm', { p: plane.position, d: _wv1, speed: state.speed });
 }
 export function deployFlareEffect() {
     // Angel-wings pattern: two arcs of bright particles spreading left and right
