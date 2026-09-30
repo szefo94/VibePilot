@@ -137,7 +137,7 @@ export function resolveCollisions() {
                 collectibleBursts.push({ mesh: _bm, velocity: new THREE.Vector3(Math.cos(_a) * 0.16, 0.1 + Math.random() * 0.1, Math.sin(_a) * 0.16), life: 30, maxLife: 30 });
             }
             state.score += 5; scoreElement.textContent = state.score; addXP(8);
-            if (!state.isGameOver && state.planeHP < 100) { state.planeHP = Math.min(100, state.planeHP + 5); hpElement.textContent = Math.max(0, state.planeHP); }
+            if (!state.isGameOver && state.planeHP < state.maxHP) { state.planeHP = Math.min(state.maxHP, state.planeHP + 5); hpElement.textContent = Math.max(0, state.planeHP); }
             _playCollectGreen();
             if (sid && constellations[sid] && !constellations[sid].completed) {
                 const con = constellations[sid];

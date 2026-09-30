@@ -1,4 +1,5 @@
 /** Score, XP, levelling, healing and kill-streak multiplier. */
+import { HP_PER_LEVEL } from '../config.js';
 import { state } from '../state.js';
 import { hpElement, levelElement, scoreElement, xpElement, xpToNextLevelElement } from '../ui/dom.js';
 import { showLevelUpBanner, showNotification } from '../ui/notifications.js';
@@ -15,6 +16,7 @@ export function addXP(a) {
         state.level++; state.xp -= state.xpToNextLevel; state.xpToNextLevel = Math.floor(state.xpToNextLevel * 1.5);
         state.playerDamageMultiplier += Math.max(0, .25 - .01 * Math.max(0, state.level - 20)); // §4.3: gain shrinks by 0.01 per level above 20
         state.gunMaxAmmo += 5;
+        state.maxHP += HP_PER_LEVEL; state.planeHP += HP_PER_LEVEL; hpElement.textContent = Math.max(0, state.planeHP); // tougher airframe, and the new HP comes filled
         if (state.level % 5  === 0) state.bombMaxAmmo++;
         if (state.level % 10 === 0) { state.missileMaxAmmo++; state.flareMaxAmmo++; state.napalmMaxAmmo++; }
         levelElement.textContent = state.level; updateDamageUI();
@@ -26,7 +28,7 @@ export function addXP(a) {
 export function _healPlayer(amount) {
     if (state.isGameOver) return;
     const prev = state.planeHP;
-    state.planeHP = Math.min(100, state.planeHP + amount);
+    state.planeHP = Math.min(state.maxHP, state.planeHP + amount);
     if (state.planeHP > prev) { hpElement.textContent = Math.max(0, state.planeHP); showNotification(`+${state.planeHP - prev} HP`, false, { local: true }); }
 }
 // G20: record a kill, return current streak multiplier

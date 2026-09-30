@@ -19,7 +19,7 @@ export function _drawDeathGraph() {
     ctx.fillStyle = '#090912'; ctx.fillRect(0, 0, W, H);
     const pad = 38, stripH = 72, gap = 10;
     const rows = [
-        { data: _statHp,    label: 'HP',    color: '#ff4455', max: 100 },
+        { data: _statHp,    label: 'HP',    color: '#ff4455', max: null }, // max HP grows with level
         { data: _statScore, label: 'Score', color: '#4488ff', max: null },
         { data: _statXp,    label: 'XP',    color: '#44ee88', max: null },
         { data: _statLvl,   label: 'Level', color: '#ffcc44', max: null },

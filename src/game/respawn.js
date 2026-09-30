@@ -22,12 +22,12 @@ export function playerDown() {
     runHooks('playerDown');
 }
 
-/** Put the player back in the air at `position` facing `quaternion`, full HP, with spawn protection. */
+/** Put the player back in the air at `position` facing `quaternion`, full HP (state.maxHP), with spawn protection. */
 export function respawnPlayer(position, quaternion) {
     plane.position.copy(position);
     plane.quaternion.copy(quaternion);
     plane.updateMatrixWorld(true);
-    state.planeHP = 100; hpElement.textContent = state.planeHP;
+    state.planeHP = state.maxHP; hpElement.textContent = state.planeHP;
     state.speed = Math.max(minSpeed, 0.3);
     state.pitchRate = state.rollRate = state.yawRate = 0;
     state._graceTimer = GRACE_PERIOD;
