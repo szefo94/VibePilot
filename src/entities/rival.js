@@ -18,9 +18,9 @@
  * patrols towards pickups.
  * Aces collide with other aircraft (both explode), gain XP from kills and markers (levels: HP, skill, full ammo)
  * and heal on collectibles. Farming aces (team bots) attack the enemy bases' units whenever no enemy pilot is close,
- * for XP (guns only; the kill pays the bot, not the player).
+ * for XP: guns, plus bombs and napalm on ground units from a level run (the kill pays the bot, not the player).
  */
-import { MAP_BOUNDARY, RIVAL, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, rotAccel } from '../config.js';
+import { MAP_BOUNDARY, RIVAL, acceleration, bombAoERadius, bombDamage, ceilingLevel, deceleration, gravity, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, napalmDamage, napalmRadius, rotAccel, waterLevel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _up3 } from '../core/scratch.js';
@@ -28,6 +28,7 @@ import { plane } from '../player/plane.js';
 import { airUnits, collectibles, enemyBullets, groundUnits, markers, missiles } from './registry.js';
 import { beginHits } from '../combat/hits.js';
 import { canDamageGround, groundUnitWorldPos } from '../combat/damage.js';
+import { _bombBodyGeo, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial } from '../combat/resources.js';
 import { spawnEnemyBullet } from '../combat/enemyBullets.js';
 import { damagePlayer } from '../combat/collision.js';
 import { createExplosion } from '../effects/effects.js';
@@ -148,6 +149,7 @@ function makeAce({ callsign, group, hp, label, xp, tier }) {
             gunAmmo: RIVAL.gunAmmo, gunReload: 0, gunCd: 60, burstLeft: 0,
             mslAmmo: tier.mslAmmo, mslReload: 0, mslCd: RIVAL.mslCooldown, lock: 0,
             flareAmmo: tier.flareAmmo, flareReload: 0, flareTimer: 0,
+            bombs: RIVAL.bombs, napalm: RIVAL.napalm, bombReload: RIVAL.bombReload, bombCd: 0,
         },
         ai: {
             mode: 'hunt', timer: 0, react: 0, evadeCd: 0, scan: 0, sinceFix: 0, contact: false, waypoint: null,
@@ -201,6 +203,7 @@ function skillOf(au) {
 /** Once per updateAI(): missiles, death bookkeeping, Ace Hunt respawns, HUD warnings. */
 export function updateRivalSystem(dt) {
     updateRivalMissiles(dt);
+    updateAceBombs(dt);
     for (let i = rivals.length - 1; i >= 0; i--) {
         const r = rivals[i];
         if (airUnits.includes(r)) continue;
@@ -251,6 +254,7 @@ export function updateRival(au, dt) {
 
     // 3. Where the nose should point
     if (ai.mode === 'evade') _des.copy(ai.breakDir);
+    else if (ai.mode === 'engage' && bombRun(au)) _des.set(_toP.x, 0, _toP.z);                       // level run over the target
     else if (ai.mode === 'engage' && T.unit && !T.unit.group && dist < RIVAL.strafeBreak) _des.set(_fwd.x, 0.7, _fwd.z); // strafing run: pull out in time
     else if (ai.mode === 'engage') leadPoint(au, dist, _des).sub(pos);
     else if (ai.mode === 'hunt') _des.copy(ai.lastKnown).addScaledVector(ai.lastVel, Math.min(ai.sinceFix, 240)).sub(pos);
@@ -285,6 +289,7 @@ export function updateRival(au, dt) {
     }
 
     // 6. Weapons
+    if (alive && ai.mode === 'engage' && bombRun(au)) tryBombRelease(au);
     if (alive && ai.mode === 'engage') { fireGuns(au, dist); if (!T.unit) updateMissileLock(au, dist, offBore, dt); else wpn.lock = 0; } // units: guns only
     else wpn.lock = 0;
 }
@@ -399,12 +404,12 @@ function checkThreats(au, dist, seen) {
     }
     if (!seen) return; // the rest reacts to the target it can see
     // Head-on merge / ram avoidance
-    if (dist < 35 || (dist < 90 && _fwd.dot(_pFwd) < -0.5)) {
+    if (dist < 35 || (dist < 90 && !T.unit && _fwd.dot(_pFwd) < -0.5)) {
         startBreak(au, _tmp.subVectors(pos, T.position).normalize(), 40, true);
         return;
     }
     // Player's nose is on the ace inside gun range → break turn
-    if (tier.evades && ai.mode !== 'evade' && ai.evadeCd <= 0 && dist < RIVAL.gunRange && reacts) {
+    if (tier.evades && !T.unit && ai.mode !== 'evade' && ai.evadeCd <= 0 && dist < RIVAL.gunRange && reacts) { // units don't aim like pilots
         _tmp.subVectors(pos, T.position).normalize();
         if (_pFwd.dot(_tmp) > Math.cos(RIVAL.threatCone)) {
             startBreak(au, _tmp, RIVAL.breakTime[0] + Math.random() * (RIVAL.breakTime[1] - RIVAL.breakTime[0]));
@@ -436,7 +441,10 @@ function popFlares(au) {
 
 function tickWeapons(w, dt) {
     const tier = rivalSkill();
-    w.gunCd -= dt; w.mslCd -= dt; w.flareTimer = Math.max(0, w.flareTimer - dt);
+    w.gunCd -= dt; w.mslCd -= dt; w.bombCd -= dt; w.flareTimer = Math.max(0, w.flareTimer - dt);
+    if ((w.bombs < RIVAL.bombs || w.napalm < RIVAL.napalm) && (w.bombReload -= dt) <= 0) {
+        w.bombReload = RIVAL.bombReload; w.bombs = Math.min(RIVAL.bombs, w.bombs + 1); w.napalm = Math.min(RIVAL.napalm, w.napalm + 1);
+    }
     if (w.gunAmmo <= 0 && (w.gunReload -= dt) <= 0) w.gunAmmo = RIVAL.gunAmmo;
     if (w.mslAmmo <= 0 && tier.mslAmmo > 0 && (w.mslReload -= dt) <= 0) w.mslAmmo = tier.mslAmmo;
     if (w.flareAmmo <= 0 && tier.flareAmmo > 0 && (w.flareReload -= dt) <= 0) w.flareAmmo = tier.flareAmmo;
@@ -454,7 +462,8 @@ function fireGuns(au, dist) {
     leadPoint(au, dist, _aim);
     _tmp.subVectors(_aim, au.group.position);
     _fwd.set(0, 0, 1).applyQuaternion(au.group.quaternion);
-    if (_fwd.angleTo(_tmp) > Math.atan2(RIVAL.aimTolerance, dist) + 0.02) { w.burstLeft = 0; return; } // no solution
+    const size = T.unit ? (T.unit.collisionRadius ?? T.unit.userData?.collisionRadius ?? 0) * 0.5 : 0; // units are big: a looser solution
+    if (_fwd.angleTo(_tmp) > Math.atan2(RIVAL.aimTolerance + size, dist) + 0.02) { w.burstLeft = 0; return; } // no solution
     if (w.burstLeft <= 0) w.burstLeft = RIVAL.burst;
     const spread = (1 - skillOf(au)) * dist * RIVAL.aimSpread;
     _aim.x += (Math.random() - 0.5) * spread; _aim.y += (Math.random() - 0.5) * spread; _aim.z += (Math.random() - 0.5) * spread;
@@ -545,13 +554,13 @@ function farmTarget(au) {
     ai.farmScan = 60;
     let best = null, bestD = RIVAL.farmRange ** 2;
     for (const u of groundUnits) {
-        if (!u.userData.isHostile || !canDamageGround(u, 'bullet')) continue;
-        const d = groundUnitWorldPos(u).distanceToSquared(pos);
+        if (!u.userData.isHostile || !(canDamageGround(u, 'bullet') || (hasBombs(au) && canDamageGround(u, 'bomb')))) continue; // hangars: bombs only
+        const d = groundUnitWorldPos(u).distanceToSquared(pos) * (hasBombs(au) ? 0.36 : 1); // with bombs aboard, ground targets first
         if (d < bestD) { bestD = d; best = u; }
     }
     for (const a of airUnits) {
         if (a.isRival || a.proxy || a.friendly || !a.isHostile || !(a.hp > 0)) continue;
-        const d = a.group.position.distanceToSquared(pos);
+        const d = a.group.position.distanceToSquared(pos) * 1.7; // aircraft are harder prey: a little further down the list
         if (d < bestD) { bestD = d; best = a; }
     }
     if (!best) return (ai.farm = null);
@@ -561,8 +570,56 @@ function farmTarget(au) {
         id: `unit:${air ? best.id : best.userData.id}`, local: false, unit: best, flares: false,
         position: air ? best.group.position : groundUnitWorldPos(best), quaternion: air ? best.group.quaternion : _still,
         get speed() { return air && best.velocity ? best.velocity.length() : 0; },
-        get alive() { return air ? best.hp > 0 && airUnits.includes(best) : canDamageGround(best, 'bullet'); },
+        get alive() { return air ? best.hp > 0 && airUnits.includes(best) : canDamageGround(best, 'bomb'); },
     });
+}
+
+// --- Bombs and napalm (farming aces) --------------------------------------------------------------
+const aceBombs = []; // { mesh, v, weapon, owner }
+const hasBombs = au => au.wpn.bombs > 0 || au.wpn.napalm > 0;
+/** A bombing run: a ground unit as the target, something to drop, and enough height above it. */
+const bombRun = au => !!T.unit && !T.unit.group && hasBombs(au) && au.group.position.y - T.position.y > RIVAL.bombMinHeight;
+
+/** Release when the predicted impact (level flight, gravity only) lands on the target. */
+function tryBombRelease(au) {
+    const w = au.wpn, pos = au.group.position;
+    if (w.bombCd > 0) return;
+    _tmp.set(0, 0, 1).applyQuaternion(au.group.quaternion).multiplyScalar(au.fl.speed); // bomb starts with the plane's velocity
+    const h = pos.y - T.position.y, t = (_tmp.y + Math.sqrt(Math.max(0, _tmp.y * _tmp.y + 2 * gravity * h))) / gravity;
+    _tmp2.set(pos.x + _tmp.x * t - T.position.x, 0, pos.z + _tmp.z * t - T.position.z);
+    if (_tmp2.length() > RIVAL.bombAim) return;
+    const weapon = w.napalm > 0 && (w.bombs === 0 || Math.random() < 0.35) ? 'napalm' : 'bomb';
+    if (weapon === 'napalm') w.napalm--; else w.bombs--;
+    w.bombCd = RIVAL.bombInterval;
+    const mesh = weapon === 'bomb' ? new THREE.Mesh(_bombBodyGeo, bombMaterial) : new THREE.Mesh(_napClusterOrbGeo, _napClusterOrbMat);
+    if (weapon === 'napalm') mesh.scale.setScalar(2.2);
+    mesh.position.copy(pos).addScaledVector(WORLD_UP, -1.5);
+    scene.add(mesh);
+    aceBombs.push({ mesh, v: _tmp.clone(), weapon, owner: au });
+    runHooks('aceDropped', au, weapon, mesh.position);
+}
+
+/** Falling bombs and napalm: on the ground or water they burst, damaging the ground units around (the ace is paid). */
+function updateAceBombs(dt) {
+    for (let i = aceBombs.length - 1; i >= 0; i--) {
+        const b = aceBombs[i], p = b.mesh.position;
+        b.v.y -= gravity * dt;
+        p.addScaledVector(b.v, dt);
+        if (b.v.lengthSq() > 1e-6) b.mesh.lookAt(_tmp.copy(p).add(b.v));
+        if (p.y > Math.max(heightAt(p.x, p.z), waterLevel)) continue;
+        scene.remove(b.mesh); aceBombs.splice(i, 1);
+        const napalm = b.weapon === 'napalm', radius = napalm ? napalmRadius : bombAoERadius;
+        createExplosion(p, napalm ? 1.6 : 1.2);
+        const hits = beginHits(b.weapon, { shooter: b.owner });
+        for (const u of groundUnits) {
+            if (!u.userData.isHostile) continue;
+            const d = groundUnitWorldPos(u).distanceTo(p);
+            if (d < radius + (u.userData.collisionRadius ?? 0) * 0.5) hits.damage(u, Math.round((napalm ? napalmDamage : bombDamage) * (1 - 0.5 * Math.min(1, d / radius))));
+        }
+        const { xp } = hits.finish();
+        if (xp) rewardAce(b.owner, Math.round(xp * RIVAL.farmXp));
+        runHooks('aceImpact', b.weapon, p);
+    }
 }
 
 /** Patrol: the nearest pickup when hurt or dry, else random waypoints over the middle of the map. */
