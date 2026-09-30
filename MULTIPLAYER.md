@@ -20,9 +20,9 @@ Multiplayer development happens on the **`multiplayer`** branch. This file is th
 
 | Mode | What players share | Status |
 |---|---|---|
-| **1. Shared skies** | One map; everyone sees everyone's plane. No enemies. (`?mode=skies`) | Done |
-| **2. PvP** | Shared skies, plus every weapon hits other players; 0 HP → respawn nearby | **Default mode: working** |
-| **3. Co-op** | One war: the same enemies, bases and mission | Phase 3 |
+| **1. Shared skies** | One map; everyone sees everyone's plane. No enemies. (`?mp=skies`) | Done |
+| **2. PvP + co-op** | Shared enemy bases and mission, **and** every weapon hits other players; 0 HP → respawn nearby (`?mp=pvp`) | **Default: working** |
+| **3. Co-op** | The same shared war, no damage between players (`?mp=coop`) | Working |
 
 Principles:
 
@@ -143,8 +143,16 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [x] Touch overlay: joystick (pitch/roll), throttle, GUN (hold), MSL/FLR/BOMB/NAP, pause, fullscreen. TILT steers with the motion sensor (needs `https://`, e.g. `--tls`).
 - [ ] Check the tilt directions on a real phone (they are untested on hardware).
 
+**Also done in phase 2**
+- [x] Every gameplay notification is shared with the player's name (`EVENT`): "Bravo: ★ Orion Constellation — COMPLETE", level-ups, bases. Device-only messages (mute, tilt) stay local.
+- [x] The aiming laser is visible to others (`STATE.f` bit 2).
+- [x] Join straight away: the bare address opens `?mp=pvp` in room `lobby` with a remembered or random callsign ("Ghost Hornet"); **Callsign** in the start and pause menus changes it.
+- [x] Name tags are sized in the world and fade out beyond ~320 units, so they don't cover planes.
+
 **Phase 3: Co-op**
-- [ ] Stable unit ids in the order the map generates them (`netId`, instead of UUIDs).
+- [x] Shared enemies in `pvp` and `coop` rooms (`src/mp/coop.js`): units get net ids `g<i>`/`a<i>` in the seeded creation order; hits are synced as `UNIT_HIT` and applied quietly by the others (no double rewards or notifications); the server keeps damage totals for late joiners; the host sends moving air units twice a second (`WORLD`). Each player's copy of an enemy shoots at that player.
+- [ ] Share the random spawners too (interceptor waves, the ace, roaming fighters). They're off in multiplayer for now.
+- [x] Stable unit ids in the order the map generates them (`netId`).
 - [ ] Authority for enemies. Start with the host's browser: the server already tracks the host and hands it over. The host runs the AI and sends `WORLD` deltas at 10 Hz. Guests turn their AI off and interpolate, and send their damage as `ACTION` for the host to apply.
 - [ ] Later option: the server runs the simulation itself. That needs the game logic separated from THREE and the page (a headless core), a large refactor. A Pi 5 has the CPU for it.
 
@@ -180,12 +188,12 @@ npm run test:browser # 27 single-player browser tests (needs Node 20+ for Playwr
 
 | Parameter | Meaning | Default |
 |---|---|---|
-| `?mp` | Enable multiplayer and connect to the server that served the page. The multiplayer server adds it to the bare address automatically. | Off (on when served by the multiplayer server) |
+| `?mp=pvp` | Enable multiplayer in that mode (`pvp`, `coop`, `skies`) on the server that served the page. The multiplayer server sends its bare address to `?mp=pvp`. | Off (on when served by the multiplayer server) |
 | `?sp` | Force single-player on the multiplayer server | – |
 | `?mp=wss://host/` | Connect to a different server | – |
 | `room=` | Room name, `[a-z0-9_-]`, up to 24 characters | `lobby` |
-| `name=` | Your callsign, up to 16 characters | Asked on entry, then remembered |
-| `mode=` | `pvp` (damage between players) or `skies` (no damage); `coop` is reserved | `pvp` |
+| `name=` | Your callsign, up to 16 characters | Remembered, or a random one; change it with **Callsign** in the menus |
+| `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `pvp` |
 
 **Messages** (`src/net/protocol.js`, version 2): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `PING` · `PONG`, plus `FIRE` · `HIT` · `HOST` · `WORLD` · `ACTION`, reserved for phases 2–3.
 

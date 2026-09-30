@@ -9,19 +9,20 @@
  * report and broadcasts one SNAP of the whole room per tick. See MULTIPLAYER.md.
  *
  * Modes:
- *   skies  shared sky — same map, everyone sees everyone's plane, no enemies (phase 1)
- *   pvp    skies + every weapon hits other players; 0 HP → respawn nearby (default)
- *   coop   one shared war against the enemies (phase 3)
+ *   pvp    the default: the enemy bases fight everyone (co-op), and every weapon also hits other players
+ *   coop   the same shared war, without damage between players
+ *   skies  just flying together: no enemies, no damage
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const DEFAULT_PORT = 8787;
 
+// pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
 export const MODES = Object.freeze({
-    skies: { label: 'Shared skies', pvp: false, hostAuthority: false },
-    pvp:   { label: 'PvP',          pvp: true,  hostAuthority: false },
-    coop:  { label: 'Co-op',        pvp: false, hostAuthority: true },
+    pvp:   { label: 'PvP + co-op', pvp: true,  enemies: true,  hostAuthority: true },
+    coop:  { label: 'Co-op',       pvp: false, enemies: true,  hostAuthority: true },
+    skies: { label: 'Shared skies', pvp: false, enemies: false, hostAuthority: false },
 });
 
 export const LIMITS = Object.freeze({
@@ -64,26 +65,36 @@ export function respawnPoint(i, random = Math.random) {
 export const PVP_DAMAGE = Object.freeze({ bullet: 4, missile: 45, bomb: 60, napalm: 10 });
 export const PVP_KILL_XP = 150;
 
+/** Enemy unit net ids: 'g<i>' ground units, 'a<i>' air units, in the order the seeded world creates them. */
+export const UNIT_ID = /^[ag]\d{1,4}$/;
+export const UNIT_WEAPONS = Object.freeze(['bullet', 'missile', 'bomb', 'napalm']);
+export const EVENT_TEXT_MAX = 120;
+
+/** STATE.f bits: what others should see this plane doing. */
+export const FLAGS = Object.freeze({ gun: 1, laser: 2 });
+
 /** Weapons shown on other players' screens via FIRE (the gun travels as STATE.f instead). */
 export const FIRE_WEAPONS = Object.freeze(['missile', 'bomb', 'napalm', 'flare']);
 
 /** Message types. C→S client to server, S→C server to client. */
 export const MSG = Object.freeze({
     HELLO: 'hello',       // C→S  { v, mode, room, name, seed }
-    WELCOME: 'welcome',   // S→C  { id, slot, mode, room, seed, hostId, spawn: {p, q}, players: [{ id, name, slot }] }
+    WELCOME: 'welcome',   // S→C  { units: { n: { weapon: damage } }, id, slot, mode, room, seed, hostId, spawn: {p, q}, players: [{ id, name, slot }] }
     REJECT: 'reject',     // S→C  { reason } then close
     JOIN: 'join',         // S→C  { id, name, slot }
     LEAVE: 'leave',       // S→C  { id }
     HOST: 'host',         // S→C  { hostId } — co-op authority moved (host left)
-    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, f } — own plane (f = 1 while the gun fires), validated
+    STATE: 'state',       // C→S  { p:[x,y,z], q:[x,y,z,w], s:speed, hp, f } — own plane (f: FLAGS bits), validated
     SNAP: 'snap',         // S→C  { tick, time, players: [{ id, p, q, s, hp, f, alive }] } — the room, every tick
     CORRECT: 'correct',   // S→C  { p, q } — your reports were rejected; you are back at your last accepted pose
     DOWN: 'down',         // C→S  { by } — I was shot down (by = player id) or crashed (by = null); S→C { id, by } to the room
     SPAWN: 'spawn',       // S→C  { p, q } — respawn here (random point near your slot, respawnPoint())
     FIRE: 'fire',         // relay { w: FIRE_WEAPONS, p, p2?, d?, v?, tg? } → others get { from, … } — shots to draw (src/mp/remoteFx.js)
     HIT: 'hit',           // pvp:  C→S { target, dmg, w } → S→C to `target` only { from, dmg, w }; dmg ≤ PVP_DAMAGE[w]
-    WORLD: 'world',       // coop: host → others { tick, units: [...] } (phase 3)
-    ACTION: 'action',     // coop: client → host { kind, ... } (phase 3)
+    UNIT_HIT: 'uhit',     // enemies: C→S { n: unit net id, dmg, w } → others { from, n, dmg, w }; the server keeps the totals
+    WORLD: 'world',       // enemies: host → others { u: [[n, x, y, z, vx, vy, vz] | [n, orbitAngle]] } — moving units, 2 Hz
+    EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
+    ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }
     PONG: 'pong',         // S→C  { c } — round-trip time
 });

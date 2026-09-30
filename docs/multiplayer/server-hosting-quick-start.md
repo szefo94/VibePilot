@@ -18,15 +18,16 @@ npm ci                      # 2. dependencies (once, and after pulling updates)
 npm run mp-server           # 3. start on the default port 8787
 ```
 
-Open `http://localhost:8787/`. The bare address goes straight to multiplayer and asks for your **callsign** (remembered for next time). Everyone lands in room `lobby`. Stop the server with **Ctrl+C**.
+Open `http://localhost:8787/`. The bare address goes straight into multiplayer (`?mp=pvp`, room `lobby`) under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
 
 Address options:
 
 | Address | Result |
 |---|---|
-| `http://<server>:<port>/` | Callsign prompt, then room `lobby` |
-| `…/?room=friday` | Callsign prompt, then room `friday` (a separate world) |
-| `…/?room=friday&name=Anna` | Skips the prompt |
+| `http://<server>:<port>/` | PvP + co-op in room `lobby` |
+| `…/?mp=coop` / `…/?mp=skies` | Co-op without damage between players / just flying together |
+| `…/?room=friday` | Room `friday` (a separate world) |
+| `…/?name=Anna` | Joins as Anna |
 | `…/?sp` | The normal single-player game |
 
 ## 2. Choose the port

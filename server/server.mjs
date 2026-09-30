@@ -20,7 +20,7 @@ import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { WebSocketServer } from 'ws';
-import { DEFAULT_PORT, FIRE_WEAPONS, LIMITS, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
+import { DEFAULT_PORT, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, UNIT_ID, UNIT_WEAPONS, VALIDATION, cleanName, cleanRoom, decode, encode, respawnPoint, spawnSlot } from '../src/net/protocol.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -48,7 +48,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         const reqUrl = new URL(req.url, 'http://x'), path = reqUrl.pathname;
         // The bare address opens multiplayer (?sp keeps the single-player game reachable)
         if ((path === '/' || path === '/index.html') && !reqUrl.searchParams.has('mp') && !reqUrl.searchParams.has('sp')) {
-            const q = new URLSearchParams(reqUrl.search); q.set('mp', '');
+            const q = new URLSearchParams(reqUrl.search); q.set('mp', 'pvp'); // default mode
             res.writeHead(302, { Location: `/?${q}` }).end();
             return;
         }
@@ -94,7 +94,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map() };
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {} }; // units: damage log for late joiners
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
@@ -104,7 +104,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
         const spawn = placeAtSpawn(c);
-        send(c, MSG.WELCOME, { id: c.id, slot: c.slot, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
             players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot })) });
         broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot }, c);
         log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot} (${room.players.size})`);
@@ -135,7 +135,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             if (++c.strikes >= V.strikes) { c.strikes = 0; c.at = now; send(c, MSG.CORRECT, { p: c.p, q: c.q }); }
             return;
         }
-        Object.assign(c, { p: round(m.p, 2), q: round(m.q, 4), s: +m.s || 0, hp: Math.max(0, Math.min(100, +m.hp || 0)), f: m.f ? 1 : 0, at: now, strikes: 0 });
+        Object.assign(c, { p: round(m.p, 2), q: round(m.q, 4), s: +m.s || 0, hp: Math.max(0, Math.min(100, +m.hp || 0)), f: (m.f | 0) & 3, at: now, strikes: 0 });
     }
 
     function handle(c, m) {
@@ -167,6 +167,22 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 const target = room.players.get(m.target), cap = PVP_DAMAGE[m.w];
                 if (!target || target === c || !target.alive || !c.alive || !cap) return;
                 send(target, MSG.HIT, { from: c.id, dmg: Math.min(cap, Math.max(0, +m.dmg || 0)), w: m.w });
+                break;
+            }
+            case MSG.UNIT_HIT: {
+                // Shared enemies: keep the damage totals (a late joiner replays them) and pass the hit on
+                if (!mode.enemies || typeof m.n !== 'string' || !UNIT_ID.test(m.n) || !UNIT_WEAPONS.includes(m.w)) return;
+                const dmg = Math.min(500, Math.max(0, +m.dmg || 0));
+                if (!dmg) return;
+                const log = room.units[m.n] ??= {};
+                if (!log[m.w] && Object.keys(room.units).length > 2000) return; // bounded
+                log[m.w] = Math.min(1e6, (log[m.w] ?? 0) + dmg);
+                broadcast(room, MSG.UNIT_HIT, { from: c.id, n: m.n, dmg, w: m.w }, c);
+                break;
+            }
+            case MSG.EVENT: {
+                const text = String(m.text ?? '').replace(/\p{Cc}/gu, '').trim().slice(0, EVENT_TEXT_MAX);
+                if (text) broadcast(room, MSG.EVENT, { from: c.id, text, hl: !!m.hl }, c);
                 break;
             }
             case MSG.WORLD:

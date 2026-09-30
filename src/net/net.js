@@ -2,11 +2,11 @@
  * Multiplayer client: connection, room membership, peer table and message hooks (see MULTIPLAYER.md).
  * Off unless the page is opened with ?mp — the single-player game never touches the network.
  *
- *   ?mp                    connect to the server that served this page (ws:// or wss:// to the same host)
- *   ?mp=wss://host/        …or to another server
- *   &mode=pvp|skies|coop   default pvp (skies: no damage between players)
+ *   ?mp=pvp                connect to the server that served this page in that mode (pvp · coop · skies);
+ *                          a bare ?mp means pvp. The multiplayer server sends its bare address here.
+ *   ?mp=wss://host/        …or to another server (&mode= picks the mode then)
  *   &room=name             default "lobby"
- *   &name=Pilot            shown to other players
+ *   &name=Pilot            shown to other players; without it src/mp/ uses the remembered or a random callsign
  *
  * Joining a room whose map seed differs from ours reloads the page onto the room's seed, so everyone flies the
  * same world. Peers are updated from the server's room snapshots (SNAP); src/mp/ renders them.
@@ -15,12 +15,14 @@ import { LIMITS, MODES, MSG, PROTOCOL_VERSION, cleanName, cleanRoom, decode, enc
 
 const params = new URLSearchParams(location.search);
 const sameHost = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/`;
-const url = params.has('mp') ? (params.get('mp') || sameHost) : '';
+const mpParam = params.get('mp');
+const url = mpParam === null ? '' : /^wss?:\/\//.test(mpParam) ? mpParam : sameHost;
+const modeParam = Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : Object.hasOwn(MODES, mpParam) ? mpParam : 'pvp';
 
 export const net = {
     enabled: !!url,
     url,
-    mode: Object.hasOwn(MODES, params.get('mode')) ? params.get('mode') : 'pvp',
+    mode: modeParam,
     room: cleanRoom(params.get('room')) || 'lobby',
     name: cleanName(params.get('name')),
     status: url ? 'connecting' : 'off', // off · connecting · online · error

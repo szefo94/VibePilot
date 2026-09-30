@@ -3,18 +3,21 @@
  * clock so there are always two snapshots to blend between: position lerp, rotation slerp. When snapshots run
  * late it extrapolates along the last velocity for up to EXTRAPOLATE_MAX, then holds.
  *
- * Each plane carries a name tag with an HP bar. In PvP a plane is also a proxy air unit in `airUnits`, so every
+ * Each plane carries a name tag with an HP bar, sized in the world like the plane and shown only within LABEL_RANGE
+ * (faded out towards its end), and the aiming laser when its pilot has it on (STATE.f). In PvP a plane is also a proxy air unit in `airUnits`, so every
  * weapon, the lock-on reticle and missile homing treat it as a target; hits.js hands its hits to `onHit`
  * (which reports them to the server) instead of damaging it locally.
  */
-import { scene } from '../core/scene.js';
+import { camera, scene } from '../core/scene.js';
 import { createExplosion } from '../effects/effects.js';
 import { airUnits } from '../entities/registry.js';
 import { net, serverNow } from '../net/net.js';
+import { FLAGS } from '../net/protocol.js';
 
 const INTERP_DELAY = 100;    // ms — two snapshots at 20 Hz, plus jitter
 const EXTRAPOLATE_MAX = 250; // ms
 const STALE_MS = 3000;       // no snapshot for this long: hide the plane
+const LABEL_RANGE = 320, LABEL_FADE = 90; // name tags: fully visible up to RANGE − FADE, gone beyond RANGE
 const COLORS = [0xff5555, 0x55aaff, 0xffcc33, 0x66dd66, 0xcc66ff, 0xff9933, 0x33dddd, 0xff66aa];
 export const colorOf = slot => COLORS[(slot ?? 0) % COLORS.length];
 export const cssColor = slot => `#${colorOf(slot).toString(16).padStart(6, '0')}`;
@@ -26,6 +29,8 @@ const wingGeo = new THREE.BoxGeometry(12, 0.2, 1.5);
 const finGeo = new THREE.BoxGeometry(0.2, 1.5, 1);
 const stabGeo = new THREE.BoxGeometry(2.5, 0.15, 0.8);
 const trimMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 2), new THREE.Vector3(0, 0, 1500)]); // as player/plane.js
+const laserMat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
 const bodyMats = new Map(); // color → material
 
 function buildPlane(slot) {
@@ -35,16 +40,18 @@ function buildPlane(slot) {
     const nose = new THREE.Mesh(noseGeo, trimMat); nose.position.z = 2.6;
     const fin = new THREE.Mesh(finGeo, body); fin.position.set(0, 0.75, -1.8);
     const stab = new THREE.Mesh(stabGeo, body); stab.position.z = -1.8;
-    g.add(new THREE.Mesh(fuselageGeo, body), nose, new THREE.Mesh(wingGeo, body), fin, stab);
+    const laser = new THREE.Line(laserGeo, laserMat); laser.visible = false;
+    g.add(new THREE.Mesh(fuselageGeo, body), nose, new THREE.Mesh(wingGeo, body), fin, stab, laser);
+    g.userData.laser = laser;
     return g;
 }
 
-/** Name tag + HP bar: constant size on screen, drawn over terrain so a far-away player stays findable. */
+/** Name tag + HP bar above the plane, a little wider than its 12-unit wingspan; it shrinks with distance like the plane. */
 function buildLabel(name, slot) {
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 160;
     const texture = new THREE.CanvasTexture(canvas);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false, sizeAttenuation: false, fog: false }));
-    sprite.scale.set(0.34, 0.106, 1); sprite.renderOrder = 2;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, fog: false }));
+    sprite.scale.set(14, 4.4, 1); sprite.renderOrder = 2;
     const label = { sprite, canvas, texture, name, slot, hp: -1 };
     drawLabel(label, 100);
     return label;
@@ -135,10 +142,15 @@ export function updateRemotePlanes() {
         const shown = alive === true && now - newest.t < STALE_MS;
         if (v.alive && alive === false) createExplosion(v.group.position, 1); // shot down / crashed
         if (alive !== null) v.alive = alive;
-        v.group.visible = v.label.sprite.visible = shown;
-        if (shown) { v.label.sprite.position.copy(v.group.position).y += 4; drawLabel(v.label, newest.hp ?? 100); }
+        v.group.visible = shown; v.label.sprite.visible = false;
+        v.group.userData.laser.visible = shown && ((newest.f ?? 0) & FLAGS.laser) !== 0;
+        if (shown) { // name tag only up close, fading out towards LABEL_RANGE
+            const d = camera.position.distanceTo(v.group.position), fade = Math.min(1, (LABEL_RANGE - d) / LABEL_FADE);
+            v.label.sprite.visible = fade > 0;
+            if (fade > 0) { v.label.sprite.material.opacity = fade; v.label.sprite.position.copy(v.group.position).y += 5; drawLabel(v.label, newest.hp ?? 100); }
+        }
         if (v.unit) v.unit.hp = shown ? Math.max(1, newest.hp ?? 100) : 0; // hp 0 = not targetable (down, respawning, stale)
-        v.shown = shown; v.firing = shown && newest.f === 1; v.speed = newest?.s ?? 0; // no snapshot yet for a player who just joined
+        v.shown = shown; v.firing = shown && ((newest.f ?? 0) & FLAGS.gun) !== 0; v.speed = newest?.s ?? 0; // no snapshot yet for a player who just joined
     }
     for (const [id, v] of views) if (!net.peers.has(id)) dispose(id, v);
 }

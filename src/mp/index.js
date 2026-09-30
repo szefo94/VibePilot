@@ -1,10 +1,14 @@
 /**
  * Multiplayer entry point (multiplayer branch). Imported once by main.js; does nothing without ?mp.
  *
- * With ?mp the player first picks a callsign (lobby.js; skipped when &name= is in the address). Then the session
- * belongs to the server: the game rules switch to shared skies (no enemies, ace, interceptors or mission; respawn
- * instead of game over), the server's WELCOME / SPAWN / CORRECT place the player, and other players are drawn
- * from its snapshots. Everything plugs in through game/hooks.js.
+ * With ?mp the player joins straight away (room "lobby", mode pvp by default) under their remembered callsign — or
+ * a random one (callsigns.js); "Callsign" in the start and pause menus changes it (lobby.js). The session belongs
+ * to the server: respawn instead of game over, the server's WELCOME / SPAWN / CORRECT place the player, and other
+ * players are drawn from its snapshots. Everything plugs in through game/hooks.js.
+ *
+ * Enemies (pvp, coop): the seeded enemy bases are shared — coop.js syncs damage and moving units. Ace, interceptor
+ * waves and the roaming fighters stay off (they spawn at random, so they can't be shared yet).
+ * Notifications: every gameplay notification is also shown to the others with the player's name (EVENT).
  *
  * PvP (default mode): every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
  * the victim applies it with damagePlayer() — its flares still stop gun and missile hits, spawn protection still
@@ -15,8 +19,8 @@ import { setRules } from '../game/rules.js';
 import { onHook } from '../game/hooks.js';
 import { respawnPlayer } from '../game/respawn.js';
 import { state } from '../state.js';
-import { plane } from '../player/plane.js';
-import { MODES, MSG, PVP_DAMAGE, PVP_KILL_XP } from '../net/protocol.js';
+import { aimingLaser, plane } from '../player/plane.js';
+import { FLAGS, MODES, MSG, PVP_DAMAGE, PVP_KILL_XP } from '../net/protocol.js';
 import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
 import { clearRemotePlanes, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
 import { clearRemoteFx, onRemoteFire, updateRemoteFx } from './remoteFx.js';
@@ -24,9 +28,14 @@ import { damagePlayer } from '../combat/collision.js';
 import { awardKill } from '../game/progression.js';
 import { showNotification } from '../ui/notifications.js';
 import { askName } from './lobby.js';
+import { defaultCallsign, saveCallsign } from './callsigns.js';
+import { startCoop, updateCoop } from './coop.js';
 
 if (net.enabled) {
-    setRules({ enemies: false, interceptors: false, ace: false, mission: false, respawn: true });
+    const enemies = MODES[net.mode].enemies;
+    setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, mission: enemies, respawn: true });
+    if (enemies) startCoop();
+    if (!new URLSearchParams(location.search).get('name')) net.name = defaultCallsign();
 
     const css = document.createElement('link');
     css.rel = 'stylesheet'; css.href = new URL('./mp.css', import.meta.url).href;
@@ -76,24 +85,30 @@ if (net.enabled) {
     });
     onNet(MSG.DOWN, ({ id, by }) => {
         if (by !== null) kills.set(by, (kills.get(by) ?? 0) + 1);
-        if (by === net.id) { awardKill(PVP_KILL_XP); showNotification(`★ You shot down ${nameOf(id)}  +${PVP_KILL_XP}`, true); }
-        else if (id === net.id) showNotification(by === null ? 'You crashed — respawning' : `Shot down by ${nameOf(by)} — respawning`);
-        else showNotification(by === null ? `${nameOf(id)} crashed` : `${nameOf(by)} shot down ${nameOf(id)}`);
+        const feed = (text, hl = false) => showNotification(text, hl, { local: true }); // everyone sees DOWN already
+        if (by === net.id) { awardKill(PVP_KILL_XP); feed(`★ You shot down ${nameOf(id)}  +${PVP_KILL_XP}`, true); }
+        else if (id === net.id) feed(by === null ? 'You went down — respawning' : `Shot down by ${nameOf(by)} — respawning`);
+        else feed(by === null ? `${nameOf(id)} went down` : `${nameOf(by)} shot down ${nameOf(id)}`);
     });
     onNet('peer-leave', p => kills.delete(p.id));
+
+    // --- Notifications: ours go to everyone, theirs are shown with their name ---
+    onHook('notification', (text, hl) => netSend(MSG.EVENT, { text, hl: !!hl }));
+    onNet(MSG.EVENT, m => showNotification(`${nameOf(m.from)}: ${m.text}`, m.hl, { local: true }));
     onHook('radarBlips', remoteRadarBlips);
 
     const report = () => state._playerDown ? null : {
         p: plane.position.toArray().map(v => +v.toFixed(2)),
         q: plane.quaternion.toArray().map(v => +v.toFixed(4)),
         s: +state.speed.toFixed(3), hp: Math.max(0, state.planeHP),
-        f: performance.now() - lastGunAt < 150 ? 1 : 0, // gun firing: others draw the tracers
+        f: (performance.now() - lastGunAt < 150 ? FLAGS.gun : 0) | (aimingLaser.visible ? FLAGS.laser : 0), // others draw tracers and the laser
     };
     let chipTimer = 0;
     onHook('frame', rawDelta => {
         updateNet(rawDelta, report);
         updateRemotePlanes();
         updateRemoteFx(Math.min(rawDelta * 60, 6));
+        updateCoop(rawDelta);
         if ((chipTimer -= rawDelta) <= 0) { chipTimer = 0.25; renderChip(); }
     });
 
@@ -122,11 +137,20 @@ if (net.enabled) {
         chip.replaceChildren(...rows);
     }
     renderChip();
-    if (new URLSearchParams(location.search).get('name')) startNet();
-    else askName(net).then(name => { // no &name= in the address: ask first, then keep it in the address
-        net.name = name;
-        const u = new URL(location.href); u.searchParams.set('name', name);
-        history.replaceState(null, '', u);
-        startNet();
-    });
+
+    // "Callsign" button in the start and pause menus: pick a new one, then rejoin under it
+    for (const box of ['#start-menu', '#paused'].map(sel => document.querySelector(`${sel} .menu-buttons`)).filter(Boolean)) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'mp-callsign'; b.textContent = `Callsign: ${net.name}`;
+        b.addEventListener('click', async () => {
+            const name = await askName({ room: net.room, mode: net.mode, current: net.name });
+            if (!name || name === net.name) return;
+            saveCallsign(name);
+            const u = new URL(location.href); u.searchParams.set('name', name);
+            if (!state.awaitingStart) u.searchParams.set('autostart', '');
+            location.assign(u.href);
+        });
+        box.appendChild(b);
+    }
+    startNet();
 }

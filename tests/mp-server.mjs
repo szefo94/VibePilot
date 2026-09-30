@@ -29,7 +29,7 @@ const inSnap = (c, id) => lastSnap(c)?.players.find(p => p.id === id);
 const status = async path => (await fetch(HTTP + path)).status;
 check('servesGame', await status('/') === 200 && await status('/src/main.js') === 200 && await status('/three.min.js') === 200);
 const bare = await fetch(`${HTTP}/?room=x`, { redirect: 'manual' });
-check('bareAddressOpensMultiplayer', bare.status === 302 && bare.headers.get('location') === '/?room=x&mp=', bare.headers.get('location'));
+check('bareAddressOpensMultiplayer', bare.status === 302 && bare.headers.get('location') === '/?room=x&mp=pvp', bare.headers.get('location'));
 check('singlePlayerOptOut', (await fetch(`${HTTP}/?sp`, { redirect: 'manual' })).status === 200);
 check('hidesPrivate', await status('/package.json') === 404 && await status('/server/server.mjs') === 404 && await status('/.git/config') === 404 && await status('/src/../package.json') === 404);
 
@@ -61,6 +61,9 @@ check('outOfBoundsRejected', inSnap(b, a.first.id)?.p[2] === sz + 5);
 a.ws.send(encode(MSG.STATE, { p: [sx, sy, sz + 8], q: [0, 0, 0, 1], s: 0.5, hp: 90, f: 1 }));
 await wait(120);
 check('gunFlagInSnap', inSnap(b, a.first.id)?.f === 1);
+a.ws.send(encode(MSG.STATE, { p: [sx, sy, sz + 8], q: [0, 0, 0, 1], s: 0.5, hp: 90, f: 7 }));
+await wait(120);
+check('laserFlagInSnap', inSnap(b, a.first.id)?.f === 3); // gun + laser; unknown bits dropped
 a.ws.send(encode(MSG.FIRE, { w: 'missile', p: [sx - 5, sy, sz + 8], p2: [sx + 5, sy, sz + 8], d: [0, 0, 1], tg: b.first.id }));
 a.ws.send(encode(MSG.FIRE, { w: 'nuke', p: [sx, sy, sz + 8] }));          // unknown weapon
 a.ws.send(encode(MSG.FIRE, { w: 'flare', p: [sx + 500, sy, sz] }));       // far from the shooter
@@ -91,6 +94,21 @@ check('skiesNoHits', got(b, MSG.HIT).length === 0);
 check('pvpHitRouted', got(p2, MSG.HIT).length === 1 && got(p2, MSG.HIT)[0].dmg === PVP_DAMAGE.bullet && got(p2, MSG.HIT)[0].from === p1.first.id && got(p3, MSG.HIT).length === 0, got(p2, MSG.HIT));
 p2.ws.send(encode(MSG.DOWN, { by: p1.first.id }));
 await wait(80);
+// Shared enemies (pvp/coop rooms): hits relayed, totals kept for late joiners; notifications relayed with sender
+p1.ws.send(encode(MSG.UNIT_HIT, { n: 'g12', dmg: 15, w: 'bullet' }));
+p1.ws.send(encode(MSG.UNIT_HIT, { n: 'g12', dmg: 5, w: 'bullet' }));
+p1.ws.send(encode(MSG.UNIT_HIT, { n: 'a3', dmg: 80, w: 'missile' }));
+p1.ws.send(encode(MSG.UNIT_HIT, { n: '../x', dmg: 5, w: 'bullet' }));   // bad id
+p1.ws.send(encode(MSG.UNIT_HIT, { n: 'g1', dmg: 5, w: 'laser' }));      // bad weapon
+p1.ws.send(encode(MSG.EVENT, { text: '★ Orion Constellation — COMPLETE', hl: true }));
+a.ws.send(encode(MSG.UNIT_HIT, { n: 'g1', dmg: 5, w: 'bullet' }));      // skies room: no enemies
+await wait(80);
+check('unitHitRelayed', got(p2, MSG.UNIT_HIT).length === 3 && got(p2, MSG.UNIT_HIT)[0].from === p1.first.id && got(p1, MSG.UNIT_HIT).length === 0 && got(b, MSG.UNIT_HIT).length === 0);
+const late = await client({ mode: 'pvp', room: 'duel', name: 'Late' });
+check('lateJoinerGetsDamageLog', late.first.units?.g12?.bullet === 20 && late.first.units?.a3?.missile === 80 && Object.keys(late.first.units).length === 2, late.first.units);
+check('eventRelayed', got(p2, MSG.EVENT)[0]?.text === '★ Orion Constellation — COMPLETE' && got(p2, MSG.EVENT)[0]?.from === p1.first.id && got(p2, MSG.EVENT)[0]?.hl === true);
+check('pvpHasHost', p1.first.hostId === p1.first.id);
+late.ws.close();
 check('killCredit', got(p1, MSG.DOWN)[0]?.id === p2.first.id && got(p1, MSG.DOWN)[0]?.by === p1.first.id && got(p3, MSG.DOWN)[0]?.by === p1.first.id);
 p1.ws.send(encode(MSG.HIT, { target: p2.first.id, dmg: 4, w: 'bullet' }));
 await wait(80);

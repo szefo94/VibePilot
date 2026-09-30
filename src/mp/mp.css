@@ -21,3 +21,7 @@
 #mp-lobby button:disabled { opacity: 0.4; cursor: default; }
 /* Phones (ui/touch.js): under the pause / tilt / fullscreen buttons */
 body.touch #net-status { top: 58px; font-size: 9px; padding: 3px 8px; }
+/* Change-callsign dialog */
+#mp-lobby .mp-name-row { display: flex; gap: 8px; align-items: center; }
+#mp-lobby .mp-dice { font-size: 20px; padding: 6px 10px; background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright); cursor: pointer; }
+.menu-buttons .mp-callsign { text-transform: none !important; font-size: 15px !important; }
