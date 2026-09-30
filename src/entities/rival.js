@@ -57,16 +57,16 @@ export function setRivalTargets(targets, onRemoteHit, traffic) { targetsFn = tar
 export const localRivalTarget = localTarget;
 let T = localTarget; // the target of the ace being updated this frame
 /** The target the ace can see: keeps a spotted one while in tracking range, else the nearest newly spotted, else null. */
-function acquire(au, tier) {
+function acquire(au, tier, range = tier.visualRange) {
     const pos = au.group.position, cur = au.ai.targetId != null ? targetById(au.ai.targetId, au) : null;
-    if (cur && cur.alive && cur.position.distanceTo(pos) < tier.visualRange * RIVAL.trackFactor) return cur;
+    if (cur && cur.alive && cur.position.distanceTo(pos) < range * RIVAL.trackFactor) return cur;
     const cosCone = Math.cos(RIVAL.sightCone);
     let best = null, bestD = Infinity;
     for (const t of targetsFn(au)) {
         if (!t.alive) continue;
         _tmp.subVectors(t.position, pos);
         const d = _tmp.length();
-        if (d > tier.visualRange || d >= bestD) continue;
+        if (d > range || d >= bestD) continue;
         if (d > RIVAL.nearAwareness && _fwd.dot(_tmp.divideScalar(d)) < cosCone) continue; // behind or beside: not seen
         best = t; bestD = d;
     }
@@ -160,10 +160,11 @@ function makeAce({ callsign, group, hp, label, xp, tier }) {
 
 /**
  * An ace outside Ace Hunt (e.g. multiplayer team bots): no banners, own level and colour. `waypoint`: where it flies
- * first; `patrol`: { center, radius } for the waypoints after that. `friendly` aces are on the
+ * first — with `rally`, it takes no target on the way (bar a pilot right on top of it) until it gets there;
+ * `patrol`: { center, radius } for the waypoints after that. `friendly` aces are on the
  * player's side: the player's weapons, lock-on and minimap treat them as allies. Returns the air unit.
  */
-export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level, waypoint = null, patrol = null, farms = false }) {
+export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level, waypoint = null, patrol = null, farms = false, rally = false }) {
     const group = createRivalVisual(color);
     group.position.copy(position); group.rotation.set(0, heading, 0);
     scene.add(group);
@@ -173,6 +174,7 @@ export function spawnAce({ callsign, level = 1, position, heading = 0, color, fr
     Object.assign(au, { quiet: true, friendly, isHostile: !friendly, blipColor, blipLabel: callsign, level });
     au.ai.sinceFix = RIVAL.searchTime; // no intel at spawn: patrol until something is spotted
     if (waypoint) au.ai.waypoint = waypoint.clone(); // first leg of the patrol (e.g. multiplayer's flag)
+    if (waypoint && rally) au.ai.rally = waypoint.clone(); // go there before taking any target
     au.patrol = patrol; // { center: Vector3, radius }: where later waypoints fall (default: the middle of the map)
     au.farms = farms;   // attacks enemy units for XP when no enemy pilot is close
     airUnits.push(au); rivals.push(au);
@@ -221,8 +223,10 @@ export function updateRivalSystem(dt) {
 export function updateRival(au, dt) {
     const { ai, fl, wpn, group } = au, pos = group.position, tier = rivalSkill();
     _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
-    let target = acquire(au, tier);
-    if (au.farms && (!target || target.position.distanceTo(pos) > tier.visualRange * RIVAL.farmPilotRange)) target = farmTarget(au) ?? target;
+    // Rallying (a fresh team bot on its way to the flag): only a pilot right on top of it is fought; nothing else
+    if (ai.rally && Math.hypot(pos.x - ai.rally.x, pos.z - ai.rally.z) < RIVAL.rallyRadius) ai.rally = null;
+    let target = acquire(au, tier, ai.rally ? RIVAL.nearAwareness : tier.visualRange);
+    if (au.farms && !ai.rally && (!target || target.position.distanceTo(pos) > tier.visualRange * RIVAL.farmPilotRange)) target = farmTarget(au) ?? target;
     const alive = !!target && !(target.local && state.isGameOver);
     T = target || localTarget;
     _pFwd.set(0, 0, 1).applyQuaternion(T.quaternion);
@@ -626,6 +630,7 @@ function updateAceBombs(dt) {
 /** Patrol: the nearest pickup when hurt or dry, else random waypoints over the middle of the map. */
 function patrolPoint(au) {
     const ai = au.ai, pos = au.group.position;
+    if (ai.rally) return ai.rally; // straight to the rally point first
     if (au.hp < au.maxHp * 0.5 || (au.wpn.gunAmmo <= 0 && au.wpn.mslAmmo <= 0)) {
         let best = null, bestD = 1500 ** 2;
         for (const c of collectibles) { const d = c.position.distanceToSquared(pos); if (d < bestD) { bestD = d; best = c; } }
