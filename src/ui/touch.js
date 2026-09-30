@@ -1,9 +1,11 @@
 /**
- * Phone / tablet controls: an on-screen overlay, plus optional tilt steering from the motion sensor.
+ * Phone / tablet controls: an on-screen overlay with two wheels (like a gamepad's two sticks), plus optional tilt
+ * steering from the motion sensor.
  *
- *   left thumb   joystick → pitch (up/down) and roll (left/right, with a little yaw); ▲ ▼ throttle
- *   right thumb  GUN (hold) · MSL · FLR · BOMB · NAP
- *   top right    ⏸ pause · TILT steering on/off (calibrates "level" to how you hold the phone) · ⛶ fullscreen
+ *   left wheel   up/down = throttle forward/back · left/right = yaw
+ *   right wheel  up/down = pitch · left/right = roll
+ *   buttons      GUN (hold) · MSL · FLR · BOMB · NAP · LASER, above the right wheel
+ *   top right    ⏸ pause · TILT (the phone's tilt steers pitch/roll; "level" = how you hold it when tapped) · ⛶ fullscreen
  *
  * It switches on for touch screens (coarse pointer) or at the first touch anywhere. Values land in `touchAxes`,
  * which input.js adds to the gamepad axes, so flight.js needs no touch-specific code. Mouse steering is turned
@@ -13,21 +15,44 @@
 import { state } from '../state.js';
 import { settings } from '../core/settings.js';
 import { _steerCursorEl } from './dom.js';
+import { aimingLaser } from '../player/plane.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from '../combat/weapons.js';
 import { togglePause } from '../game/session.js';
 import { showNotification } from './notifications.js';
 
 export const touchAxes = { pitch: 0, roll: 0, yaw: 0, throttleUp: 0, throttleDown: 0, shoot: false };
 
-const STICK_RADIUS = 56;   // px — knob travel
+const WHEEL_TRAVEL = 56;   // px — knob travel from the centre
+const WHEEL_DEADZONE = 0.12;
 const TILT_MAX = 25;       // degrees of tilt for full deflection
 const TILT_DEADZONE = 3;   // degrees
-const YAW_MIX = 0.35;      // roll input also yaws a little, so small corrections don't need a bank
-let enabled = false, tilt = null; // tilt: { neutralPitch, neutralRoll, pitch, roll } while tilt steering is on
-const stick = { id: null, x: 0, y: 0 };
+let enabled = false, tilt = null, laserButton = null; // tilt: { neutralPitch, neutralRoll, pitch, roll } while tilt steering is on
+const wheels = {};         // name → { id, x, y, release }
 
 const flying = () => !state.awaitingStart && !state.isPaused && !state.isGameOver && !document.getElementById('splash-screen');
 const clamp1 = v => Math.max(-1, Math.min(1, v));
+const dead = v => (Math.abs(v) < WHEEL_DEADZONE ? 0 : Math.sign(v) * (Math.abs(v) - WHEEL_DEADZONE) / (1 - WHEEL_DEADZONE));
+const local = text => showNotification(text, false, { local: true }); // device messages are never shared
+
+/** A wheel follows one finger: x, y in -1…1 (y down = +1), back to 0 when released. */
+function makeWheel(name, el) {
+    const knob = el.querySelector('.tc-knob'), w = { id: null, x: 0, y: 0 };
+    const move = t => {
+        const r = el.getBoundingClientRect();
+        let dx = t.clientX - (r.left + r.width / 2), dy = t.clientY - (r.top + r.height / 2);
+        const len = Math.hypot(dx, dy);
+        if (len > WHEEL_TRAVEL) { dx *= WHEEL_TRAVEL / len; dy *= WHEEL_TRAVEL / len; }
+        w.x = dx / WHEEL_TRAVEL; w.y = dy / WHEEL_TRAVEL;
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    };
+    w.release = () => { w.id = null; w.x = w.y = 0; knob.style.transform = ''; };
+    el.addEventListener('touchstart', e => { e.preventDefault(); const t = e.changedTouches[0]; w.id = t.identifier; move(t); }, { passive: false });
+    el.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === w.id) move(t); }, { passive: false });
+    const end = e => { for (const t of e.changedTouches) if (t.identifier === w.id) w.release(); };
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    wheels[name] = w;
+}
 
 /** Build the overlay once. */
 function enable() {
@@ -40,17 +65,15 @@ function enable() {
     const root = document.createElement('div');
     root.id = 'touch-controls';
     root.innerHTML = `
-        <div class="tc-stick" aria-label="Pitch and roll"><div class="tc-knob"></div></div>
-        <div class="tc-throttle">
-            <button type="button" data-hold="throttleUp" aria-label="Throttle up">▲</button>
-            <button type="button" data-hold="throttleDown" aria-label="Throttle down">▼</button>
-        </div>
+        <div class="tc-wheel tc-thrust" aria-label="Throttle and yaw"><span class="tc-hint tc-up">FWD</span><span class="tc-hint tc-down">BACK</span><span class="tc-hint tc-left">YAW</span><div class="tc-knob"></div></div>
+        <div class="tc-wheel tc-flight" aria-label="Pitch and roll"><span class="tc-hint tc-up">PITCH</span><span class="tc-hint tc-left">ROLL</span><div class="tc-knob"></div></div>
         <div class="tc-weapons">
             <button type="button" class="tc-gun" data-hold="shoot">GUN</button>
             <button type="button" data-tap="missile">MSL</button>
             <button type="button" data-tap="flare">FLR</button>
             <button type="button" data-tap="bomb">BOMB</button>
             <button type="button" data-tap="napalm">NAP</button>
+            <button type="button" data-tap="laser" aria-pressed="true">LASER</button>
         </div>
         <div class="tc-system">
             <button type="button" data-tap="pause" aria-label="Pause">⏸</button>
@@ -59,34 +82,13 @@ function enable() {
         </div>
         <div class="tc-rotate">Turn your phone sideways ⟲</div>`;
     document.body.appendChild(root);
+    makeWheel('thrust', root.querySelector('.tc-thrust'));
+    makeWheel('flight', root.querySelector('.tc-flight'));
+    laserButton = root.querySelector('[data-tap="laser"]');
 
-    const stickEl = root.querySelector('.tc-stick'), knob = root.querySelector('.tc-knob');
-    const moveStick = t => {
-        const r = stickEl.getBoundingClientRect();
-        let dx = t.clientX - (r.left + r.width / 2), dy = t.clientY - (r.top + r.height / 2);
-        const len = Math.hypot(dx, dy);
-        if (len > STICK_RADIUS) { dx *= STICK_RADIUS / len; dy *= STICK_RADIUS / len; }
-        stick.x = dx / STICK_RADIUS; stick.y = dy / STICK_RADIUS;
-        knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    };
-    const releaseStick = () => { stick.id = null; stick.x = stick.y = 0; knob.style.transform = ''; };
-    stickEl.addEventListener('touchstart', e => {
-        e.preventDefault();
-        const t = e.changedTouches[0];
-        stick.id = t.identifier; moveStick(t);
-    }, { passive: false });
-    stickEl.addEventListener('touchmove', e => {
-        e.preventDefault();
-        for (const t of e.changedTouches) if (t.identifier === stick.id) moveStick(t);
-    }, { passive: false });
-    const endStick = e => { for (const t of e.changedTouches) if (t.identifier === stick.id) releaseStick(); };
-    stickEl.addEventListener('touchend', endStick);
-    stickEl.addEventListener('touchcancel', endStick);
-
-    // Hold buttons (throttle, gun) and tap buttons (weapons, system)
+    // Hold button (gun) and tap buttons (weapons, laser, system)
     for (const b of root.querySelectorAll('[data-hold]')) {
-        const key = b.dataset.hold;
-        const set = on => { touchAxes[key] = key === 'shoot' ? on : (on ? 1 : 0); b.classList.toggle('held', on); };
+        const set = on => { touchAxes.shoot = on; b.classList.toggle('held', on); };
         b.addEventListener('touchstart', e => { e.preventDefault(); set(true); }, { passive: false });
         b.addEventListener('touchend', e => { e.preventDefault(); set(false); }, { passive: false });
         b.addEventListener('touchcancel', () => set(false));
@@ -95,14 +97,19 @@ function enable() {
         b.addEventListener('touchstart', e => { e.preventDefault(); tap(b.dataset.tap, b); }, { passive: false });
         b.addEventListener('click', () => tap(b.dataset.tap, b)); // mouse / accessibility
     }
-    // Losing the page (call, app switch) must not leave the gun firing
-    document.addEventListener('visibilitychange', () => { if (document.hidden) { releaseStick(); for (const k in touchAxes) touchAxes[k] = typeof touchAxes[k] === 'boolean' ? false : 0; } });
+    // Losing the page (call, app switch) must not leave the gun firing or a wheel held
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) return;
+        for (const w of Object.values(wheels)) w.release();
+        touchAxes.shoot = false; root.querySelector('[data-hold]').classList.remove('held');
+    });
 }
 
 function tap(action, button) {
     if (action === 'pause') { togglePause(); return; }
     if (action === 'fullscreen') { toggleFullscreen(); return; }
     if (action === 'tilt') { toggleTilt(button); return; }
+    if (action === 'laser') { aimingLaser.visible = !aimingLaser.visible; button.setAttribute('aria-pressed', String(aimingLaser.visible)); return; }
     if (!flying()) return;
     if (action === 'missile') tryFireMissile();
     else if (action === 'flare') tryDeployFlares();
@@ -111,9 +118,8 @@ function tap(action, button) {
 }
 
 function toggleFullscreen() {
-    const doc = document.documentElement;
     if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
-    doc.requestFullscreen?.({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
+    document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).then(() => screen.orientation?.lock?.('landscape').catch(() => {})).catch(() => {});
 }
 
 // --- Tilt steering ---------------------------------------------------------------------------------
@@ -137,33 +143,37 @@ function onOrientation(e) {
 async function toggleTilt(button) {
     if (tilt) {
         tilt = null; window.removeEventListener('deviceorientation', onOrientation);
-        button.setAttribute('aria-pressed', 'false'); showNotification('Tilt steering off');
+        button.setAttribute('aria-pressed', 'false'); local('Tilt steering off');
         return;
     }
     if (!('DeviceOrientationEvent' in window) || !window.isSecureContext) {
-        showNotification(window.isSecureContext ? 'No motion sensor on this device' : 'Tilt needs https:// — use the joystick');
+        local(window.isSecureContext ? 'No motion sensor on this device' : 'Tilt needs https:// — use the wheels');
         return;
     }
     try {
         if (typeof DeviceOrientationEvent.requestPermission === 'function' && await DeviceOrientationEvent.requestPermission() !== 'granted') {
-            showNotification('Motion sensor permission denied'); return;
+            local('Motion sensor permission denied'); return;
         }
-    } catch { showNotification('Motion sensor permission denied'); return; }
+    } catch { local('Motion sensor permission denied'); return; }
     tilt = { neutralPitch: null, neutralRoll: null, pitch: 0, roll: 0 };
     window.addEventListener('deviceorientation', onOrientation);
     button.setAttribute('aria-pressed', 'true');
-    showNotification('Tilt steering on — hold the phone as "level" now');
+    local('Tilt steering on — hold the phone as "level" now');
 }
 
-/** Once per frame from input.js, before the axes are read: fold the stick and tilt into touchAxes. */
+/** Once per frame from input.js, before the axes are read: fold the wheels and tilt into touchAxes. */
 export function updateTouchAxes() {
     if (!enabled) return;
-    // Axes follow flight.js: +pitch = nose down, +roll = right. Stick up = nose up, like the ↑ key; tilting the top
-    // edge away = nose down, like pushing a flight stick.
-    const roll = clamp1(stick.x + (tilt?.roll ?? 0)), pitch = clamp1(stick.y + (tilt?.pitch ?? 0));
-    touchAxes.roll = roll;
-    touchAxes.pitch = pitch;
-    touchAxes.yaw = -roll * YAW_MIX;
+    // Axes follow flight.js: +pitch = nose down, +roll = right, +yaw = left. Wheel up = nose up, like the ↑ key;
+    // tilting the top edge away = nose down, like pushing a flight stick.
+    const f = wheels.flight, t = wheels.thrust;
+    if (laserButton && laserButton.getAttribute('aria-pressed') !== String(aimingLaser.visible)) laserButton.setAttribute('aria-pressed', String(aimingLaser.visible)); // F key / gamepad too
+    touchAxes.pitch = clamp1(dead(f.y) + (tilt?.pitch ?? 0));
+    touchAxes.roll = clamp1(dead(f.x) + (tilt?.roll ?? 0));
+    touchAxes.yaw = -dead(t.x);
+    const thrust = -dead(t.y); // wheel up = forward
+    touchAxes.throttleUp = Math.max(0, thrust);
+    touchAxes.throttleDown = Math.max(0, -thrust);
 }
 
 // Switch on for touch-first devices, or at the first touch on anything else (e.g. a touch-screen laptop)

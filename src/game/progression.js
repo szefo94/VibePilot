@@ -27,7 +27,7 @@ export function _healPlayer(amount) {
     if (state.isGameOver) return;
     const prev = state.planeHP;
     state.planeHP = Math.min(100, state.planeHP + amount);
-    if (state.planeHP > prev) { hpElement.textContent = Math.max(0, state.planeHP); showNotification(`+${state.planeHP - prev} HP`); }
+    if (state.planeHP > prev) { hpElement.textContent = Math.max(0, state.planeHP); showNotification(`+${state.planeHP - prev} HP`, false, { local: true }); }
 }
 // G20: record a kill, return current streak multiplier
 export function _addKill() {

@@ -71,7 +71,7 @@ document.addEventListener('keydown', e => {
         else if (k === 'm') { memDebugEl.classList.toggle('active'); state._memDebugTimer = 0; }
         else if (k === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
         else if (k === 'c') _toggleColorMode();
-        else if (k === 'v') showNotification(toggleMute() ? 'Sound off (V)' : 'Sound on (V)');
+        else if (k === 'v') showNotification(toggleMute() ? 'Sound off (V)' : 'Sound on (V)', false, { local: true });
     }
     if (state.isPaused) return;
     if (held) { keys[held] = true; return; }

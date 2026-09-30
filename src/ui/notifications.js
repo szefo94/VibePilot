@@ -6,6 +6,7 @@ import { basesById } from '../entities/registry.js';
 import { addXP } from '../game/progression.js';
 import { _searchlights, _updateFenceDamageState } from '../entities/fences.js';
 import { isAlive } from '../entities/contract.js';
+import { runHooks } from '../game/hooks.js';
 
 let notifSlot = 0;
 
@@ -15,13 +16,16 @@ export function showLevelUpBanner(lvl) {
     const el = document.createElement('div');
     el.style.cssText = 'position:fixed;top:38%;left:50%;transform:translate(-50%,-50%) scale(0.6);background:linear-gradient(90deg,#ff6600,#ffdd00,#ff6600);color:#000;font:bold 26px "Orbitron",monospace;padding:12px 36px;border-radius:5px;letter-spacing:3px;pointer-events:none;z-index:300;opacity:0;transition:opacity 0.25s,transform 0.25s;white-space:nowrap;box-shadow:0 0 30px #ff8800;';
     el.textContent = `▲  LEVEL UP  —  LVL ${lvl}  ▲`;
+    runHooks('notification', `▲ reached level ${lvl}`, true);
     document.body.appendChild(el);
     requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translate(-50%,-50%) scale(1)'; }));
     setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translate(-50%,-50%) scale(0.8)'; setTimeout(() => el.remove(), 350); }, 1700);
 }
 
-export function showNotification(text, isEliminated = false) {
+/** `local: true` for messages about this device only (mute, tilt…); everything else also runs the 'notification' hook. */
+export function showNotification(text, isEliminated = false, { local = false } = {}) {
     if (state.isGameOver) return;
+    if (!local) runHooks('notification', text, isEliminated);
     const el = document.createElement('div');
     el.className = 'kill-notif' + (isEliminated ? ' eliminated' : '');
     el.textContent = text;
