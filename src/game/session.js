@@ -104,11 +104,11 @@ settingsDialog.addEventListener('input', e => {
     if (el) setSetting(el.dataset.setting, el.type === 'checkbox' ? el.checked : el.tagName === 'SELECT' ? el.value : Number(el.value));
 });
 const applyReferencePanels = () => document.body.classList.toggle('hide-reference', !settings.showReferencePanels);
-// Start-menu Ace AI toggle mirrors Settings → Ace AI
-const syncSkillToggle = () => document.querySelectorAll('[data-action="rival-skill"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === settings.rivalSkill)));
+// Start-menu difficulty toggle mirrors Settings → Difficulty
+const syncDifficultyToggle = () => document.querySelectorAll('[data-action="difficulty"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === settings.difficulty)));
 onSettingChange(key => {
     if (key === 'showReferencePanels') applyReferencePanels();
-    if (key === 'rivalSkill') syncSkillToggle();
+    if (key === 'difficulty') syncDifficultyToggle();
     if (key === 'mouseSteering') refresh();
     if (!settingsDialog.hidden) syncSettingsForm();
 });
@@ -122,7 +122,7 @@ document.addEventListener('click', e => {
     else if (action === 'replay') restart({ sameMap: true });
     else if (action === 'settings') openSettings();
     else if (action === 'close-settings') closeSettings();
-    else if (action === 'rival-skill') setSetting('rivalSkill', button.dataset.value);
+    else if (action === 'difficulty') setSetting('difficulty', button.dataset.value);
 });
 /** Move focus through the open menu's controls (D-pad up/down). */
 export function menuNavigate(delta) {
@@ -142,7 +142,7 @@ export function menuActivate() {
 
 // --- Initial state ---
 applyReferencePanels();
-syncSkillToggle();
+syncDifficultyToggle();
 document.getElementById('start-best').textContent = state._highScore;
 if (DEBUG_PARAMS.autostart) {
     state.awaitingStart = false;

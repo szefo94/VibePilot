@@ -11,11 +11,12 @@ const DEFAULTS = Object.freeze({
     showReferencePanels: true, // controls / debug / coordinates panels
     difficulty: 'normal',     // key of DIFFICULTY_PRESETS (config.js)
     aceHunt: true,            // Shift+H — hostile aces hunt the player (entities/rival.js)
-    rivalSkill: 'medium',     // key of RIVAL_SKILL (config.js)
     timeOfDay: 'day',         // key of TIME_OF_DAY (config.js); world/sky.js
     touchWheels: 'pitch,yaw,throttle,roll', // phone wheels (ui/touch.js): left ↕, left ↔, right ↕, right ↔
 });
-const ENUMS = { difficulty: DIFFICULTY_PRESETS, rivalSkill: RIVAL_SKILL, timeOfDay: TIME_OF_DAY };
+const ENUMS = { difficulty: DIFFICULTY_PRESETS, timeOfDay: TIME_OF_DAY };
+/** Difficulty also sets how the aces fly and fight (config.js RIVAL_SKILL). */
+const ACE_TIER = Object.freeze({ easy: 'easy', normal: 'medium', hard: 'hard' });
 /** Other constrained settings: each of the four flight axes on exactly one wheel direction. */
 const VALID = { touchWheels: v => v.split(',').sort().join() === 'pitch,roll,throttle,yaw' };
 
@@ -38,8 +39,8 @@ export function onSettingChange(fn) { listeners.push(fn); }
 
 /** Multipliers for the selected difficulty, read at the moment they apply (changes take effect immediately). */
 export const difficulty = () => DIFFICULTY_PRESETS[settings.difficulty];
-/** The selected ace AI tier (config.js RIVAL_SKILL), also read live. */
-export const rivalSkill = () => RIVAL_SKILL[settings.rivalSkill];
+/** The ace AI tier for the selected difficulty (config.js RIVAL_SKILL), also read live. */
+export const rivalSkill = () => RIVAL_SKILL[ACE_TIER[settings.difficulty]];
 
 /** Validate, store and broadcast one setting. */
 export function setSetting(key, value) {

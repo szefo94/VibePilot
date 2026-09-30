@@ -4,7 +4,7 @@
  *
  *   Ace Hunt (Settings, Shift+H)  the first ace launches RIVAL.firstDelay into the run, a stronger one
  *                                 RIVAL.respawnDelay after each kill
- *   Ace AI (Settings)             Easy / Medium / Hard — config.js RIVAL_SKILL, read live
+ *   Difficulty (Settings)         Easy / Normal / Hard also picks the ace tier — config.js RIVAL_SKILL, read live
  *   H                             spawn one ace now (debug / on demand)
  *
  * The ace is an ordinary AirUnit in `airUnits`, so bullets, missiles, the lock-on reticle, the
@@ -17,14 +17,17 @@
  * masked), flies to the area and searches; a team bot (quiet) patrols the map instead. Hurt or out of ammo, it
  * patrols towards pickups.
  * Aces collide with other aircraft (both explode), gain XP from kills and markers (levels: HP, skill, full ammo)
- * and heal on collectibles.
+ * and heal on collectibles. Farming aces (team bots) attack the enemy bases' units whenever no enemy pilot is close,
+ * for XP (guns only; the kill pays the bot, not the player).
  */
 import { MAP_BOUNDARY, RIVAL, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, rotAccel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _up3 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
-import { airUnits, collectibles, enemyBullets, markers, missiles } from './registry.js';
+import { airUnits, collectibles, enemyBullets, groundUnits, markers, missiles } from './registry.js';
+import { beginHits } from '../combat/hits.js';
+import { canDamageGround, groundUnitWorldPos } from '../combat/damage.js';
 import { spawnEnemyBullet } from '../combat/enemyBullets.js';
 import { damagePlayer } from '../combat/collision.js';
 import { createExplosion } from '../effects/effects.js';
@@ -99,7 +102,7 @@ let warnText = '', bannerEl = null;
 
 onSettingChange((key, value) => {
     if (key === 'aceHunt' && value && !activeRival && state._gameElapsed >= RIVAL.firstDelay) respawnTimer = Math.min(respawnTimer, ENABLE_DELAY);
-    if (key === 'rivalSkill') for (const r of rivals) clampAmmo(r.wpn); // a lower tier takes away missiles/flares at once
+    if (key === 'difficulty') for (const r of rivals) clampAmmo(r.wpn); // a lower tier takes away missiles/flares at once
 });
 
 // Shared missile mesh resources — never disposed
@@ -157,7 +160,7 @@ function makeAce({ callsign, group, hp, label, xp, tier }) {
  * first; `patrol`: { center, radius } for the waypoints after that. `friendly` aces are on the
  * player's side: the player's weapons, lock-on and minimap treat them as allies. Returns the air unit.
  */
-export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level, waypoint = null, patrol = null }) {
+export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level, waypoint = null, patrol = null, farms = false }) {
     const group = createRivalVisual(color);
     group.position.copy(position); group.rotation.set(0, heading, 0);
     scene.add(group);
@@ -168,6 +171,7 @@ export function spawnAce({ callsign, level = 1, position, heading = 0, color, fr
     au.ai.sinceFix = RIVAL.searchTime; // no intel at spawn: patrol until something is spotted
     if (waypoint) au.ai.waypoint = waypoint.clone(); // first leg of the patrol (e.g. multiplayer's flag)
     au.patrol = patrol; // { center: Vector3, radius }: where later waypoints fall (default: the middle of the map)
+    au.farms = farms;   // attacks enemy units for XP when no enemy pilot is close
     airUnits.push(au); rivals.push(au);
     return au;
 }
@@ -213,7 +217,9 @@ export function updateRivalSystem(dt) {
 export function updateRival(au, dt) {
     const { ai, fl, wpn, group } = au, pos = group.position, tier = rivalSkill();
     _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
-    const target = acquire(au, tier), alive = !!target && !(target.local && state.isGameOver);
+    let target = acquire(au, tier);
+    if (au.farms && (!target || target.position.distanceTo(pos) > tier.visualRange * RIVAL.farmPilotRange)) target = farmTarget(au) ?? target;
+    const alive = !!target && !(target.local && state.isGameOver);
     T = target || localTarget;
     _pFwd.set(0, 0, 1).applyQuaternion(T.quaternion);
     _pVel.copy(_pFwd).multiplyScalar(T.speed);
@@ -277,7 +283,7 @@ export function updateRival(au, dt) {
     }
 
     // 6. Weapons
-    if (alive && ai.mode === 'engage') { fireGuns(au, dist); updateMissileLock(au, dist, offBore, dt); }
+    if (alive && ai.mode === 'engage') { fireGuns(au, dist); if (!T.unit) updateMissileLock(au, dist, offBore, dt); else wpn.lock = 0; } // units: guns only
     else wpn.lock = 0;
 }
 
@@ -455,6 +461,13 @@ function fireGuns(au, dist) {
             b.velocity.setLength(RIVAL.bulletSpeed + au.fl.speed); // player-grade muzzle velocity + own speed (1.2 can't catch a fleeing player)
             b.userData.damage = damage;
         }
+    } else if (T.unit) { // an enemy base's unit: hit roll, and the bot is paid for the kill
+        if (Math.random() < 0.3 + 0.5 * skillOf(au)) {
+            const hits = beginHits('bullet', { shooter: au });
+            hits.damage(T.unit, damage);
+            const { xp } = hits.finish();
+            if (xp) rewardAce(au, Math.round(xp * RIVAL.farmXp));
+        }
     } else if (!T.flares && Math.random() < 0.25 + 0.45 * skillOf(au)) remoteHit?.(T.id, damage, 'gun', au); // aimed round: hit roll by skill
     w.burstLeft--;
     if (--w.gunAmmo <= 0) w.gunReload = RIVAL.gunReload;
@@ -515,6 +528,34 @@ function updateRivalMissiles(dt) {
 }
 
 // --- Patrol, pickups, growth, collisions ------------------------------------------------------
+
+/** Farming: the nearest enemy unit a gun can hurt (re-chosen every second), as a target, or null. */
+const _still = new THREE.Quaternion();
+function farmTarget(au) {
+    const ai = au.ai, pos = au.group.position, live = f => f && f.alive;
+    if (live(ai.farm) && (ai.farmScan = (ai.farmScan ?? 0) - 1) > 0) return ai.farm;
+    ai.farmScan = 60;
+    let best = null, bestD = RIVAL.farmRange ** 2;
+    for (const u of groundUnits) {
+        if (!u.userData.isHostile || !canDamageGround(u, 'bullet')) continue;
+        const d = groundUnitWorldPos(u).distanceToSquared(pos);
+        if (d < bestD) { bestD = d; best = u; }
+    }
+    for (const a of airUnits) {
+        if (a.isRival || a.proxy || a.friendly || !a.isHostile || !(a.hp > 0)) continue;
+        const d = a.group.position.distanceToSquared(pos);
+        if (d < bestD) { bestD = d; best = a; }
+    }
+    if (!best) return (ai.farm = null);
+    if (ai.farm?.unit === best) return ai.farm;
+    const air = !!best.group;
+    return (ai.farm = {
+        id: `unit:${air ? best.id : best.userData.id}`, local: false, unit: best, flares: false,
+        position: air ? best.group.position : groundUnitWorldPos(best), quaternion: air ? best.group.quaternion : _still,
+        get speed() { return air && best.velocity ? best.velocity.length() : 0; },
+        get alive() { return air ? best.hp > 0 && airUnits.includes(best) : canDamageGround(best, 'bullet'); },
+    });
+}
 
 /** Patrol: the nearest pickup when hurt or dry, else random waypoints over the middle of the map. */
 function patrolPoint(au) {

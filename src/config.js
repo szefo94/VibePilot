@@ -123,6 +123,10 @@ export const RIVAL = Object.freeze({
     maxLevel: 10,
     pickupRange: 18,          // flying through a collectible heals (+ a missile); a marker gives XP
     pickupCooldown: 1200,     // frames before the same ace can use the same pickup again
+    // Farming (team bots, spawnAce farms): with no enemy pilot close, attack the enemy bases' units for XP
+    farmRange: 1800,          // how far a bot looks for enemy units
+    farmPilotRange: 0.6,      // × visualRange: an enemy pilot closer than this comes first
+    farmXp: 1,                // × the unit's XP value, paid to the bot that destroys it
     // Flight
     fineAimAngle: 0.35, yawAuthority: 0.6,
     cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
@@ -145,8 +149,9 @@ export const RIVAL = Object.freeze({
 //   visualRange / scanInterval  continuous tracking range / map-wide radar ping period
 //   mslAmmo 0 = no missiles · mslLockTime frames on target before launch · flareAmmo 0 = no flares
 //   evades       break-turns when the player's nose is on it · gunDamage / hp × base values
+// Chosen by Settings → Difficulty (easy → easy, normal → medium, hard → hard; core/settings.js rivalSkill()).
 export const RIVAL_SKILL = Object.freeze({
     easy:   { label: 'Easy',   skill: 0.3,  skillPerAce: 0.05, skillMax: 0.5,  reactInterval: 40, rateScale: 0.5,  speedScale: 0.85, visualRange: 450, scanInterval: 600, mslAmmo: 0, mslLockTime: 0,   flareAmmo: 0, evades: false, gunDamage: 0.7, hp: 0.8 },
-    medium: { label: 'Medium', skill: 0.5,  skillPerAce: 0.07, skillMax: 0.75, reactInterval: 22, rateScale: 0.62, speedScale: 0.95, visualRange: 600, scanInterval: 360, mslAmmo: 1, mslLockTime: 150, flareAmmo: 1, evades: true,  gunDamage: 1,   hp: 1 },
+    medium: { label: 'Normal', skill: 0.5,  skillPerAce: 0.07, skillMax: 0.75, reactInterval: 22, rateScale: 0.62, speedScale: 0.95, visualRange: 600, scanInterval: 360, mslAmmo: 1, mslLockTime: 150, flareAmmo: 1, evades: true,  gunDamage: 1,   hp: 1 },
     hard:   { label: 'Hard',   skill: 0.75, skillPerAce: 0.05, skillMax: 0.95, reactInterval: 10, rateScale: 0.75, speedScale: 1,    visualRange: 800, scanInterval: 180, mslAmmo: 2, mslLockTime: 90,  flareAmmo: 2, evades: true,  gunDamage: 1.3, hp: 1.25 },
 });
