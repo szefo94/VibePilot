@@ -18,7 +18,7 @@ npm ci                      # 2. dependencies (once, and after pulling updates)
 npm run mp-server           # 3. start on the default port 8787
 ```
 
-Open `http://localhost:8787/`. The bare address goes straight into multiplayer: team deathmatch (`?mp=tdm`, room `lobby`), Red against Blue with five pilots a side, where bots fill any place a player hasn't taken. Other modes are `?mp=pvp` (everyone for themselves), `?mp=coop` and `?mp=skies`. You play under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
+Open `http://localhost:8787/`. The bare address goes straight into multiplayer: team deathmatch (`?mp=tdm`, room `lobby`), Red against Blue with five pilots a side, where bots fill any place a player hasn't taken. Other modes are `?mp=pvp` (everyone for themselves), `?mp=coop` and `?mp=skies`; [game-modes.md](game-modes.md) explains each mode and every address. You play under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
 
 The server window logs every player who joins or leaves, with their IP address and rough location, for example `+ Ghost Hornet#3 → tdm:lobby slot 1 team Blue (2) from 88.1.2.3 (Wroclaw, Lower Silesia, Poland · Vectra S.A)`. The location comes from ip-api.com: each new public IP is sent there once. To log IPs only, start with `--no-geo`. Behind a tunnel or reverse proxy (Cloudflare, nginx), add `--trust-proxy` to log the players' IPs rather than the proxy's.
 

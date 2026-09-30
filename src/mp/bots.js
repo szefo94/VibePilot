@@ -14,12 +14,16 @@
  *           bots are proxy air units, so every weapon, the lock-on and missile homing treat them like targets; hits
  *           go to the host. BOT_FIRE damages this player (flares stop missiles); BOT_DOWN pays the shooter its XP.
  *
+ * Bots grow: every kill (player or bot) gives the killer XP on the host (rival.js rewardAce: levels add HP, skill
+ * and ammo), and they heal on collectibles. A player who flies into a bot takes it down too (BOT_HIT ram).
+ *
  * If the host leaves, the next host starts its own bots (the old ones vanish with it).
  */
 import { scene, camera } from '../core/scene.js';
 import { createExplosion } from '../effects/effects.js';
 import { airUnits } from '../entities/registry.js';
-import { createRivalVisual, localRivalTarget, rivalList, rivalMissilesInFlight, setRivalTargets, spawnAce } from '../entities/rival.js';
+import { createRivalVisual, localRivalTarget, rewardAce, rivalList, rivalMissilesInFlight, setRivalTargets, spawnAce } from '../entities/rival.js';
+import { destroyAirUnit } from '../entities/airUnits.js';
 import { beginHits } from '../combat/hits.js';
 import { damagePlayer } from '../combat/collision.js';
 import { awardKill } from '../game/progression.js';
@@ -28,7 +32,7 @@ import { setRules } from '../game/rules.js';
 import { FLARE_DURATION } from '../config.js';
 import { state } from '../state.js';
 import { showNotification } from '../ui/notifications.js';
-import { MODES, MSG, TEAM_SIZE, TEAMS, teamRespawn } from '../net/protocol.js';
+import { MODES, MSG, PVP_KILL_XP, TEAM_SIZE, TEAMS, teamRespawn } from '../net/protocol.js';
 import { isHost, net, netSend, onNet } from '../net/net.js';
 import { buildLabel, drawLabel, remoteViews, sampleAt } from './remotePlanes.js';
 
@@ -50,6 +54,7 @@ const teamBots = new Map();  // tdm: bot id → { id, team, name, au, respawnAt,
 const displayName = r => (teamBots.has(r.netBot) ? r.callsign : `ACE ${r.callsign}`);
 const botTeam = r => (teamBots.get(r.netBot)?.team ?? null);
 const nameOf = id => (id === net.id ? net.name : net.peers.get(id)?.name ?? 'someone');
+const aceNamed = name => rivalList().find(r => r.hp > 0 && !r.gone && displayName(r) === name) ?? null;
 const teamOf = id => (id === net.id ? net.team : net.peers.get(id)?.team ?? null);
 
 /** Who an ace may hunt: tdm — the other team's pilots and bots; otherwise every player. */
@@ -180,7 +185,10 @@ function botFor(m) {
                 id: `bot-${m.id}`, type: 'fighter', group: b.group, hp: 0, maxHp: 1, xpValue: 0,
                 collisionRadius: 10, wingHalfSpan: 14, wingR: 5, wingType: 'q', isHostile: true, baseId: null, label: null,
                 userData: { baseId: null }, shootCooldown: 0,
-                proxy: { damage: (amount, weapon) => { const k = `${m.id}|${weapon}`; outgoing.set(k, (outgoing.get(k) ?? 0) + amount); } },
+                proxy: {
+                    damage: (amount, weapon) => { const k = `${m.id}|${weapon}`; outgoing.set(k, (outgoing.get(k) ?? 0) + amount); },
+                    ram: () => netSend(MSG.BOT_HIT, { bot: m.id, dmg: 0, w: 'missile', ram: true }), // we flew into it: it goes down too
+                },
             };
             airUnits.push(b.unit);
         }
@@ -263,6 +271,7 @@ export function startBots(mode) {
     onNet(MSG.BOT_HIT, m => {
         if (!hosting) return;
         const ace = rivalList().find(r => r.netBot === m.bot && r.hp > 0 && !r.gone);
+        if (ace && m.ram) { ace.crashed = true; ace.hp = 0; destroyAirUnit(ace, { reward: false }); return; } // a player flew into it
         if (!ace || !(m.dmg > 0) || (teams && botTeam(ace) === teamOf(m.from))) return; // no friendly fire
         ace.lastHitBy = { player: m.from, team: teamOf(m.from) };
         const hits = beginHits(m.w, { remote: true });
@@ -283,8 +292,11 @@ export function startBots(mode) {
         const by = hit?.player ?? null, byBot = hit?.bot ?? null, byTeam = hit?.team ?? null;
         netSend(MSG.BOT_DOWN, { bot: r.netBot ?? '', name, team: e ? e.team : null, by, byBot, byTeam, xp: r.xpValue });
         if (e) { e.au = null; e.respawnAt = performance.now() + BOT_RESPAWN_MS; }
+        if (byBot) rewardAce(aceNamed(byBot), BOT_XP * (r.level ?? 1)); // the killer bot grows
         if (e || (by !== null && by !== net.id)) feed(downText(name, by, byBot), by === net.id);
     });
+    // A bot shot a player down (DOWN comes to everyone, the host included): the bot gets the XP
+    onNet(MSG.DOWN, m => { if (hosting && m.by === null && m.bot) rewardAce(aceNamed(m.bot), PVP_KILL_XP); });
     onNet(MSG.BOT_DOWN, m => {
         if (hosting) return;
         removeBot(m.bot, !m.gone);
@@ -316,7 +328,7 @@ export const botViews = () => (hosting ? hostViews.values() : bots.values());
 /** Roster rows: every bot in the room { name, lvl, hp, team, target, down }. */
 export function botRoster() {
     if (!hosting) return [...bots.values()].filter(b => b.shown).map(b => ({ name: b.name, lvl: b.lvl, hp: b.hp, team: b.team, target: b.target }));
-    if (teams) return [...teamBots.values()].map(e => ({ name: e.name, lvl: 1, hp: e.au ? Math.round(e.au.hp) : 0, team: e.team, down: !e.au }));
+    if (teams) return [...teamBots.values()].map(e => ({ name: e.name, lvl: e.au?.level ?? 1, hp: e.au ? Math.round(e.au.hp) : 0, team: e.team, down: !e.au }));
     return rivalList().filter(r => r.hp > 0).map(r => ({ name: displayName(r), lvl: r.level ?? Math.max(1, Math.round(r.xpValue / 400)), hp: Math.round(r.hp), team: null, target: r.ai.targetId === 'local' ? net.id : r.ai.targetId }));
 }
 

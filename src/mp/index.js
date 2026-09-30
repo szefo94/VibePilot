@@ -147,7 +147,7 @@ if (net.enabled) {
             }
             for (const b of botRoster()) { // the host's bots
                 const key = b.team === null ? 'ace' : `t${b.team}`, target = b.target != null && b.team === null ? ` → ${nameOf(b.target)}` : '';
-                pilots.push({ team: b.team, el: row(b.team === null ? `☠ ${b.name}` : `${b.name} · bot`, key, b.down ? ' (down)' : ` · ${b.hp} HP${target}`) });
+                pilots.push({ team: b.team, el: row(b.team === null ? `☠ ${b.name}` : `${b.name} · bot`, key, b.down ? ' (down)' : ` · LV ${b.lvl} · ${b.hp} HP${target}`) });
             }
             if (MODES[net.mode].teams) { // scoreboard, then each team
                 const board = document.createElement('div'); board.className = 'net-score';

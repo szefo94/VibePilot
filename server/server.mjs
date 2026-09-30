@@ -219,7 +219,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 break;
             case MSG.BOT_HIT: {
                 const host = mode.enemies && room.players.get(room.hostId);
-                if (host && host !== c && c.alive && typeof m.bot === 'string' && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOT_HIT, { from: c.id, bot: m.bot.slice(0, 16), dmg: Math.min(200, Math.max(0, +m.dmg || 0)), w: m.w });
+                if (host && host !== c && c.alive && typeof m.bot === 'string' && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOT_HIT, { from: c.id, bot: m.bot.slice(0, 16), dmg: Math.min(200, Math.max(0, +m.dmg || 0)), w: m.w, ram: !!m.ram });
                 break;
             }
             case MSG.WORLD:

@@ -123,7 +123,7 @@ export const MSG = Object.freeze({
     WORLD: 'world',       // enemies: host → others { u: [[n, x, y, z, vx, vy, vz] | [n, orbitAngle]] } — moving units, 2 Hz
     BOT: 'bot',           // enemies: host → others { bots: [{ id, name, lvl, team, p, q, s, hp, mh, f, tg }], m: [[id, x, y, z, target]] } — the host's aces / team bots and their missiles, 10 Hz;
                           //   its hits: [{ target, dmg, w, bot, team }] go to each target only, as BOT_FIRE
-    BOT_HIT: 'bothit',    // enemies: C→host { bot, dmg, w } — a guest hit an ace (the host applies it)
+    BOT_HIT: 'bothit',    // enemies: C→host { bot, dmg, w, ram? } — a guest hit a bot (the host applies it); ram: flew into it, both go down
     BOT_FIRE: 'botfire',  // enemies: S→C { dmg, w, bot, team } — a bot hit you (from BOT.hits; never from a bot's teammate)
     BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, team, by, byBot, byTeam, xp, gone } — shot down (by player id / by a bot), crashed, or gone (removed)
     SCORE: 'score',       // tdm: S→C { score: [red, blue] } — after every kill of the other team
