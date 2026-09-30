@@ -6,6 +6,8 @@
  *   hits.finish();                        // deaths, rewards, hit marker + sound (once per shot/explosion)
  *
  * Targets: ground units (Object3D with userData.hp), air units ({ group, hp }), legacy fighters ({ parts }).
+ * A proxy air unit (`proxy: { damage(amount, weapon) }`, e.g. another player in multiplayer) is owned elsewhere:
+ * the hit is handed to its proxy and counts for feedback, but it takes no local HP loss and never dies here.
  * A bullet damages the fighter part it struck (`{ part }`); splash damages every part.
  * Deaths are applied in finish(), after the caller's scans, because removal mutates the arrays being
  * scanned; a target killed twice in one blast dies — and rewards — once.
@@ -32,6 +34,7 @@ export function beginHits(weapon) {
                 if (target.userData.hp <= 0) dead.add(target);
             } else if (kind === 'air') {
                 if (!(target.hp > 0)) return false;
+                if (target.proxy) { target.proxy.damage(amount, weapon); anyHit = true; return true; }
                 target.hp -= amount;
                 updateUnitLabel(target.label, target.hp);
                 if (target.hp <= 0) dead.add(target);

@@ -8,6 +8,7 @@ import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { spawnRival, toggleRivalMode } from './entities/rival.js';
 import { RULES } from './game/rules.js';
+import { touchAxes, updateTouchAxes } from './ui/touch.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
 import { toggleMute } from './audio.js';
 import { showNotification } from './ui/notifications.js';
@@ -93,11 +94,19 @@ const GP_DEADZONE = 0.15;
 // Continuous analog state read each frame
 // Left stick: X = yaw, Y = throttle  |  Right stick: X = roll, Y = pitch  |  RT = shoot
 export const _gpAxes = { pitch: 0, roll: 0, yaw: 0, throttleUp: 0, throttleDown: 0, shoot: false };
+/** Phone / tablet overlay (ui/touch.js) adds to the gamepad axes, so flight.js reads one set of analog inputs. */
+function addTouch() {
+    updateTouchAxes();
+    const c = v => Math.max(-1, Math.min(1, v));
+    _gpAxes.pitch = c(_gpAxes.pitch + touchAxes.pitch); _gpAxes.roll = c(_gpAxes.roll + touchAxes.roll); _gpAxes.yaw = c(_gpAxes.yaw + touchAxes.yaw);
+    _gpAxes.throttleUp = Math.max(_gpAxes.throttleUp, touchAxes.throttleUp); _gpAxes.throttleDown = Math.max(_gpAxes.throttleDown, touchAxes.throttleDown);
+    _gpAxes.shoot = _gpAxes.shoot || touchAxes.shoot;
+}
 // Previous button states for one-shot edge detection
 const _gpPrev = [];
 export function pollGamepad() {
     const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-    if (!gp) { _gpAxes.pitch = _gpAxes.roll = _gpAxes.yaw = _gpAxes.throttleUp = _gpAxes.throttleDown = 0; _gpAxes.shoot = false; return; }
+    if (!gp) { _gpAxes.pitch = _gpAxes.roll = _gpAxes.yaw = _gpAxes.throttleUp = _gpAxes.throttleDown = 0; _gpAxes.shoot = false; addTouch(); return; }
     const dz = v => Math.abs(v) > GP_DEADZONE ? v : 0;
     // Left stick X = yaw; left stick Y = throttle (up = accelerate, down = brake)
     _gpAxes.yaw         = -dz(gp.axes[0]); // lx right = yaw right (negate to match keys.d)
@@ -109,6 +118,7 @@ export function pollGamepad() {
     _gpAxes.pitch =  dz(gp.axes[3]); // ry down  = pitch down
     // RT (button 7) → shoot (continuous while held)
     _gpAxes.shoot = (gp.buttons[7]?.value ?? 0) > 0.1;
+    addTouch();
     // One-shot actions — fire only on button press (not while held)
     const pressed = b => !!gp.buttons[b]?.pressed && !_gpPrev[b];
     if (!splashActive()) {
