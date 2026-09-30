@@ -8,7 +8,7 @@ import { bake, kitMaterial, part } from '../core/meshkit.js';
 import { obstacles } from './registry.js';
 
 // --- Obstacle resources ---
-export const torusMaterial = markShared(new THREE.MeshStandardMaterial({ color: 16711680, roughness: .6 }));
+export const torusMaterial = markShared(new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.5, metalness: 0.2, emissive: 0x220000 })); // hoops: striped (collectibles.js)
 export const numHoopChains = 8;
 /**
  * Sea stacks: weathered rock columns rising from the sea near the coasts (they replace the old cave pillars,

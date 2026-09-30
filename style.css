@@ -762,18 +762,18 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
     position: absolute; bottom: 20px; width: 150px; height: 150px; border-radius: 50%;
     background: rgba(0, 20, 10, 0.35); border: 1.5px solid var(--hud-border);
 }
-.tc-thrust { left: max(20px, env(safe-area-inset-left)); }
-.tc-flight { right: max(20px, env(safe-area-inset-right)); }
+.tc-left { left: max(20px, env(safe-area-inset-left)); }
+.tc-right { right: max(20px, env(safe-area-inset-right)); }
 .tc-knob {
     position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%;
     background: rgba(0, 255, 136, 0.3); border: 2px solid var(--hud-primary); pointer-events: none;
 }
-.tc-thrust .tc-knob { background: rgba(255, 204, 0, 0.25); border-color: var(--hud-amber); }
+.tc-right .tc-knob { background: rgba(255, 204, 0, 0.25); border-color: var(--hud-amber); }
 .tc-hint { position: absolute; font: 9px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.1em; color: var(--hud-primary); opacity: 0.55; pointer-events: none; }
-.tc-thrust .tc-hint { color: var(--hud-amber); }
+.tc-right .tc-hint { color: var(--hud-amber); }
 .tc-up { top: 6px; left: 50%; transform: translateX(-50%); }
 .tc-down { bottom: 6px; left: 50%; transform: translateX(-50%); }
-.tc-left { left: 8px; top: 50%; transform: translateY(-50%); }
+.tc-left-hint { left: 8px; top: 50%; transform: translateY(-50%); }
 /* Weapons sit above and beside the right wheel, where the right thumb can slide to them */
 .tc-weapons { position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: 184px; display: flex; gap: 8px; }
 .tc-weapons button { width: 50px; height: 50px; }
@@ -789,7 +789,22 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 .tc-system [aria-pressed="true"] { background: var(--hud-primary) !important; color: #000 !important; }
 .tc-rotate { display: none; }
 /* Menus own the screen; the overlay only shows while flying */
-body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons { display: none; }
+body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons, body.menu-open #touch-controls .tc-indicator { display: none; }
+/* Tilt steering: the phone does pitch and roll, so only the throttle stays on screen (the right wheel, up/down) */
+body.tilt-on .tc-left, body.tilt-on .tc-roll-hint { display: none; }
+body.tilt-on .tc-right { width: 90px; border-radius: 45px; }
+/* Movement indicator between the thumbs: ball = pitch/roll input, bar = yaw, gauge = throttle */
+.tc-indicator { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 8px; pointer-events: none; opacity: 0.85; }
+.tc-ind-ring { position: relative; width: 60px; height: 60px; border-radius: 50%; border: 1.5px solid var(--hud-border-bright); background: rgba(0, 20, 10, 0.4); }
+.tc-ind-cross { position: absolute; inset: 29px 6px; border-top: 1px solid var(--hud-border); }
+.tc-ind-cross::after { content: ''; position: absolute; left: 23px; top: -24px; height: 46px; border-left: 1px solid var(--hud-border); }
+.tc-ind-ball { position: absolute; left: 24px; top: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--hud-primary); box-shadow: 0 0 6px var(--hud-primary); transition: transform 60ms linear; }
+.tc-ind-yaw { position: absolute; left: 0; right: 0; bottom: -9px; height: 4px; }
+.tc-ind-yaw div { width: 12px; height: 4px; margin: 0 auto; background: var(--hud-amber); transition: transform 60ms linear; }
+.tc-ind-ring, .tc-ind-yaw { order: 1; }
+.tc-indicator { flex-direction: row; }
+.tc-ind-thr { width: 8px; height: 60px; border: 1px solid var(--hud-amber); display: flex; align-items: flex-end; order: 2; }
+.tc-ind-thr div { width: 100%; background: var(--hud-amber); }
 /* Declutter the HUD around the thumbs: stats + minimap top-left, ammo top-centre, no reference panels */
 body.touch { touch-action: none; overscroll-behavior: none; }
 body.touch #instructions, body.touch #debug-info, body.touch #map-constraints, body.touch #target-info { display: none; }

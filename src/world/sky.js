@@ -17,7 +17,7 @@ const PRESETS = {
     day: {
         zenith: 0x2f6fc9, horizon: 0xbad3e6, haze: 0x9fb8cc, mountain: 0x7b8fa3, cloud: 0xffffff, clouds: 0.6, stars: 0,
         sunDir: [0.42, 0.5, 0.52], disc: 0xfff6dc, glow: 0xffe9b8, discSize: 0.9993,
-        fogDensity: 0.00085, ambient: 0.28, hemi: [0xd4e6ff, 0x55633a, 0.7], sun: [0xfff1dc, 1.15], water: 0x1d5c7e,
+        fogDensity: 0.00085, ambient: 0.2, hemi: [0xd4e6ff, 0x55633a, 0.58], sun: [0xfff1dc, 0.95], water: 0x1d5c7e,
     },
     night: {
         zenith: 0x01030a, horizon: 0x15253d, haze: 0x0c1626, mountain: 0x0a1320, cloud: 0x243044, clouds: 0.35, stars: 1,

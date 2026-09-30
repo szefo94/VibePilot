@@ -6,10 +6,12 @@ import { markShared, randomRange, rng } from '../core/utils.js';
 import { collectibles, markers, obstacles } from './registry.js';
 import { CONSTELLATION_NAMES, CORRIDOR_NAMES, constellations, corridors } from './names.js';
 import { torusMaterial } from './obstacles.js';
+import { bake, part } from '../core/meshkit.js';
 
 // --- Marker / collectible resources ---
-export const markerRadius = 5, markerGeometry = markShared(new THREE.SphereGeometry(markerRadius, 16, 16));
-const markerMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0xFFD700, emissive: 0xccad00 }));
+// Hoop markers: a faceted gold crystal (collision stays the markerRadius sphere)
+export const markerRadius = 5, markerGeometry = markShared(new THREE.OctahedronGeometry(markerRadius * 0.85, 0).scale(0.8, 1.35, 0.8));
+const markerMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0xffcf33, emissive: 0xb07a00, emissiveIntensity: 0.8, metalness: 0.6, roughness: 0.25, flatShading: true }));
 export const collectibleRadius = 1.5, numCollectibleChains = 20;
 const _hhs = collectibleRadius / 47.5; // scale heart to fit within collectibleRadius
 const _hox = -25 * _hhs, _hoy = -47.5 * _hhs; // center heart at origin
@@ -21,8 +23,28 @@ _heartShape.bezierCurveTo(_hox-30*_hhs,_hoy+55*_hhs,  _hox-10*_hhs,_hoy+77*_hhs,
 _heartShape.bezierCurveTo(_hox+60*_hhs,_hoy+77*_hhs,  _hox+80*_hhs,_hoy+55*_hhs,  _hox+80*_hhs,_hoy+35*_hhs);
 _heartShape.bezierCurveTo(_hox+80*_hhs,_hoy+35*_hhs,  _hox+80*_hhs,_hoy,           _hox+50*_hhs,_hoy);
 _heartShape.bezierCurveTo(_hox+35*_hhs,_hoy,           _hox+25*_hhs,_hoy+25*_hhs,  _hox+25*_hhs,_hoy+25*_hhs);
-export const collectibleGeo = markShared(new THREE.ExtrudeGeometry(_heartShape, { depth: collectibleRadius * 0.45, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.1, bevelSegments: 2 }));
-export const collectibleMat = markShared(new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x006622 }));
+// Heart: a bevelled, faceted heart with a thin halo ring, baked into one geometry (no extra draw calls).
+// Tube hearts reuse the geometry with their own colour material (which ignores the baked colours).
+export const collectibleGeo = markShared((() => {
+    const heart = new THREE.ExtrudeGeometry(_heartShape, { depth: collectibleRadius * 0.5, bevelEnabled: true, bevelSize: 0.22, bevelThickness: 0.2, bevelSegments: 2, curveSegments: 9 });
+    heart.center();
+    const halo = new THREE.TorusGeometry(collectibleRadius * 1.45, 0.06, 3, 28);
+    return bake([part(heart, 0x28f07a), part(halo, 0xc6ffd9, { rx: 0.35 })]);
+})());
+export const collectibleMat = markShared(new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, emissive: 0x0b7a34, metalness: 0.25, roughness: 0.35 }));
+/** A hoop: a low-poly ring with red-and-white racing stripes. Collision reads its TorusGeometry radius and tube. */
+function hoopGeometry(r) {
+    const torus = new THREE.TorusGeometry(r, r * 0.2, 6, 20), g = torus.toNonIndexed(); // own vertices per face: crisp stripe edges
+    g.parameters = torus.parameters; torus.dispose();
+    const p = g.attributes.position, col = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i += 3) { // colour whole faces by the angle of their centre
+        const x = p.getX(i) + p.getX(i + 1) + p.getX(i + 2), y = p.getY(i) + p.getY(i + 1) + p.getY(i + 2);
+        const c = Math.floor(((Math.atan2(y, x) + Math.PI) / (Math.PI * 2)) * 10) % 2 ? [0.93, 0.92, 0.88] : [0.82, 0.12, 0.1];
+        col.set(c, i * 3); col.set(c, i * 3 + 3); col.set(c, i * 3 + 6);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return g;
+}
 function addCollectibleAt(x, y, z, constellationId) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
     m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
@@ -77,7 +99,7 @@ export function spawnHoopChains(count) {
     const addHoop = (x, y, z, corridorId) => {
         const r = randomRange(15, 30);
         y = Math.max(heightAt(x, z) + r + 8, Math.min(ceilingLevel - r - 8, y));
-        const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
+        const m = new THREE.Mesh(hoopGeometry(r), torusMaterial);
         m.position.set(x, y, z); m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
         _addHoopAxis(m, r);
         const mk = new THREE.Mesh(markerGeometry, markerMaterial); mk.position.copy(m.position);
@@ -107,7 +129,7 @@ export function spawnHoopChains(count) {
 export function spawnSingleHoopWithMarker() {
     const x = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9), z = randomRange(-MAP_BOUNDARY * .9, MAP_BOUNDARY * .9);
     const r = randomRange(15, 30);
-    const m = new THREE.Mesh(new THREE.TorusGeometry(r, r * .2, 8, 24), torusMaterial);
+    const m = new THREE.Mesh(hoopGeometry(r), torusMaterial);
     m.position.set(x, Math.max(heightAt(x, z) + r + 10, randomRange(groundLevel + r + 15, ceilingLevel - r - 15)), z);
     m.rotation.set(randomRange(0, Math.PI), randomRange(0, Math.PI), 0);
     _addHoopAxis(m, r);

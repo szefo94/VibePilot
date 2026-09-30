@@ -9,6 +9,7 @@ import { notifyBase } from '../ui/notifications.js';
 import { awardKill } from '../game/progression.js';
 import { groundUnitWorldPos, refreshGroundUnitWorldPos } from '../combat/damage.js';
 import { kitMaterial } from '../core/meshkit.js';
+import { onUnitKilled } from '../effects/fire.js';
 import { aaBarrelGeo, aaBaseGeo, aaMountGeo, archHangarGeo, boxHangarGeo, carrierGeo, controlTowerGeo, destroyerBarrelGeo, destroyerHullGeo, destroyerTurretGeo, runwayGeo, tankBarrelGeo, tankHullGeo, tankTurretGeo, terminalGeo, truckGeo } from './models.js';
 
 // --- Unit Creation & Spawning ---
@@ -78,6 +79,7 @@ export function createHangar(variant = 'box') {
 export function killGroundUnit(gu, { reward = true } = {}) {
     if (gu.userData._alive === false) return; // double-kill guard (undefined = alive, not yet visited by the AI)
     gu.userData._alive = false;
+    onUnitKilled(gu); // the wreck smoulders (effects/fire.js)
     // Dependents (airport turrets) are exposed, not destroyed: move them into the world keeping their
     // world transform, so the parent's disposal doesn't take them along, and drop their protection.
     if (gu.userData.dependents?.length) {

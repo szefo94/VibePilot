@@ -30,9 +30,9 @@ export function bake(parts) {
         g.applyMatrix4(_m);
         if (!g.attributes.normal) g.computeVertexNormals();
         const p = g.attributes.position.array, n = g.attributes.normal.array;
-        _c.set(color);
         for (let i = 0; i < p.length; i++) { pos.push(p[i]); nor.push(n[i]); }
-        for (let i = 0; i < p.length; i += 3) col.push(_c.r, _c.g, _c.b);
+        if (color === null && g.attributes.color) { const k = g.attributes.color.array; for (let i = 0; i < k.length; i++) col.push(k[i]); } // an already-baked piece keeps its colours
+        else { _c.set(color); for (let i = 0; i < p.length; i += 3) col.push(_c.r, _c.g, _c.b); }
         if (g !== geo) g.dispose();
         geo.dispose();
     }

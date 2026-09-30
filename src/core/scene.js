@@ -23,7 +23,7 @@ export const scene = new THREE.Scene();
 // Background and fog colours come from world/sky.js (time of day)
 scene.background = new THREE.Color(0xbad3e6);
 scene.fog = new THREE.FogExp2(0xbad3e6, 0.00085);
-export const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
+export const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 4000); // near 0.5: depth precision far out (no z-fighting)
 camera.position.set(0, 0, 25);
 camera.lookAt(0, 0, 0);
 export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });

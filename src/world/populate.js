@@ -9,6 +9,7 @@ import { spawnTube } from '../entities/tubes.js';
 import { createObstacles, numHoopChains } from '../entities/obstacles.js';
 import { RULES } from '../game/rules.js';
 import { addTerrainPad, finalizeTerrain, maxHeightNear } from './terrain.js';
+import { buildCivilians, placeCivilians } from '../entities/civilians.js';
 import { groundUnits } from '../entities/registry.js';
 import { waterLevel } from '../config.js';
 
@@ -94,6 +95,7 @@ export function createAllUnits() {
  */
 const BASE_PAD = { airbase: 150, forwardBase: 110 };
 function shapeTerrain() {
+    placeCivilians(); // villages, ruins and lighthouses claim their flat ground too
     addTerrainPad(0, 0, 170, 150);
     for (const b of placementReport.bases) if (BASE_PAD[b.kind]) addTerrainPad(b.x, b.z, BASE_PAD[b.kind], 80);
     const p = new THREE.Vector3();
@@ -102,4 +104,5 @@ function shapeTerrain() {
         if (p.y > waterLevel + 1) addTerrainPad(p.x, p.z, Math.max(10, (u.userData.collisionRadius || 8) + 4), 22);
     }
     finalizeTerrain();
+    buildCivilians();
 }
