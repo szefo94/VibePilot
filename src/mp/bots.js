@@ -2,10 +2,11 @@
  * Bots in multiplayer (modes with enemies): aces flown by the room's host (entities/rival.js), seen by everyone else.
  *
  *   tdm       team bots: the host keeps each team at TEAM_SIZE pilots — players first, bots fill the rest — and
- *             respawns a bot a few seconds after it goes down. Each spawn flies to the flag first (flag.js), then
- *             patrols around it. With no enemy pilot close it attacks the enemy bases' units to level up
- *             (rival.js farms; the shared units stay in sync through coop.js). A bot hunts the nearest pilot of the other team
- *             (player or bot); teammates are never targets. Bot-vs-bot fights are resolved on the host.
+ *             respawns a bot a few seconds after it goes down. Each spawn flies to the flag first (flag.js), taking
+ *             no target on the way (bar an enemy right on top of it); from there it patrols around the flag, hunts
+ *             the pilots of the other team it sees (players or bots) and, with none close, attacks the enemy bases'
+ *             units to level up (rival.js farms; the shared units stay in sync through coop.js). Teammates are
+ *             never targets. Bot-vs-bot fights are resolved on the host.
  *   pvp/coop  Ace Hunt as in single player (RULES.ace on the host), but its aces hunt every player.
  *
  *   host    shares every bot ten times a second (BOT) with their missiles and bomb / napalm drops; hits on remote players ride along
@@ -122,7 +123,7 @@ function reconcileTeams(now) {
         if (e.au || now < e.respawnAt || state.awaitingStart) continue;
         const s = teamRespawn(e.team), heading = 2 * Math.atan2(s.q[1], s.q[3]);
         e.au = spawnAce({ callsign: e.name, position: new THREE.Vector3(...s.p), heading, color: TEAMS[e.team].bot,
-            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), patrol: flagPatrol(), farms: true }); // to the flag first; farms the bases for XP
+            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), rally: true, patrol: flagPatrol(), farms: true }); // to the flag before any target, then hunts and farms from there
         e.au.netBot = e.id;
     }
 }

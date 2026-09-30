@@ -40,7 +40,7 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 
 ### Team deathmatch
 - **Starts:** Red begins in the south of the map and Blue in the north.
-- **The flag:** a big red-and-blue flag stands in the middle of the map, with a white ⚑ marker on the minimap. Every bot flies to it first after it spawns, then patrols around it, so the fighting starts at the flag. Its pole is solid: flying into it crashes you.
+- **The flag:** a big red-and-blue flag stands in the middle of the map, with a white ⚑ marker on the minimap. After every spawn a bot flies straight to the flag, ignoring targets on the way unless an enemy is right on top of it. From the flag it looks for targets and patrols around it, so the fighting starts in the middle. Its pole is solid: flying into it crashes you.
 - **Teams:** you can't hit or lock onto your teammates, players or bots, and they can't hit you. Teammates are drawn in your team's colour.
 - **Score:** each kill of the other team scores for the killer's team, whoever makes it: a player, a bot, or a bot shooting a bot.
 - **Kills and deaths:** every pilot, player or bot, shows `kills K / deaths D` in the roster. The server keeps the records, so every player sees the same numbers. A crash or collision counts as a death with no kill. A bot keeps its record between lives; it drops off the list when a player takes its place, and a player's record is dropped when they leave.
