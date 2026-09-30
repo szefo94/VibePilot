@@ -286,3 +286,39 @@ export const playerTailGeo = shared([
     fin([[-2.5, 0.2], [-1.25, 0.3], [-2.0, 1.75], [-2.65, 1.75]], 0.14, PL_BLUE, 0, 0, 0),
     ...[-1, 1].map(s => wing(s, { x: 0.3, lead: -1.35, trail: -2.4 }, { lead: -1.95, trail: -2.45 }, 1.9, 0.1, PL_GREY, 0.05)),
 ]);
+
+// --- Ace (unscaled, +Z forward; rival.js scales it ×3): a heavier twin-tail delta with canards ----------------------
+// Baked in light and dark greys: the material's colour tints it (dark red for Ace Hunt, team colours for bots).
+// Span ±5.2 at the wing-tip rails.
+const AC_BODY = 0xf2f2f2, AC_PANEL = 0xc4c4c4, AC_DARK = 0x3a3a3a, AC_GLASS = 0x5a6470;
+export const aceGeo = shared([
+    // Fuselage: long pointed nose, raised spine, flat belly
+    side([[-2.9, -0.3], [1.7, -0.42], [3.3, -0.2], [4.1, 0], [2.6, 0.36], [0.2, 0.52], [-1.6, 0.5], [-3.0, 0.24]], 0.9, AC_BODY, {}),
+    side([[-2.6, 0.45], [-0.2, 0.6], [0.3, 0.52], [-1.6, 0.5]], 0.5, AC_PANEL, {}),                         // spine
+    side([[0.9, 0.34], [2.5, 0.34], [1.9, 0.82], [1.1, 0.86]], 0.66, AC_GLASS, {}),                           // canopy
+    part(new THREE.ConeGeometry(0.16, 0.5, 8), AC_DARK, { z: 4.25, rx: Math.PI / 2 }),                        // pitot / nose tip
+    box(0.92, 0.1, 2.6, AC_PANEL, { y: 0.1, z: 1.4 }),                                                       // cheek line
+    // Intakes under the wing roots, with dark mouths
+    ...[-1, 1].flatMap(s => [
+        box(0.42, 0.55, 2.2, AC_PANEL, { x: s * 0.62, y: -0.2, z: 0.2 }),
+        box(0.36, 0.45, 0.06, AC_DARK, { x: s * 0.62, y: -0.2, z: 1.32 }),
+    ]),
+    // Delta wings with wing-tip rails, canards
+    ...[-1, 1].flatMap(s => [
+        wing(s, { x: 0.45, lead: 1.5, trail: -2.0 }, { lead: -1.0, trail: -1.55 }, 5.2, 0.15, AC_BODY, -0.08),
+        wing(s, { x: 0.5, lead: -0.4, trail: -1.9 }, { lead: -1.2, trail: -1.55 }, 4.9, 0.02, AC_PANEL, -0.0),   // panel inset
+        cyl(0.09, 0.09, 1.4, 6, AC_DARK, { x: s * 5.2, y: -0.08, z: -0.9, rx: Math.PI / 2 }),                    // missile rail
+        wing(s, { x: 0.42, lead: 2.6, trail: 1.9 }, { lead: 2.0, trail: 1.75 }, 1.5, 0.07, AC_BODY, 0.12),      // canard
+    ]),
+    // Twin canted fins and all-moving tailplanes
+    ...[-1, 1].flatMap(s => [
+        fin([[-2.9, 0.3], [-1.5, 0.4], [-2.35, 1.9], [-2.95, 1.95]], 0.1, AC_BODY, s * 0.55, 0.15, -s * 0.3),
+        fin([[-2.85, 1.55], [-2.4, 1.6], [-2.35, 1.9], [-2.95, 1.95]], 0.11, AC_DARK, s * 0.55, 0.15, -s * 0.3), // fin tip
+        wing(s, { x: 0.5, lead: -2.2, trail: -3.1 }, { lead: -2.8, trail: -3.15 }, 2.1, 0.08, AC_PANEL, -0.02),
+    ]),
+    // Twin engines
+    ...[-1, 1].flatMap(s => [
+        cyl(0.3, 0.3, 0.6, 10, AC_PANEL, { x: s * 0.3, y: -0.05, z: -3.0, rx: Math.PI / 2 }),
+        cyl(0.26, 0.2, 0.3, 10, AC_DARK, { x: s * 0.3, y: -0.05, z: -3.42, rx: Math.PI / 2 }),                 // nozzle
+    ]),
+]);
