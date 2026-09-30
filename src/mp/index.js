@@ -6,8 +6,9 @@
  * to the server: respawn instead of game over, the server's WELCOME / SPAWN / CORRECT place the player, and other
  * players are drawn from its snapshots. Everything plugs in through game/hooks.js.
  *
- * Enemies (pvp, coop): the seeded enemy bases are shared — coop.js syncs damage and moving units. Ace, interceptor
- * waves and the roaming fighters stay off (they spawn at random, so they can't be shared yet).
+ * Enemies (pvp, coop): the seeded enemy bases are shared — coop.js syncs damage and moving units. Aces fly on the
+ * host's game and hunt every player; the others see them as bots (bots.js). Interceptor waves and the roaming
+ * fighters stay off (they spawn at random, so they can't be shared yet).
  * Notifications: every gameplay notification is also shown to the others with the player's name (EVENT).
  *
  * PvP (default mode): every weapon hits other players. The shooter reports each hit (HIT, damage from PVP_DAMAGE);
@@ -30,11 +31,13 @@ import { showNotification } from '../ui/notifications.js';
 import { askName } from './lobby.js';
 import { defaultCallsign, saveCallsign } from './callsigns.js';
 import { startCoop, updateCoop } from './coop.js';
+import { botRoster, recentAceHit, startBots, updateBots } from './bots.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
     setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, mission: enemies, respawn: true });
     if (enemies) startCoop();
+    startBots(enemies); // turns RULES.ace on while this player hosts
     if (!new URLSearchParams(location.search).get('name')) net.name = defaultCallsign();
 
     const css = document.createElement('link');
@@ -87,7 +90,7 @@ if (net.enabled) {
         if (by !== null) kills.set(by, (kills.get(by) ?? 0) + 1);
         const feed = (text, hl = false) => showNotification(text, hl, { local: true }); // everyone sees DOWN already
         if (by === net.id) { awardKill(PVP_KILL_XP); feed(`★ You shot down ${nameOf(id)}  +${PVP_KILL_XP}`, true); }
-        else if (id === net.id) feed(by === null ? 'You went down — respawning' : `Shot down by ${nameOf(by)} — respawning`);
+        else if (id === net.id) feed(by !== null ? `Shot down by ${nameOf(by)} — respawning` : recentAceHit() ? `Shot down by ${recentAceHit()} — respawning` : 'You went down — respawning');
         else feed(by === null ? `${nameOf(id)} went down` : `${nameOf(by)} shot down ${nameOf(id)}`);
     });
     onNet('peer-leave', p => kills.delete(p.id));
@@ -109,6 +112,7 @@ if (net.enabled) {
         updateRemotePlanes();
         updateRemoteFx(Math.min(rawDelta * 60, 6));
         updateCoop(rawDelta);
+        updateBots(rawDelta);
         if ((chipTimer -= rawDelta) <= 0) { chipTimer = 0.25; renderChip(); }
     });
 
@@ -133,6 +137,7 @@ if (net.enabled) {
                 const last = peer.samples[peer.samples.length - 1];
                 rows.push(row(peer.name, peer.slot, `${last && !last.alive ? ' (down)' : last ? ` · ${last.hp} HP` : ''}${score(peer.id)}`));
             }
+            for (const ace of botRoster()) rows.push(row(`☠ ACE ${ace.name}`, 'ace', ` · LV ${ace.lvl} · ${ace.hp} HP${ace.target != null ? ` → ${nameOf(ace.target)}` : ''}`)); // the host's bots
         }
         chip.replaceChildren(...rows);
     }

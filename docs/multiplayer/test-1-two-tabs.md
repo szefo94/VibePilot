@@ -86,6 +86,7 @@ Extra checks (optional):
 - `http://localhost:8787/health` shows the room and player count.
 - A third window with `name=Charlie` works the same way (up to 8 players).
 - A different room (`room=other`) is a separate world.
+- Aces (modes `pvp` and `coop`, not `skies`): the room's host (the first player in) runs Ace Hunt. About 90 s into the host's flight (or when the host presses H), an ace launches and hunts the **nearest** player. Every window shows it in the roster as `☠ ACE <name> · LV n · HP → <target>`, and as a dark-red plane with a pink name tag and a minimap blip. Anyone can shoot it down, and the XP goes to whoever lands the killing hit. Its gunfire and missiles hit whichever player it is chasing, and flares still work. If the host leaves, the next host starts its own Ace Hunt.
 
 ## 5. If something is wrong
 

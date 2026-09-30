@@ -185,6 +185,22 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 if (text) broadcast(room, MSG.EVENT, { from: c.id, text, hl: !!m.hl }, c);
                 break;
             }
+            // Aces (bots) belong to the host's game: it shares them, is told of hits on them, and reports theirs
+            case MSG.BOT:
+            case MSG.BOT_DOWN:
+                if (m.t === MSG.BOT && (!Array.isArray(m.bots) || m.bots.length > 8 || (m.m !== undefined && (!Array.isArray(m.m) || m.m.length > 8)))) return;
+                if (mode.enemies && room.hostId === c.id) broadcast(room, m.t, { ...m, t: undefined, from: c.id }, c);
+                break;
+            case MSG.BOT_HIT: {
+                const host = mode.enemies && room.players.get(room.hostId);
+                if (host && host !== c && typeof m.bot === 'string' && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOT_HIT, { from: c.id, bot: m.bot.slice(0, 16), dmg: Math.min(200, Math.max(0, +m.dmg || 0)), w: m.w });
+                break;
+            }
+            case MSG.BOT_FIRE: {
+                const target = mode.enemies && room.hostId === c.id && room.players.get(m.target);
+                if (target && target.alive && (m.w === 'gun' || m.w === 'missile')) send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +m.dmg || 0)), w: m.w, bot: String(m.bot ?? 'ACE').slice(0, 24) });
+                break;
+            }
             case MSG.WORLD:
                 if (mode.hostAuthority && room.hostId === c.id) broadcast(room, MSG.WORLD, { ...m, t: undefined, from: c.id }, c);
                 break;

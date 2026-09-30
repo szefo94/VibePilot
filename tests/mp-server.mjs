@@ -125,6 +125,20 @@ g.ws.send(encode(MSG.ACTION, { kind: 'damage', unit: 'u1' }));
 await wait(80);
 check('worldFromHostOnly', got(g2, MSG.WORLD).length === 1 && got(g2, MSG.WORLD)[0].tick === 2);
 check('actionToHost', got(h, MSG.ACTION)[0]?.unit === 'u1' && got(g2, MSG.ACTION).length === 0);
+// Aces (bots): the host shares them and reports their hits; guests' hits on them go to the host only
+g.ws.send(encode(MSG.BOT, { bots: [] }));                                                    // not the host: dropped
+h.ws.send(encode(MSG.BOT, { bots: [{ id: 'b1', name: 'Licho', p: [0, 100, 0], q: [0, 0, 0, 1], hp: 90 }], m: [] }));
+h.ws.send(encode(MSG.BOT, { bots: new Array(9).fill({ id: 'b2' }) }));                       // too many: dropped
+g.ws.send(encode(MSG.BOT_HIT, { bot: 'b1', dmg: 999, w: 'missile' }));
+g.ws.send(encode(MSG.BOT_HIT, { bot: 'b1', dmg: 5, w: 'laser' }));                            // unknown weapon
+h.ws.send(encode(MSG.BOT_FIRE, { target: g.first.id, dmg: 500, w: 'gun', bot: 'ACE Licho' }));
+g.ws.send(encode(MSG.BOT_FIRE, { target: g2.first.id, dmg: 5, w: 'gun', bot: 'ACE Licho' }));  // not the host
+h.ws.send(encode(MSG.BOT_DOWN, { bot: 'b1', name: 'Licho', by: g.first.id, xp: 400 }));
+await wait(80);
+check('botFromHostOnly', got(g2, MSG.BOT).length === 1 && got(g2, MSG.BOT)[0].bots[0].name === 'Licho' && got(h, MSG.BOT).length === 0);
+check('botHitToHost', got(h, MSG.BOT_HIT).length === 1 && got(h, MSG.BOT_HIT)[0].dmg === 200 && got(h, MSG.BOT_HIT)[0].from === g.first.id && got(g2, MSG.BOT_HIT).length === 0);
+check('botFireToTarget', got(g, MSG.BOT_FIRE).length === 1 && got(g, MSG.BOT_FIRE)[0].dmg === 60 && got(g2, MSG.BOT_FIRE).length === 0);
+check('botDownBroadcast', got(g2, MSG.BOT_DOWN)[0]?.by === g.first.id && got(g, MSG.BOT_DOWN).length === 1);
 h.ws.close();
 await wait(100);
 check('hostHandover', got(g, MSG.HOST)[0]?.hostId === g.first.id);

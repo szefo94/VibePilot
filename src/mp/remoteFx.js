@@ -17,6 +17,7 @@ import { plane } from '../player/plane.js';
 import { _bombBodyGeo, _createMissileMesh, _flarePGeo, _flarePMatBase, _missileTrailGeo, _missileTrailMat, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial } from '../combat/resources.js';
 import { net } from '../net/net.js';
 import { peerPosition, remoteViews } from './remotePlanes.js';
+import { botViews } from './bots.js';
 
 const TRACER_LIFE = 90;                                   // frames
 const tracerGeo = new THREE.CylinderGeometry(0.12, 0.12, 3, 5); // Y-aligned; oriented along the velocity
@@ -38,7 +39,7 @@ function remove(i) {
 // --- Gun: follows the firing flag in the snapshots ---
 const gunTimers = new WeakMap(); // view → frames until its next tracer
 function gunfire(dt) {
-    for (const v of remoteViews()) {
+    for (const v of [...remoteViews(), ...botViews()]) { // players and the host's aces
         if (!v.firing) { gunTimers.delete(v); continue; }
         let t = (gunTimers.get(v) ?? 0) - dt;
         for (let n = 0; t <= 0 && n < 3; n++, t += shootCooldownTime) {

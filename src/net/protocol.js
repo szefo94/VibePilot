@@ -15,7 +15,7 @@
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const DEFAULT_PORT = 8787;
 
 // pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
@@ -97,6 +97,10 @@ export const MSG = Object.freeze({
     HIT: 'hit',           // pvp:  C→S { target, dmg, w } → S→C to `target` only { from, dmg, w }; dmg ≤ PVP_DAMAGE[w]
     UNIT_HIT: 'uhit',     // enemies: C→S { n: unit net id, dmg, w } → others { from, n, dmg, w }; the server keeps the totals
     WORLD: 'world',       // enemies: host → others { u: [[n, x, y, z, vx, vy, vz] | [n, orbitAngle]] } — moving units, 2 Hz
+    BOT: 'bot',           // enemies: host → others { bots: [{ id, name, lvl, p, q, s, hp, mh, f, tg }], m: [[id, x, y, z, target]] } — the host's aces and their missiles, 10 Hz
+    BOT_HIT: 'bothit',    // enemies: C→host { bot, dmg, w } — a guest hit an ace (the host applies it)
+    BOT_FIRE: 'botfire',  // enemies: host→target { target, dmg, w, bot } — an ace hit that player
+    BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, by, xp } — an ace was shot down (by = player id) or crashed
     EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
     ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }

@@ -21,7 +21,7 @@ const EXTRAPOLATE_MAX = 250; // ms
 const STALE_MS = 3000;       // no snapshot for this long: hide the plane
 const LABEL_RANGE = 320, LABEL_FADE = 90; // name tags: fully visible up to RANGE − FADE, gone beyond RANGE
 const COLORS = [0xff5555, 0x55aaff, 0xffcc33, 0x66dd66, 0xcc66ff, 0xff9933, 0x33dddd, 0xff66aa];
-export const colorOf = slot => COLORS[(slot ?? 0) % COLORS.length];
+export const colorOf = slot => (slot === 'ace' ? 0xff33cc : COLORS[(slot ?? 0) % COLORS.length]); // 'ace': bots.js
 export const cssColor = slot => `#${colorOf(slot).toString(16).padStart(6, '0')}`;
 
 // The player's own model (entities/models.js), tinted in each player's colour: the kit material's colour multiplies
@@ -41,8 +41,8 @@ function buildPlane(slot) {
     return g;
 }
 
-/** Name tag + HP bar above the plane, a little wider than its 12-unit wingspan; it shrinks with distance like the plane. */
-function buildLabel(name, slot) {
+/** Name tag + HP bar above the plane (bots.js reuses it for aces), a little wider than its 12-unit wingspan; it shrinks with distance like the plane. */
+export function buildLabel(name, slot) {
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 160;
     const texture = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, fog: false }));
@@ -51,7 +51,7 @@ function buildLabel(name, slot) {
     drawLabel(label, 100);
     return label;
 }
-function drawLabel(label, hp, maxHp = 100) {
+export function drawLabel(label, hp, maxHp = 100) {
     const pct = Math.max(0, Math.min(100, Math.round(hp / maxHp * 100))); // bar = share of that player's max HP
     if (pct === label.hp) return;
     label.hp = pct; hp = pct;
@@ -81,7 +81,7 @@ export function enablePvpTargets(hit) { onHit = hit; targetable = true; }
 function viewFor(peer) {
     let v = views.get(peer.id);
     if (!v) {
-        v = { group: buildPlane(peer.slot), label: buildLabel(peer.name, peer.slot), alive: true, name: peer.name, slot: peer.slot, unit: null };
+        v = { id: peer.id, group: buildPlane(peer.slot), label: buildLabel(peer.name, peer.slot), alive: true, name: peer.name, slot: peer.slot, unit: null };
         v.group.visible = v.label.sprite.visible = false;
         scene.add(v.group, v.label.sprite);
         if (targetable) {
@@ -106,7 +106,7 @@ function dispose(id, v) {
 }
 
 /** Interpolated pose of the samples at server time `t` into group; returns the sample, or null if there is no data. */
-function sampleAt(samples, t, group) {
+export function sampleAt(samples, t, group) {
     const n = samples.length;
     if (!n) return null;
     let i = n - 1;
