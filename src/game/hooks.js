@@ -6,6 +6,7 @@
  *   notification (text, highlight)  a gameplay notification was shown (ui/notifications.js; device-only ones are not)
  *   worldReady  ()           the world is populated: every unit exists (main.js)
  *   unitHit     (target, amount, weapon)  the player's weapon damaged a unit (combat/hits.js; not for remote-applied hits)
+ *   rivalDown   (ace)        an ace left the sky: shot down or crashed (entities/rival.js)
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them
  */

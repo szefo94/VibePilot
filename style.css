@@ -789,23 +789,25 @@ body.menu-open #rival-panel, body.menu-open #rival-warning, body.menu-open .riva
 .tc-system [aria-pressed="true"] { background: var(--hud-primary) !important; color: #000 !important; }
 .tc-rotate { display: none; }
 /* Menus own the screen; the overlay only shows while flying */
-body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons, body.menu-open #touch-controls .tc-indicator { display: none; }
-/* Tilt steering: the phone does pitch and roll, so only the right wheel (throttle, yaw) and LEVEL stay */
-body.tilt-on .tc-left { display: none; }
+body.menu-open #touch-controls .tc-wheel, body.menu-open #touch-controls .tc-weapons { display: none; }
+/* Tilt steering: the phone does pitch and roll, so only the throttle (right wheel, up/down) and LEVEL stay */
+body.tilt-on .tc-left, body.tilt-on .tc-roll-hint { display: none; }
+body.tilt-on .tc-right { width: 90px; border-radius: 45px; }
 .tc-system .tc-level { display: none; width: 58px; font-size: 11px !important; }
 body.tilt-on .tc-system .tc-level { display: block; }
-/* Movement indicator between the thumbs: ball = pitch/roll input, bar = yaw, gauge = throttle */
-.tc-indicator { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 8px; pointer-events: none; opacity: 0.85; }
-.tc-ind-ring { position: relative; width: 60px; height: 60px; border-radius: 50%; border: 1.5px solid var(--hud-border-bright); background: rgba(0, 20, 10, 0.4); }
-.tc-ind-cross { position: absolute; inset: 29px 6px; border-top: 1px solid var(--hud-border); }
-.tc-ind-cross::after { content: ''; position: absolute; left: 23px; top: -24px; height: 46px; border-left: 1px solid var(--hud-border); }
-.tc-ind-ball { position: absolute; left: 24px; top: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--hud-primary); box-shadow: 0 0 6px var(--hud-primary); transition: transform 60ms linear; }
-.tc-ind-yaw { position: absolute; left: 0; right: 0; bottom: -9px; height: 4px; }
-.tc-ind-yaw div { width: 12px; height: 4px; margin: 0 auto; background: var(--hud-amber); transition: transform 60ms linear; }
-.tc-ind-ring, .tc-ind-yaw { order: 1; }
-.tc-indicator { flex-direction: row; }
-.tc-ind-thr { width: 8px; height: 60px; border: 1px solid var(--hud-amber); display: flex; align-items: flex-end; order: 2; }
-.tc-ind-thr div { width: 100%; background: var(--hud-amber); }
+/* Motion indicator (ui/motionIndicator.js): ball = pitch/roll rate, bar = yaw rate, gauge = airspeed */
+#motion-indicator { position: absolute; left: calc(50% - 250px); bottom: 26px; z-index: 12; display: flex; align-items: flex-end; gap: 8px; pointer-events: none; opacity: 0.9; }
+.mi-ring { position: relative; width: 60px; height: 60px; border-radius: 50%; border: 1.5px solid var(--hud-border-bright); background: var(--hud-bg); }
+.mi-cross { position: absolute; inset: 29px 6px; border-top: 1px solid var(--hud-border); }
+.mi-cross::after { content: ''; position: absolute; left: 23px; top: -24px; height: 46px; border-left: 1px solid var(--hud-border); }
+.mi-ball { position: absolute; left: 24px; top: 24px; width: 12px; height: 12px; border-radius: 50%; background: var(--hud-primary); box-shadow: 0 0 6px var(--hud-primary); }
+.mi-yaw { position: absolute; left: 0; right: 0; bottom: -9px; height: 4px; }
+.mi-yaw div { width: 12px; height: 4px; margin: 0 auto; background: var(--hud-amber); }
+.mi-thr { width: 8px; height: 60px; border: 1px solid var(--hud-amber); background: var(--hud-bg); display: flex; align-items: flex-end; }
+.mi-thr div { width: 100%; background: var(--hud-amber); }
+body.menu-open #motion-indicator { display: none; }
+body.touch #motion-indicator { left: 50%; bottom: 22px; transform: translateX(-50%); }
+@media (max-width: 900px) { body:not(.touch) #motion-indicator { left: 10px; bottom: auto; top: 50%; } }
 /* Declutter the HUD around the thumbs: stats + minimap top-left, ammo top-centre, no reference panels */
 body.touch { touch-action: none; overscroll-behavior: none; }
 body.touch #instructions, body.touch #debug-info, body.touch #map-constraints, body.touch #target-info { display: none; }
@@ -813,7 +815,11 @@ body.touch #player-stats { font-size: 10px; padding: 4px 8px; max-width: 45vw; }
 body.touch #hp-display { margin-right: 12px; }
 body.touch #minimap-container { top: 44px; bottom: auto; left: 8px; width: 30vmin; height: 30vmin; }
 body.touch #ammo-hud { top: 4px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%) scale(0.55); transform-origin: top center; }
-body.touch #objective { bottom: auto; top: 64px; font-size: 10px; }
+body.touch #objective { bottom: auto; top: 64px; font-size: 10px; pointer-events: auto; cursor: pointer; }
+/* Compact objective (phones): arrow, name, distance; tap to expand */
+body.touch #objective.compact { padding: 3px 10px; font-size: 9px; }
+body.touch #objective.compact .objective-label, body.touch #objective.compact #objective-units, body.touch #objective.compact .obj-sep, body.touch #objective.compact .objective-progress { display: none; }
+body.touch #objective.compact #objective-name { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
 body.touch #rival-panel { top: 60px; font-size: 10px; min-width: 0; }
 @media (orientation: portrait) {
     body.touch .tc-rotate {
