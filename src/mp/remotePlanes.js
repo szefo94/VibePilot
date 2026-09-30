@@ -13,6 +13,8 @@ import { createExplosion } from '../effects/effects.js';
 import { airUnits } from '../entities/registry.js';
 import { net, serverNow } from '../net/net.js';
 import { FLAGS } from '../net/protocol.js';
+import { kitMaterial } from '../core/meshkit.js';
+import { playerFuselageGeo, playerTailGeo, playerWingGeo } from '../entities/models.js';
 
 const INTERP_DELAY = 100;    // ms — two snapshots at 20 Hz, plus jitter
 const EXTRAPOLATE_MAX = 250; // ms
@@ -22,26 +24,19 @@ const COLORS = [0xff5555, 0x55aaff, 0xffcc33, 0x66dd66, 0xcc66ff, 0xff9933, 0x33
 export const colorOf = slot => COLORS[(slot ?? 0) % COLORS.length];
 export const cssColor = slot => `#${colorOf(slot).toString(16).padStart(6, '0')}`;
 
-// Shared geometry — the player's airframe (player/plane.js); never disposed
-const fuselageGeo = new THREE.CylinderGeometry(0.45, 0.6, 4, 12).rotateX(Math.PI / 2);
-const noseGeo = new THREE.ConeGeometry(0.45, 1.2, 12).rotateX(Math.PI / 2);
-const wingGeo = new THREE.BoxGeometry(12, 0.2, 1.5);
-const finGeo = new THREE.BoxGeometry(0.2, 1.5, 1);
-const stabGeo = new THREE.BoxGeometry(2.5, 0.15, 0.8);
-const trimMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+// The player's own model (entities/models.js), tinted in each player's colour: the kit material's colour multiplies
+// the model's white-and-grey vertex colours
+const bodyMats = new Map(); // colour → material
 const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 2), new THREE.Vector3(0, 0, 1500)]); // as player/plane.js
 const laserMat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
-const bodyMats = new Map(); // color → material
 
 function buildPlane(slot) {
     const color = colorOf(slot);
-    if (!bodyMats.has(color)) bodyMats.set(color, new THREE.MeshStandardMaterial({ color }));
-    const body = bodyMats.get(color), g = new THREE.Group();
-    const nose = new THREE.Mesh(noseGeo, trimMat); nose.position.z = 2.6;
-    const fin = new THREE.Mesh(finGeo, body); fin.position.set(0, 0.75, -1.8);
-    const stab = new THREE.Mesh(stabGeo, body); stab.position.z = -1.8;
+    if (!bodyMats.has(color)) bodyMats.set(color, kitMaterial({ color, metalness: 0.25, roughness: 0.6 }));
+    const mat = bodyMats.get(color), g = new THREE.Group();
+    for (const geo of [playerFuselageGeo, playerWingGeo(-1), playerWingGeo(1), playerTailGeo]) g.add(new THREE.Mesh(geo, mat));
     const laser = new THREE.Line(laserGeo, laserMat); laser.visible = false;
-    g.add(new THREE.Mesh(fuselageGeo, body), nose, new THREE.Mesh(wingGeo, body), fin, stab, laser);
+    g.add(laser);
     g.userData.laser = laser;
     return g;
 }
