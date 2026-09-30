@@ -266,7 +266,9 @@ export const playerFuselageGeo = shared([
     cyl(0.28, 0.28, 2.0, 8, PL_DARK, { y: -0.72, z: 0.2, rx: Math.PI / 2 }),                               // bomb pod
     ...[-1, 1].map(s => cyl(0.17, 0.2, 1.4, 6, PL_DARK, { x: s * 0.36, y: -0.62, z: -1.4, rx: Math.PI / 2 })), // napalm pods
 ]);
-export const playerWingGeo = s => shared([
+const playerWings = {};
+/** The player's wing on side s (-1 left, 1 right); built once per side. */
+export const playerWingGeo = s => playerWings[s] ??= shared([
     wing(s, { x: 0.45, lead: 1.15, trail: -1.35 }, { lead: 0.2, trail: -0.55 }, 5.9, 0.16, PL_WHITE, -0.12),
     cyl(0.09, 0.09, 1.1, 6, PL_DARK, { x: s * 5.9, y: -0.12, z: 0.55, rx: Math.PI / 2 }),                // missile rail
     box(0.14, 0.2, 0.8, PL_BLUE, { x: s * 5.95, y: -0.12, z: -0.15 }),                                      // tip cap
