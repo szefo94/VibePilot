@@ -1,9 +1,10 @@
 /**
  * Multiplayer entry point (multiplayer branch). Imported once by main.js; does nothing without ?mp.
  *
- * With ?mp the session belongs to the server: the game rules switch to shared skies (no enemies, ace,
- * interceptors or mission; respawn instead of game over), the server's WELCOME / SPAWN / CORRECT place the
- * player, and other players are drawn from its snapshots. Everything plugs in through game/hooks.js.
+ * With ?mp the player first picks a callsign (lobby.js; skipped when &name= is in the address). Then the session
+ * belongs to the server: the game rules switch to shared skies (no enemies, ace, interceptors or mission; respawn
+ * instead of game over), the server's WELCOME / SPAWN / CORRECT place the player, and other players are drawn
+ * from its snapshots. Everything plugs in through game/hooks.js.
  */
 import { setRules } from '../game/rules.js';
 import { onHook } from '../game/hooks.js';
@@ -13,6 +14,7 @@ import { plane } from '../player/plane.js';
 import { MODES, MSG } from '../net/protocol.js';
 import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
 import { clearRemotePlanes, cssColor, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
+import { askName } from './lobby.js';
 
 if (net.enabled) {
     setRules({ enemies: false, interceptors: false, ace: false, mission: false, respawn: true });
@@ -70,5 +72,11 @@ if (net.enabled) {
         chip.replaceChildren(...rows);
     }
     renderChip();
-    startNet();
+    if (new URLSearchParams(location.search).get('name')) startNet();
+    else askName(net).then(name => { // no &name= in the address: ask first, then keep it in the address
+        net.name = name;
+        const u = new URL(location.href); u.searchParams.set('name', name);
+        history.replaceState(null, '', u);
+        startNet();
+    });
 }

@@ -124,7 +124,8 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [x] Automated tests: 25 server checks; a two-tab browser run; the 27 single-player tests still pass.
 - [x] **Test stage 1 by hand** ([guide](docs/multiplayer/test-1-two-tabs.md)): two tabs work.
 - [x] Configurable port and host (`--port`, `--host`, `--origins`; [quick start](docs/multiplayer/server-hosting-quick-start.md)).
-- [ ] Lobby dialog on the start menu (server, room, name) instead of URL parameters.
+- [x] Callsign prompt on entry (remembered); the bare server address opens multiplayer (`?sp` = single-player).
+- [ ] Room choice in the lobby (currently `?room=`; default `lobby`).
 - [ ] Stages 2–4: LAN, Raspberry Pi, internet.
 - [ ] Tuning from real play: interpolation delay, report rate, spawn layout (the spawn line can face an obstacle on some maps).
 
@@ -172,10 +173,11 @@ npm run test:browser # 27 single-player browser tests (needs Node 20+ for Playwr
 
 | Parameter | Meaning | Default |
 |---|---|---|
-| `?mp` | Enable multiplayer and connect to the server that served the page | Off |
+| `?mp` | Enable multiplayer and connect to the server that served the page. The multiplayer server adds it to the bare address automatically. | Off (on when served by the multiplayer server) |
+| `?sp` | Force single-player on the multiplayer server | – |
 | `?mp=wss://host/` | Connect to a different server | – |
 | `room=` | Room name, `[a-z0-9_-]`, up to 24 characters | `lobby` |
-| `name=` | Your name, up to 16 characters | `Pilot` |
+| `name=` | Your callsign, up to 16 characters | Asked on entry, then remembered |
 | `mode=` | `skies` (`pvp` and `coop` are reserved) | `skies` |
 
 **Messages** (`src/net/protocol.js`, version 2): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `PING` · `PONG`, plus `FIRE` · `HIT` · `HOST` · `WORLD` · `ACTION`, reserved for phases 2–3.

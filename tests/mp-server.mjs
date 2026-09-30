@@ -28,6 +28,9 @@ const inSnap = (c, id) => lastSnap(c)?.players.find(p => p.id === id);
 // Static game files: only the public ones
 const status = async path => (await fetch(HTTP + path)).status;
 check('servesGame', await status('/') === 200 && await status('/src/main.js') === 200 && await status('/three.min.js') === 200);
+const bare = await fetch(`${HTTP}/?room=x`, { redirect: 'manual' });
+check('bareAddressOpensMultiplayer', bare.status === 302 && bare.headers.get('location') === '/?room=x&mp=', bare.headers.get('location'));
+check('singlePlayerOptOut', (await fetch(`${HTTP}/?sp`, { redirect: 'manual' })).status === 200);
 check('hidesPrivate', await status('/package.json') === 404 && await status('/server/server.mjs') === 404 && await status('/.git/config') === 404 && await status('/src/../package.json') === 404);
 
 // Rooms, seeds, spawn slots

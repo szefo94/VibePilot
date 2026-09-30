@@ -18,7 +18,16 @@ npm ci                      # 2. dependencies (once, and after pulling updates)
 npm run mp-server           # 3. start on the default port 8787
 ```
 
-Open `http://localhost:8787/?mp&room=test&name=Alpha`. Stop the server with **Ctrl+C**.
+Open `http://localhost:8787/`. The bare address goes straight to multiplayer and asks for your **callsign** (remembered for next time). Everyone lands in room `lobby`. Stop the server with **Ctrl+C**.
+
+Address options:
+
+| Address | Result |
+|---|---|
+| `http://<server>:<port>/` | Callsign prompt, then room `lobby` |
+| `…/?room=friday` | Callsign prompt, then room `friday` (a separate world) |
+| `…/?room=friday&name=Anna` | Skips the prompt |
+| `…/?sp` | The normal single-player game |
 
 ## 2. Choose the port
 
@@ -45,7 +54,7 @@ npm run mp-server -- --help
 | bash | `PORT=9000 HOST=0.0.0.0 npm run mp-server` |
 | systemd | `Environment=PORT=9000` in the unit file |
 
-**Players use the same port in the address:** `http://<server>:9000/?mp&room=test&name=Anna`. Nothing else needs configuring. The game connects back to the port it was loaded from.
+**Players use the same port in the address:** `http://<server>:9000/`. Nothing else needs configuring. The game connects back to the port it was loaded from.
 
 On start the server prints the addresses to use:
 
@@ -83,7 +92,28 @@ npm run mp-server -- --port 8787 --host 0.0.0.0
 
    Linux: `sudo ufw allow 8787/tcp`.
 
-### C. The internet: quick temporary address (no account, no router changes)
+### C. The internet: port forwarding on your router (this PC)
+
+Use this if your router forwards a public port to this PC (e.g. public `88.156.90.62:443` → `192.168.0.16`).
+
+1. **Router:** forward TCP `443` to this PC's address (the `network:` line printed by the server), and give the PC a fixed address (DHCP reservation).
+2. **Windows firewall** (once, in an **administrator** PowerShell). It must include the **Public** profile if your Wi-Fi is set to Public:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "VibePilot MP" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow -Profile Public,Private -Program (Get-Command node).Source
+   ```
+
+   Turn it off and on with `Disable-NetFirewallRule -DisplayName "VibePilot MP"` and `Enable-NetFirewallRule -DisplayName "VibePilot MP"`.
+3. **Start:** `npm run mp-server -- --port 443 --host 0.0.0.0`.
+4. **Test from outside:** use a phone on **mobile data** (Wi-Fi off). Your public IP often doesn't work from inside your own network. Open `http://<public-ip>:443/health`, then `http://<public-ip>:443/`.
+5. **Share** `http://<public-ip>:443/`. Type `http://` explicitly: there is no certificate, so `https://` fails. If the browser warns that the connection isn't secure, choose *Continue*.
+
+Notes:
+- Anyone with the address can join. Stop the server and disable the rule when you're not playing.
+- A changing public IP means new links. A dynamic DNS name (e.g. DuckDNS) avoids that.
+- A connected VPN can break incoming connections; disconnect it while hosting.
+
+### D. The internet: quick temporary address (no account, no router changes)
 
 Keep the server on `127.0.0.1` and put a tunnel in front of it, pointing at **the same port**:
 
@@ -92,9 +122,9 @@ npm run mp-server -- --port 8787
 cloudflared tunnel --url http://localhost:8787      # second terminal
 ```
 
-`cloudflared` prints `https://<random>.trycloudflare.com`. Friends open `https://<random>.trycloudflare.com/?mp&room=friday&name=Anna`. The address changes on every start, so it suits a one-evening session. Install `cloudflared` with `winget install Cloudflare.cloudflared` on Windows, or see the Pi guide.
+`cloudflared` prints `https://<random>.trycloudflare.com`. Friends open that address. The address changes on every start, so it suits a one-evening session. Install `cloudflared` with `winget install Cloudflare.cloudflared` on Windows, or see the Pi guide.
 
-### D. The internet: permanent (Raspberry Pi or another always-on machine)
+### E. The internet: permanent (Raspberry Pi or another always-on machine)
 
 Run it as a service behind a Cloudflare Tunnel or Tailscale Funnel. The full walkthrough is in [server-setup-raspberry-pi.md](server-setup-raspberry-pi.md). To use a port other than 8787 there, change it in **both** places:
 
@@ -122,6 +152,6 @@ Then run `sudo systemctl daemon-reload && sudo systemctl restart vibepilot-mp cl
 | `Port 8787 is already in use` | Another server is running: close it, or use the suggested `--port`. |
 | `No permission to use port 80` | Ports below 1024 need admin rights. Use 8787 (or similar), plus a tunnel for a clean address. |
 | `Invalid port "…"` | Use a whole number from 1 to 65535. |
-| Other devices can't open the page | Use `--host 0.0.0.0`, the `network:` address (not `localhost`), and the firewall rule from B. |
+| Other devices can't open the page | Use `--host 0.0.0.0`, the `network:` address (not `localhost`), and the firewall rule from B or C. On Windows, check that the rule exists: `Get-NetFirewallRule -DisplayName "VibePilot MP"`. |
 | Roster says `✕ MULTIPLAYER: protocol …` | The browser has old files cached: hard refresh (Ctrl+F5). |
 | Roster stuck on `connecting…` | The server stopped, or you opened the game from another port or server (e.g. GitHub Pages or `npm run serve`). Open it from the multiplayer server's own address. |

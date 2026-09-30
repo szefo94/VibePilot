@@ -42,7 +42,13 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     });
 
     const http = createServer(async (req, res) => {
-        const path = new URL(req.url, 'http://x').pathname;
+        const reqUrl = new URL(req.url, 'http://x'), path = reqUrl.pathname;
+        // The bare address opens multiplayer (?sp keeps the single-player game reachable)
+        if ((path === '/' || path === '/index.html') && !reqUrl.searchParams.has('mp') && !reqUrl.searchParams.has('sp')) {
+            const q = new URLSearchParams(reqUrl.search); q.set('mp', '');
+            res.writeHead(302, { Location: `/?${q}` }).end();
+            return;
+        }
         if (path === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify(stats())); return; }
         const rel = path === '/' ? '/index.html' : path;
         if (serveGame && PUBLIC.test(rel) && !rel.includes('..')) {

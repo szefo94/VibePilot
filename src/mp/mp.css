@@ -9,3 +9,13 @@
 #net-status[data-status="error"] { color: var(--hud-red); }
 #net-status .net-pilot { margin-top: 2px; color: #fff; text-transform: none; }
 #net-status .net-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+/* Callsign prompt (src/mp/lobby.js) — above the start menu */
+#mp-lobby { z-index: 950; background: rgba(0, 8, 4, 0.94); }
+#mp-lobby h2 { margin: 0; letter-spacing: 0.15em; text-transform: uppercase; }
+#mp-lobby label { font-size: 15px; }
+#mp-lobby input {
+    width: min(300px, 80vw); padding: 8px 12px; font: 20px 'Share Tech Mono', 'Courier New', monospace; text-align: center;
+    color: var(--hud-primary); background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright);
+}
+#mp-lobby input:focus-visible { outline: 2px solid var(--hud-amber); outline-offset: 2px; }
+#mp-lobby button:disabled { opacity: 0.4; cursor: default; }
