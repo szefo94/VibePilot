@@ -18,6 +18,8 @@ import { canDamageGround, groundUnitWorldPos } from './damage.js';
 import { boxHitsPart, nearGroundUnit } from './partBoxes.js';
 import { beginHits } from './hits.js';
 import { showHitDirection } from '../ui/threats.js';
+import { destroyAirUnit } from '../entities/airUnits.js';
+import { runHooks } from '../game/hooks.js';
 import { disposeOwned } from '../core/utils.js';
 import { DEBUG_PARAMS } from '../debug/params.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
@@ -282,7 +284,12 @@ export function resolveCollisions() {
     }
     if (!state.isGameOver) {
         for (const au of airUnits) {
-            if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) { triggerGameOver(); break; }
+            if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) {
+                // Direct impact: the other aircraft goes down too (a proxy is owned elsewhere: tell its owner)
+                if (au.proxy) au.proxy.ram?.();
+                else { runHooks('unitHit', au, au.hp, 'missile'); if (au.isRival) au.crashed = true; au.hp = 0; destroyAirUnit(au, { reward: false }); }
+                triggerGameOver(); break;
+            }
         }
     }
     // Player vs Enemy Bullets (flares block damage)

@@ -107,8 +107,21 @@ export const RIVAL = Object.freeze({
     scale: 3,                 // the player's airframe, scaled so it is hittable
     collisionRadius: 10, wingHalfSpan: 14, wingRadius: 5,
     baseHp: 100, hpPerAce: 0.25, xpPerAce: 400,
-    // Sensors
+    // Sensors: a target must be seen (in visual range and in the forward cone, or very close) before the ace attacks
     radarFloor: 25,           // player below groundLevel + this is masked from the radar ping
+    sightCone: 1.1,           // rad either side of the nose the ace can spot a target in
+    nearAwareness: 150,       // closer than this a target is noticed whatever the angle (engine noise, glimpse)
+    trackFactor: 1.3,         // × visualRange: a spotted target is kept until it gets this far
+    pingError: 300,           // Ace Hunt's radar ping is only this accurate: the ace flies to the area, then searches
+    searchTime: 600,          // frames spent at the last known position before giving up and patrolling
+    patrolRadius: 0.6,        // × MAP_BOUNDARY: patrol waypoints (team bots, or an ace with nothing on radar)
+    rotAccelScale: 0.6,       // × the player's rotational acceleration: aces wind up their turns more slowly
+    // Collisions and growth
+    collisionScale: 0.8,      // × (sum of collision radii): aircraft this close collide and both explode
+    xpPerLevel: 250,          // × the ace's level: XP to its next level (kills, markers)
+    maxLevel: 10,
+    pickupRange: 18,          // flying through a collectible heals (+ a missile); a marker gives XP
+    pickupCooldown: 1200,     // frames before the same ace can use the same pickup again
     // Flight
     fineAimAngle: 0.35, yawAuthority: 0.6,
     cornerAngle: 0.9, cornerSpeed: 0.55, parkRange: 120,
@@ -132,7 +145,7 @@ export const RIVAL = Object.freeze({
 //   mslAmmo 0 = no missiles · mslLockTime frames on target before launch · flareAmmo 0 = no flares
 //   evades       break-turns when the player's nose is on it · gunDamage / hp × base values
 export const RIVAL_SKILL = Object.freeze({
-    easy:   { label: 'Easy',   skill: 0.3,  skillPerAce: 0.05, skillMax: 0.5,  reactInterval: 40, rateScale: 0.7,  speedScale: 0.85, visualRange: 450, scanInterval: 600, mslAmmo: 0, mslLockTime: 0,   flareAmmo: 0, evades: false, gunDamage: 0.7, hp: 0.8 },
-    medium: { label: 'Medium', skill: 0.5,  skillPerAce: 0.07, skillMax: 0.75, reactInterval: 22, rateScale: 0.88, speedScale: 0.95, visualRange: 600, scanInterval: 360, mslAmmo: 1, mslLockTime: 150, flareAmmo: 1, evades: true,  gunDamage: 1,   hp: 1 },
-    hard:   { label: 'Hard',   skill: 0.75, skillPerAce: 0.05, skillMax: 0.95, reactInterval: 10, rateScale: 1,    speedScale: 1,    visualRange: 800, scanInterval: 180, mslAmmo: 2, mslLockTime: 90,  flareAmmo: 2, evades: true,  gunDamage: 1.3, hp: 1.25 },
+    easy:   { label: 'Easy',   skill: 0.3,  skillPerAce: 0.05, skillMax: 0.5,  reactInterval: 40, rateScale: 0.5,  speedScale: 0.85, visualRange: 450, scanInterval: 600, mslAmmo: 0, mslLockTime: 0,   flareAmmo: 0, evades: false, gunDamage: 0.7, hp: 0.8 },
+    medium: { label: 'Medium', skill: 0.5,  skillPerAce: 0.07, skillMax: 0.75, reactInterval: 22, rateScale: 0.62, speedScale: 0.95, visualRange: 600, scanInterval: 360, mslAmmo: 1, mslLockTime: 150, flareAmmo: 1, evades: true,  gunDamage: 1,   hp: 1 },
+    hard:   { label: 'Hard',   skill: 0.75, skillPerAce: 0.05, skillMax: 0.95, reactInterval: 10, rateScale: 0.75, speedScale: 1,    visualRange: 800, scanInterval: 180, mslAmmo: 2, mslLockTime: 90,  flareAmmo: 2, evades: true,  gunDamage: 1.3, hp: 1.25 },
 });

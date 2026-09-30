@@ -11,20 +11,24 @@
  * spatial grid, the minimap and kill rewards work without changes. ai.js hands it to updateRival()
  * instead of the generic velocity/orbit movement.
  *
- * Sensors: inside the tier's visualRange the ace tracks continuously; outside it, a map-wide radar ping
- * every scanInterval refreshes the player's last known position (extrapolated in between).
- * A player below groundLevel + RIVAL.radarFloor is masked by terrain and missed by the ping.
+ * Sensors: the ace attacks only what it has seen — a target inside the tier's visualRange and the forward sight
+ * cone (or very close) — and keeps it while it stays within trackFactor × visualRange. Until then an Ace Hunt ace
+ * gets a rough radar ping every scanInterval (RIVAL.pingError off; a target below groundLevel + radarFloor is
+ * masked), flies to the area and searches; a team bot (quiet) patrols the map instead. Hurt or out of ammo, it
+ * patrols towards pickups.
+ * Aces collide with other aircraft (both explode), gain XP from kills and markers (levels: HP, skill, full ammo)
+ * and heal on collectibles.
  */
 import { MAP_BOUNDARY, RIVAL, acceleration, ceilingLevel, deceleration, groundLevel, maxPitchRate, maxRollRate, maxSpeed, maxYawRate, minSpeed, rotAccel } from '../config.js';
 import { state } from '../state.js';
 import { scene } from '../core/scene.js';
 import { _up3 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
-import { airUnits, enemyBullets, missiles } from './registry.js';
+import { airUnits, collectibles, enemyBullets, markers, missiles } from './registry.js';
 import { spawnEnemyBullet } from '../combat/enemyBullets.js';
 import { damagePlayer } from '../combat/collision.js';
 import { createExplosion } from '../effects/effects.js';
-import { createUnitLabel } from '../ui/labels.js';
+import { createUnitLabel, updateUnitLabel } from '../ui/labels.js';
 import { showNotification } from '../ui/notifications.js';
 import { destroyAirUnit } from './airUnits.js';
 import { difficulty, onSettingChange, rivalSkill, setSetting, settings } from '../core/settings.js';
@@ -47,14 +51,30 @@ let targetsFn = () => [localTarget], remoteHit = null;
 export function setRivalTargets(targets, onRemoteHit) { targetsFn = targets || (() => [localTarget]); remoteHit = onRemoteHit || null; }
 export const localRivalTarget = localTarget;
 let T = localTarget; // the target of the ace being updated this frame
-function pickTarget(au) {
+/** The target the ace can see: keeps a spotted one while in tracking range, else the nearest newly spotted, else null. */
+function acquire(au, tier) {
+    const pos = au.group.position, cur = au.ai.targetId != null ? targetById(au.ai.targetId, au) : null;
+    if (cur && cur.alive && cur.position.distanceTo(pos) < tier.visualRange * RIVAL.trackFactor) return cur;
+    const cosCone = Math.cos(RIVAL.sightCone);
     let best = null, bestD = Infinity;
     for (const t of targetsFn(au)) {
         if (!t.alive) continue;
-        const d = t.position.distanceToSquared(au.group.position) * (t.id === au.ai.targetId ? 0.5 : 1); // sticky: switch only for a clearly closer target
-        if (d < bestD) { bestD = d; best = t; }
+        _tmp.subVectors(t.position, pos);
+        const d = _tmp.length();
+        if (d > tier.visualRange || d >= bestD) continue;
+        if (d > RIVAL.nearAwareness && _fwd.dot(_tmp.divideScalar(d)) < cosCone) continue; // behind or beside: not seen
+        best = t; bestD = d;
     }
     au.ai.targetId = best ? best.id : null;
+    return best;
+}
+/** Radar intel for an Ace Hunt ace: the nearest target it may hunt, or null. */
+function nearestTarget(au) {
+    let best = null, bestD = Infinity;
+    for (const t of targetsFn(au)) {
+        const d = t.alive ? t.position.distanceToSquared(au.group.position) : Infinity;
+        if (d < bestD) { bestD = d; best = t; }
+    }
     return best;
 }
 const targetById = (id, au) => targetsFn(au).find(t => t.id === id) || null;
@@ -103,6 +123,7 @@ export function spawnRival() {
     const hp = Math.round(RIVAL.baseHp * tier.hp * (1 + RIVAL.hpPerAce * (aceLevel - 1)) * state.playerDamageMultiplier);
     const label = createUnitLabel(`ACE ${callsign}`, aceLevel, hp, hp); scene.add(label.sprite);
     const au = makeAce({ callsign, group, hp, label, xp: RIVAL.xpPerAce * aceLevel, tier });
+    au.level = aceLevel;
     airUnits.push(au); rivals.push(au); activeRival = au;
     banner(`☠ ACE ${callsign.toUpperCase()} (LV ${aceLevel} · ${tier.label.toUpperCase()}) IS HUNTING YOU`, 'threat');
     return au;
@@ -125,7 +146,7 @@ function makeAce({ callsign, group, hp, label, xp, tier }) {
             flareAmmo: tier.flareAmmo, flareReload: 0, flareTimer: 0,
         },
         ai: {
-            mode: 'hunt', timer: 0, react: 0, evadeCd: 0, scan: 0, sinceFix: 0, contact: false,
+            mode: 'hunt', timer: 0, react: 0, evadeCd: 0, scan: 0, sinceFix: 0, contact: false, waypoint: null,
             lastKnown: plane.position.clone(), lastVel: new THREE.Vector3(), breakDir: new THREE.Vector3(),
         },
     };
@@ -143,6 +164,7 @@ export function spawnAce({ callsign, level = 1, position, heading = 0, color, fr
     const label = createUnitLabel(callsign, level, hp, hp); scene.add(label.sprite);
     const au = makeAce({ callsign, group, hp, label, xp, tier });
     Object.assign(au, { quiet: true, friendly, isHostile: !friendly, blipColor, blipLabel: callsign, level });
+    au.ai.sinceFix = RIVAL.searchTime; // no intel at spawn: patrol until something is spotted
     airUnits.push(au); rivals.push(au);
     return au;
 }
@@ -186,38 +208,42 @@ export function updateRivalSystem(dt) {
 
 /** Per-frame brain + flight for one ace. Called from the airUnits loop in ai.js. */
 export function updateRival(au, dt) {
-    const { ai, fl, wpn, group } = au, pos = group.position, target = pickTarget(au), alive = !!target && !(target.local && state.isGameOver);
-    T = target || localTarget;
+    const { ai, fl, wpn, group } = au, pos = group.position, tier = rivalSkill();
     _fwd.set(0, 0, 1).applyQuaternion(group.quaternion);
+    const target = acquire(au, tier), alive = !!target && !(target.local && state.isGameOver);
+    T = target || localTarget;
     _pFwd.set(0, 0, 1).applyQuaternion(T.quaternion);
     _pVel.copy(_pFwd).multiplyScalar(T.speed);
     _toP.subVectors(T.position, pos);
-    const dist = _toP.length(), tier = rivalSkill();
+    const dist = _toP.length();
 
-    // 1. Sensors — continuous in visual range, otherwise a map-wide radar ping every scanInterval
-    const visual = alive && dist < tier.visualRange;
+    // 1. Sensors — a seen target is tracked continuously; otherwise Ace Hunt gets a rough radar ping
     ai.sinceFix += dt; ai.scan -= dt;
-    if (visual || (alive && ai.scan <= 0)) {
-        if (!visual) ai.scan = tier.scanInterval;
-        if (visual || T.position.y > groundLevel + RIVAL.radarFloor) {
-            ai.lastKnown.copy(T.position); ai.lastVel.copy(_pVel); ai.sinceFix = 0;
+    if (alive) { ai.lastKnown.copy(T.position); ai.lastVel.copy(_pVel); ai.sinceFix = 0; }
+    else if (!au.quiet && ai.scan <= 0) {
+        ai.scan = tier.scanInterval;
+        const t = nearestTarget(au);
+        if (t && t.position.y > groundLevel + RIVAL.radarFloor) {
+            ai.lastKnown.copy(t.position).add(_tmp.set(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(2 * RIVAL.pingError));
+            ai.lastVel.set(0, 0, 0); ai.sinceFix = 0;
         }
     }
-    if (visual && !ai.contact && T.local && !au.quiet) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
-    ai.contact = visual;
+    if (alive && !ai.contact && T.local && !au.quiet) banner(`⚠ ACE ${au.callsign.toUpperCase()} — VISUAL CONTACT`, 'alert');
+    ai.contact = alive;
     tickWeapons(wpn, dt);
+    if ((ai.pickupScan = (ai.pickupScan ?? 0) - dt) <= 0) { ai.pickupScan = 10; usePickups(au); }
 
-    // 2. Decide: hunt (radar picture) · engage (visual) · evade (timed break turn)
+    // 2. Decide: engage (target in sight) · hunt (flying to where it was seen / pinged) · patrol · evade (timed break)
     ai.timer -= dt; ai.react -= dt; ai.evadeCd -= dt;
-    if (alive) checkThreats(au, dist);
+    checkThreats(au, dist, alive);
     if (ai.mode === 'evade' && ai.timer <= 0) ai.evadeCd = RIVAL.evadeCooldown;
-    if (ai.mode !== 'evade' || ai.timer <= 0) ai.mode = visual ? 'engage' : 'hunt';
+    if (ai.mode !== 'evade' || ai.timer <= 0) ai.mode = alive ? 'engage' : ai.sinceFix < RIVAL.searchTime ? 'hunt' : 'patrol';
 
     // 3. Where the nose should point
-    if (!alive) _des.set(_fwd.x, 0, _fwd.z);                        // player dead: level off and cruise
-    else if (ai.mode === 'evade') _des.copy(ai.breakDir);
+    if (ai.mode === 'evade') _des.copy(ai.breakDir);
     else if (ai.mode === 'engage') leadPoint(au, dist, _des).sub(pos);
-    else _des.copy(ai.lastKnown).addScaledVector(ai.lastVel, Math.min(ai.sinceFix, 240)).sub(pos);
+    else if (ai.mode === 'hunt') _des.copy(ai.lastKnown).addScaledVector(ai.lastVel, Math.min(ai.sinceFix, 240)).sub(pos);
+    else _des.copy(patrolPoint(au)).sub(pos);
     if (_des.lengthSq() < 1e-6) _des.copy(_fwd);
     _des.normalize();
     applySafety(au, _des);
@@ -236,8 +262,14 @@ export function updateRival(au, dt) {
     if (pos.y > ceilingLevel - 2) pos.y = ceilingLevel - 2; // the same altitude limit as the player
     if (pos.y < heightAt(pos.x, pos.z) + 1.5 || Math.abs(pos.x) > MAP_BOUNDARY || Math.abs(pos.z) > MAP_BOUNDARY) {
         au.crashed = true;
-        destroyAirUnit(au, { reward: true });
+        destroyAirUnit(au, { reward: !au.quiet }); // Ace Hunt: counts as the player's kill
         return;
+    }
+    // Mid-air collision with any other aircraft: both explode, like the player on a direct impact
+    for (const other of airUnits) {
+        if (other === au || other.proxy || !(other.hp > 0)) continue;
+        const r = (au.collisionRadius + other.collisionRadius) * RIVAL.collisionScale;
+        if (other.group.position.distanceToSquared(pos) < r * r) { midAir(au, other); return; }
     }
 
     // 6. Weapons
@@ -248,8 +280,9 @@ export function updateRival(au, dt) {
 // --- Flight -----------------------------------------------------------------------------------
 
 // Largest rate from which the ace can still stop on target with rotAccel (bang-bang braking curve)
-const rateFor = (err, max) => Math.sign(err) * Math.min(max, Math.sqrt(2 * rotAccel * Math.abs(err)) * 0.85);
-const approach = (rate, target, dt) => rate + THREE.MathUtils.clamp(target - rate, -rotAccel * dt, rotAccel * dt);
+const ACE_ROT_ACCEL = rotAccel * RIVAL.rotAccelScale;
+const rateFor = (err, max) => Math.sign(err) * Math.min(max, Math.sqrt(2 * ACE_ROT_ACCEL * Math.abs(err)) * 0.85);
+const approach = (rate, target, dt) => rate + THREE.MathUtils.clamp(target - rate, -ACE_ROT_ACCEL * dt, ACE_ROT_ACCEL * dt);
 
 function steer(au, des, dt) {
     const fl = au.fl, g = au.group;
@@ -311,7 +344,7 @@ function leadPoint(au, dist, out) {
     return out.copy(T.position).addScaledVector(_pVel, t);
 }
 
-function checkThreats(au, dist) {
+function checkThreats(au, dist, seen) {
     const { ai, wpn } = au, pos = au.group.position;
     // Player missiles past their drop phase and heading at the ace. While the ace's flares burn they lose lock.
     let inbound = null;
@@ -333,6 +366,7 @@ function checkThreats(au, dist) {
         if (ai.mode !== 'evade' && (tier.evades || reacts)) startBreak(au, _tmp.subVectors(pos, inbound.position).normalize(), 90);
         return;
     }
+    if (!seen) return; // the rest reacts to the target it can see
     // Head-on merge / ram avoidance
     if (dist < 35 || (dist < 90 && _fwd.dot(_pFwd) < -0.5)) {
         startBreak(au, _tmp.subVectors(pos, T.position).normalize(), 40, true);
@@ -461,6 +495,63 @@ function updateRivalMissiles(dt) {
             || Math.abs(m.position.x) > MAP_BOUNDARY || Math.abs(m.position.z) > MAP_BOUNDARY;
         if (hit || out) { createExplosion(m.position, hit ? 0.6 : 0.3); scene.remove(m); rivalMissiles.splice(i, 1); }
     }
+}
+
+// --- Patrol, pickups, growth, collisions ------------------------------------------------------
+
+/** Patrol: the nearest pickup when hurt or dry, else random waypoints over the middle of the map. */
+function patrolPoint(au) {
+    const ai = au.ai, pos = au.group.position;
+    if (au.hp < au.maxHp * 0.5 || (au.wpn.gunAmmo <= 0 && au.wpn.mslAmmo <= 0)) {
+        let best = null, bestD = 1500 ** 2;
+        for (const c of collectibles) { const d = c.position.distanceToSquared(pos); if (d < bestD) { bestD = d; best = c; } }
+        if (best) return best.position;
+    }
+    if (!ai.waypoint || ai.waypoint.distanceToSquared(pos) < 200 ** 2) {
+        const r = MAP_BOUNDARY * RIVAL.patrolRadius;
+        ai.waypoint = new THREE.Vector3((Math.random() * 2 - 1) * r, (groundLevel + ceilingLevel) / 2 + (Math.random() - 0.3) * 60, (Math.random() * 2 - 1) * r);
+    }
+    return ai.waypoint;
+}
+
+/** Collectibles heal (and give a missile back), markers give XP. Aces don't take them away from the players. */
+function usePickups(au) {
+    const pos = au.group.position, now = state._gameElapsed ?? 0, r2 = RIVAL.pickupRange ** 2, used = au.pickups ??= new Map();
+    const fresh = item => now - (used.get(item) ?? -Infinity) > RIVAL.pickupCooldown && item.position.distanceToSquared(pos) < r2;
+    for (const c of collectibles) {
+        if (!fresh(c)) continue;
+        used.set(c, now);
+        au.hp = Math.min(au.maxHp, au.hp + 15);
+        au.wpn.mslAmmo = Math.min(rivalSkill().mslAmmo, au.wpn.mslAmmo + 1);
+        updateUnitLabel(au.label, au.hp);
+    }
+    for (const m of markers) if (fresh(m)) { used.set(m, now); rewardAce(au, 15); }
+}
+
+/** XP for an ace (kills, markers): each level adds HP, skill and a full load of ammo. */
+export function rewardAce(au, xp) {
+    if (!au || !(au.hp > 0)) return;
+    au.xp = (au.xp ?? 0) + xp;
+    for (let need = RIVAL.xpPerLevel * (au.level ?? 1); au.xp >= need && (au.level ?? 1) < RIVAL.maxLevel; need = RIVAL.xpPerLevel * au.level) {
+        au.xp -= need;
+        au.level = (au.level ?? 1) + 1;
+        const add = Math.round(au.maxHp * 0.15), tier = rivalSkill();
+        au.maxHp += add; au.hp = Math.min(au.maxHp, au.hp + add + Math.round(au.maxHp * 0.2));
+        Object.assign(au.wpn, { gunAmmo: RIVAL.gunAmmo, gunReload: 0, mslAmmo: tier.mslAmmo, mslReload: 0, flareAmmo: tier.flareAmmo, flareReload: 0 });
+        au.label.level = au.level; au.label.maxHp = au.maxHp; updateUnitLabel(au.label, au.hp);
+        runHooks('aceLevelUp', au);
+    }
+}
+
+/** Two aircraft met: both go down (no reward). Shared enemy units report it like a hit, so other players see it too. */
+function midAir(au, other) {
+    createExplosion(_tmp.lerpVectors(au.group.position, other.group.position, 0.5), 1.5);
+    au.crashed = true;
+    destroyAirUnit(au, { reward: false });
+    if (other.isRival) other.crashed = true;
+    else runHooks('unitHit', other, other.hp, 'missile'); // multiplayer co-op: the others destroy their copy
+    other.hp = 0;
+    destroyAirUnit(other, { reward: false });
 }
 
 // --- HUD ---------------------------------------------------------------------------------------

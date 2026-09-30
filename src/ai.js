@@ -32,6 +32,7 @@ export function updateAI(dt) {
     // Air units
     for (let i = airUnits.length - 1; i >= 0; i--) {
         const au = airUnits[i];
+        if (!au) continue; // an earlier unit's mid-air collision removed two at once
         if (au.proxy) continue; // owned elsewhere (e.g. another player): its owner moves it and it never shoots from here
         if (au.hp <= 0) continue;
         if (au.isRival) { updateRival(au, dt); continue; } // own flight model and weapons (may remove itself)

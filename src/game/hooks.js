@@ -7,6 +7,7 @@
  *   worldReady  ()           the world is populated: every unit exists (main.js)
  *   unitHit     (target, amount, weapon)  the player's weapon damaged a unit (combat/hits.js; not for remote-applied hits)
  *   rivalDown   (ace)        an ace left the sky: shot down or crashed (entities/rival.js)
+ *   aceLevelUp  (ace)        an ace gained a level (entities/rival.js rewardAce)
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them
  */
