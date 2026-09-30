@@ -8,6 +8,7 @@ import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { spawnRival, toggleRivalMode } from './entities/rival.js';
 import { RULES } from './game/rules.js';
+import { setSetting, settings } from './core/settings.js';
 import { touchAxes, updateTouchAxes } from './ui/touch.js';
 import { tryDeployFlares, tryDropBomb, tryDropNapalm, tryFireMissile } from './combat/weapons.js';
 import { toggleMute } from './audio.js';
@@ -72,6 +73,7 @@ document.addEventListener('keydown', e => {
         else if (k === 'n') { wingTrailL.pts.visible = !wingTrailL.pts.visible; wingTrailR.pts.visible = !wingTrailR.pts.visible; }
         else if (k === 'c') _toggleColorMode();
         else if (k === 'v') showNotification(toggleMute() ? 'Sound off (V)' : 'Sound on (V)', false, { local: true });
+        else if (k === 't') { setSetting('timeOfDay', settings.timeOfDay === 'night' ? 'day' : 'night'); showNotification(settings.timeOfDay === 'night' ? '☾ Night (T)' : '☀ Day (T)', false, { local: true }); }
     }
     if (state.isPaused) return;
     if (held) { keys[held] = true; return; }

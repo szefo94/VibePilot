@@ -65,7 +65,7 @@ function place(kind, count, spawn) {
 }
 
 export function createAllUnits() {
-    createIslets(10); createObstacles();
+    createIslets(10);
     if (RULES.enemies) {
         if (RULES.roamingFighters) for (let i = 0; i < numEnemies; i++) spawnSingleEnemy();
         place('carrierGroup', numCarrierGroups, p => spawnCarrierStrikeGroup(p.x, p.z));
@@ -73,6 +73,7 @@ export function createAllUnits() {
         place('airbase', numAirbases, p => spawnAirbase(p.x, p.z, p.islet));
         place('forwardBase', numForwardBases, p => spawnForwardBase(p.x, p.z, p.islet));
     }
+    createObstacles(); // sea stacks, clear of the bases
     spawnCollectibleChains(numCollectibleChains);
     spawnHoopChains(numHoopChains);
     // Spawn challenge tubes (cyan, one-pass with orb ratio scoring) and free tubes (orange, open entry)

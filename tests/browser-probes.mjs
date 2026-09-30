@@ -367,6 +367,7 @@ const probes = {
             const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
             for (let i = 0; i < 100 && _searchlights.filter(sl => sl.range === 90).length < 3; i++) await frames(2);
             state.isPaused = true;
+            // Fixed lights besides the pooled searchlights: ambient, hemisphere and sun (world/sky.js) and the muzzle flash
             const lightsInShaders = () => { let n = 0; scene.traverseVisible(o => { if (o.isLight) n++; }); return n; };
             await frames(3);
             const before = { lights: lightsInShaders(), programs: renderer.info.programs.length };
@@ -379,7 +380,7 @@ const probes = {
             await frames(2);
             let nearestLit = false;
             scene.traverseVisible(o => { if (o.isPointLight && o.intensity > 0 && o.position.distanceTo(target.worldPos) < 0.01) nearestLit = true; });
-            return { budget: LIGHT_BUDGET, before, after, nearestLit, pass: before.lights <= LIGHT_BUDGET + 3 && after.lights === before.lights && after.programs === before.programs && nearestLit };
+            return { budget: LIGHT_BUDGET, before, after, nearestLit, pass: before.lights <= LIGHT_BUDGET + 4 && after.lights === before.lights && after.programs === before.programs && nearestLit };
         });
     },
     // #15 colour-lines mode covers objects spawned while it is on and keeps no per-mesh state

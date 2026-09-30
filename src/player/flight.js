@@ -101,5 +101,7 @@ export function updatePhysics(dt) {
     updateWingTrail(wingTrailL, _wingTipL);
     updateWingTrail(wingTrailR, _wingTipR);
     // Boundary check
-    if (plane.position.y < heightAt(plane.position.x, plane.position.z) + 1.5 || plane.position.y > ceilingLevel - 1.5 || Math.abs(plane.position.x) > MAP_BOUNDARY || Math.abs(plane.position.z) > MAP_BOUNDARY) triggerGameOver();
+    // Altitude limit: held at the top and nosed gently down (the open sky has no ceiling to crash into)
+    if (plane.position.y > ceilingLevel - 2) { plane.position.y = ceilingLevel - 2; state.pitchRate = Math.max(state.pitchRate, 0.006); }
+    if (plane.position.y < heightAt(plane.position.x, plane.position.z) + 1.5 || Math.abs(plane.position.x) > MAP_BOUNDARY || Math.abs(plane.position.z) > MAP_BOUNDARY) triggerGameOver();
 }

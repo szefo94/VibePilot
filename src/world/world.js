@@ -1,17 +1,17 @@
 /** Static environment (ground, water, ceiling) and procedural islets with polygon queries. */
-import { MAP_BOUNDARY, ceilingLevel, groundLevel, waterLevel } from '../config.js';
+import { MAP_BOUNDARY, groundLevel, waterLevel } from '../config.js';
 import { scene } from '../core/scene.js';
 import { markShared, randomRange } from '../core/utils.js';
 import { initTerrain } from './terrain.js';
 
 // --- Environment ---
 export const caveWallMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.9 }));
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), caveWallMaterial);
+const SEA_SIZE = 12000; // past the camera's far plane: the fog hides the edge
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE), caveWallMaterial);
 ground.rotation.x = -Math.PI / 2; ground.position.y = groundLevel; scene.add(ground);
-const water = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), new THREE.MeshStandardMaterial({ color: 0x001e3d, roughness: 0.2, metalness: 0.1 }));
+export const waterMaterial = markShared(new THREE.MeshStandardMaterial({ color: 0x1d5c7e, roughness: 0.25, metalness: 0.15 })); // colour: world/sky.js
+const water = new THREE.Mesh(new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE), waterMaterial);
 water.rotation.x = -Math.PI / 2; water.position.y = waterLevel; scene.add(water);
-const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(MAP_BOUNDARY * 2, MAP_BOUNDARY * 2), caveWallMaterial);
-ceiling.rotation.x = Math.PI / 2; ceiling.position.y = ceilingLevel; scene.add(ceiling);
 // --- Islets ---
 // ISLET_MODE: 'A' = midpoint displacement (organic), 'B' = Koch snowflake (geometric)
 const ISLET_MODE          = 'A';

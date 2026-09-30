@@ -13,7 +13,11 @@
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 
-/** One part: geometry, colour (hex or THREE.Color), placement { x, y, z, rx, ry, rz, sx, sy, sz, s }. */
+/**
+ * One part: geometry, colour (hex or THREE.Color), placement { x, y, z, rx, ry, rz, sx, sy, sz, s, order }.
+ * Rotations use three.js Euler order 'XYZ' by default, which applies rz first and rx last; pass order: 'ZYX' to
+ * apply rx first (e.g. lay a cylinder down with rx, then turn it about the vertical with ry).
+ */
 export function part(geo, color, t = {}) { return { geo, color, t }; }
 
 /** Merge parts into one non-indexed BufferGeometry with position, normal and color. The part geometries are consumed. */
@@ -21,7 +25,7 @@ export function bake(parts) {
     const pos = [], nor = [], col = [];
     for (const { geo, color, t } of parts) {
         const g = geo.index ? geo.toNonIndexed() : geo;
-        _e.set(t.rx || 0, t.ry || 0, t.rz || 0);
+        _e.set(t.rx || 0, t.ry || 0, t.rz || 0, t.order || 'XYZ');
         _m.compose(_p.set(t.x || 0, t.y || 0, t.z || 0), _q.setFromEuler(_e), _s.set(t.sx ?? t.s ?? 1, t.sy ?? t.s ?? 1, t.sz ?? t.s ?? 1));
         g.applyMatrix4(_m);
         if (!g.attributes.normal) g.computeVertexNormals();

@@ -20,9 +20,9 @@
     }
 })();
 export const scene = new THREE.Scene();
-const caveColor = 0x454545;
-scene.background = new THREE.Color(caveColor);
-scene.fog = new THREE.FogExp2(caveColor, 0.002);
+// Background and fog colours come from world/sky.js (time of day)
+scene.background = new THREE.Color(0xbad3e6);
+scene.fog = new THREE.FogExp2(0xbad3e6, 0.00085);
 export const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
 camera.position.set(0, 0, 25);
 camera.lookAt(0, 0, 0);
@@ -30,10 +30,11 @@ export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreferen
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 // --- Lighting ---
-const ambientLight = new THREE.AmbientLight(0xaaaaaa, 0.6);
-scene.add(ambientLight);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-directionalLight.position.set(30, 80, 50);
-scene.add(directionalLight);
+// --- Lighting (colours and intensities set by world/sky.js; never add or remove lights at runtime) ---
+export const ambientLight = new THREE.AmbientLight(0xffffff, 0.28);
+export const hemiLight = new THREE.HemisphereLight(0xd4e6ff, 0x55633a, 0.7);
+export const sunLight = new THREE.DirectionalLight(0xfff1dc, 1.15);
+sunLight.position.set(50, 60, 62);
+scene.add(ambientLight, hemiLight, sunLight);
 
 window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);

@@ -1,36 +1,16 @@
 /** Player aircraft mesh, collision boxes, aiming laser and target arrows. */
 import { groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
+import { kitMaterial } from '../core/meshkit.js';
+import { playerFuselageGeo, playerTailGeo, playerWingGeo } from '../entities/models.js';
 
 // --- Player Plane ---
+// Model: entities/models.js (four baked pieces). One shared kit material: effects.js blinks it on damage.
 export const plane = new THREE.Group();
-const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-const tailMaterial = new THREE.MeshStandardMaterial({ color: 0x001f5a });
-const fuselageGeo = new THREE.CylinderGeometry(0.45, 0.6, 4, 12); fuselageGeo.rotateX(Math.PI / 2);
-const body = new THREE.Mesh(fuselageGeo, bodyMaterial);
-const noseGeo = new THREE.ConeGeometry(0.45, 1.2, 12); noseGeo.rotateX(Math.PI / 2);
-const nose = new THREE.Mesh(noseGeo, bodyMaterial); nose.position.set(0, 0, 2.6);
-const leftWing = new THREE.Mesh(new THREE.BoxGeometry(6, 0.2, 1.5), bodyMaterial); leftWing.position.x = -3;
-const rightWing = new THREE.Mesh(new THREE.BoxGeometry(6, 0.2, 1.5), bodyMaterial); rightWing.position.x = 3;
-const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1), tailMaterial); tailFin.position.set(0, 0.75, -1.8);
-const hStab = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.15, 0.8), bodyMaterial); hStab.position.set(0, 0, -1.8);
-export const corePlaneComponents = [body, nose, leftWing, rightWing, tailFin, hStab];
+const planeMaterial = kitMaterial({ metalness: 0.25, roughness: 0.6 });
+export const corePlaneComponents = [playerFuselageGeo, playerWingGeo(-1), playerWingGeo(1), playerTailGeo].map(g => new THREE.Mesh(g, planeMaterial));
 plane.add(...corePlaneComponents);
-// --- Body upgrades ---
-const attachMat = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.7 });
-// Wing barrel launchers — one tube at each wing tip
-const barrelGeo = new THREE.CylinderGeometry(0.09, 0.09, 1.1, 6); barrelGeo.rotateX(Math.PI / 2);
-const leftBarrel  = new THREE.Mesh(barrelGeo, attachMat); leftBarrel.position.set(-5.9, -0.12, 0.55);
-const rightBarrel = new THREE.Mesh(barrelGeo, attachMat); rightBarrel.position.set(5.9, -0.12, 0.55);
-// Bomb pod — slightly larger horizontal cylinder under centre body
-const bombPodGeo = new THREE.CylinderGeometry(0.28, 0.28, 2.0, 8); bombPodGeo.rotateX(Math.PI / 2);
-const bombPod = new THREE.Mesh(bombPodGeo, attachMat); bombPod.position.set(0, -0.78, 0.2);
-// Napalm containers — two small cylinders under rear body
-const napPodGeo = new THREE.CylinderGeometry(0.17, 0.2, 1.4, 6); napPodGeo.rotateX(Math.PI / 2);
-const napPodL = new THREE.Mesh(napPodGeo, attachMat); napPodL.position.set(-0.36, -0.68, -1.4);
-const napPodR = new THREE.Mesh(napPodGeo, attachMat); napPodR.position.set( 0.36, -0.68, -1.4);
-plane.add(leftBarrel, rightBarrel, bombPod, napPodL, napPodR);
-export const _planeMaterials = [bodyMaterial, tailMaterial, attachMat]; // for player blink-on-damage (idea 3)
+export const _planeMaterials = [planeMaterial]; // for player blink-on-damage (idea 3)
 plane.position.set(0, groundLevel + 20, 0);
 scene.add(plane);
 export const planePartBoxes = corePlaneComponents.map(() => new THREE.Box3());

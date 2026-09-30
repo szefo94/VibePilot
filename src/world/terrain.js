@@ -154,7 +154,7 @@ export function maxHeightNear(x, z, r) {
 
 // --- Colours (low-poly palette) ---
 const C = {
-    sand: new THREE.Color(0xc9b98a), wetSand: new THREE.Color(0x9c8d63), grass: new THREE.Color(0x5f7d3b), grass2: new THREE.Color(0x486a2e),
+    sand: new THREE.Color(0xb3a57a), wetSand: new THREE.Color(0x8c7f5a), grass: new THREE.Color(0x5f7d3b), grass2: new THREE.Color(0x486a2e),
     scrub: new THREE.Color(0x6f7445), rock: new THREE.Color(0x6e665c), rock2: new THREE.Color(0x857d72), peak: new THREE.Color(0xa7a197),
     pad: new THREE.Color(0x6b6448), seabed: new THREE.Color(0x3d5a5c),
 };
