@@ -153,10 +153,11 @@ function makeAce({ callsign, group, hp, label, xp, tier }) {
 }
 
 /**
- * An ace outside Ace Hunt (e.g. multiplayer team bots): no banners, own level and colour. `friendly` aces are on the
+ * An ace outside Ace Hunt (e.g. multiplayer team bots): no banners, own level and colour. `waypoint`: where it flies
+ * first; `patrol`: { center, radius } for the waypoints after that. `friendly` aces are on the
  * player's side: the player's weapons, lock-on and minimap treat them as allies. Returns the air unit.
  */
-export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level }) {
+export function spawnAce({ callsign, level = 1, position, heading = 0, color, friendly = false, blipColor, xp = RIVAL.xpPerAce * level, waypoint = null, patrol = null }) {
     const group = createRivalVisual(color);
     group.position.copy(position); group.rotation.set(0, heading, 0);
     scene.add(group);
@@ -165,6 +166,8 @@ export function spawnAce({ callsign, level = 1, position, heading = 0, color, fr
     const au = makeAce({ callsign, group, hp, label, xp, tier });
     Object.assign(au, { quiet: true, friendly, isHostile: !friendly, blipColor, blipLabel: callsign, level });
     au.ai.sinceFix = RIVAL.searchTime; // no intel at spawn: patrol until something is spotted
+    if (waypoint) au.ai.waypoint = waypoint.clone(); // first leg of the patrol (e.g. multiplayer's flag)
+    au.patrol = patrol; // { center: Vector3, radius }: where later waypoints fall (default: the middle of the map)
     airUnits.push(au); rivals.push(au);
     return au;
 }
@@ -508,8 +511,8 @@ function patrolPoint(au) {
         if (best) return best.position;
     }
     if (!ai.waypoint || ai.waypoint.distanceToSquared(pos) < 200 ** 2) {
-        const r = MAP_BOUNDARY * RIVAL.patrolRadius;
-        ai.waypoint = new THREE.Vector3((Math.random() * 2 - 1) * r, (groundLevel + ceilingLevel) / 2 + (Math.random() - 0.3) * 60, (Math.random() * 2 - 1) * r);
+        const c = au.patrol?.center, r = au.patrol?.radius ?? MAP_BOUNDARY * RIVAL.patrolRadius;
+        ai.waypoint = new THREE.Vector3((c?.x ?? 0) + (Math.random() * 2 - 1) * r, (groundLevel + ceilingLevel) / 2 + (Math.random() - 0.3) * 60, (c?.z ?? 0) + (Math.random() * 2 - 1) * r);
     }
     return ai.waypoint;
 }
