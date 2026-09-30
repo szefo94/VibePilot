@@ -3,7 +3,8 @@
  *
  *   tdm       team bots: the host keeps each team at TEAM_SIZE pilots — players first, bots fill the rest — and
  *             respawns a bot a few seconds after it goes down. Each spawn flies to the flag first (flag.js), then
- *             patrols around it. A bot hunts the nearest pilot of the other team
+ *             patrols around it. With no enemy pilot close it attacks the enemy bases' units to level up
+ *             (rival.js farms; the shared units stay in sync through coop.js). A bot hunts the nearest pilot of the other team
  *             (player or bot); teammates are never targets. Bot-vs-bot fights are resolved on the host.
  *   pvp/coop  Ace Hunt as in single player (RULES.ace on the host), but its aces hunt every player.
  *
@@ -70,6 +71,8 @@ function targetsFor(ace) {
     if (team !== null) for (const e of teamBots.values()) if (e.au && e.team !== team) list.push(e.target);
     return list;
 }
+/** Every other player's plane, whatever the team: bots keep clear of them (rival.js avoidTraffic). */
+const traffic = () => [...remoteViews()].filter(v => v.shown).map(v => v.group.position);
 /** An ace hit something that isn't this player: another bot (applied here) or a remote player (sent with BOT). */
 function onAceHit(targetId, damage, weapon, ace) {
     if (typeof targetId === 'string' && targetId.startsWith('bot:')) {
@@ -86,7 +89,7 @@ function onAceHit(targetId, damage, weapon, ace) {
 function setHosting(on) {
     hosting = on;
     setRules({ ace: on && !teams }); // Ace Hunt in pvp/coop; tdm has team bots instead
-    setRivalTargets(on ? targetsFor : null, on ? onAceHit : null);
+    setRivalTargets(on ? targetsFor : null, on ? onAceHit : null, on ? traffic : null);
     clearGuestBots();
     if (!on) for (const e of teamBots.values()) despawn(e);
     if (!on) teamBots.clear();
@@ -117,7 +120,7 @@ function reconcileTeams(now) {
         if (e.au || now < e.respawnAt || state.awaitingStart) continue;
         const s = teamRespawn(e.team), heading = 2 * Math.atan2(s.q[1], s.q[3]);
         e.au = spawnAce({ callsign: e.name, position: new THREE.Vector3(...s.p), heading, color: TEAMS[e.team].bot,
-            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), patrol: flagPatrol() }); // to the flag first
+            friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), patrol: flagPatrol(), farms: true }); // to the flag first; farms the bases for XP
         e.au.netBot = e.id;
     }
 }
@@ -280,7 +283,7 @@ export function startBots(mode) {
         hits.damage(ace, m.dmg);
         hits.finish();
     });
-    onHook('unitHit', unit => { if (hosting && unit.isRival) unit.lastHitBy = { player: net.id, team: net.team }; });
+    onHook('unitHit', (unit, amount, weapon, shooter) => { if (hosting && unit.isRival && !shooter) unit.lastHitBy = { player: net.id, team: net.team }; });
     onNet(MSG.BOT_FIRE, m => {
         if (hosting || state._playerDown || state.isGameOver) return;
         if (state.flareTimer > 0 && m.w === 'missile') return; // flares decoy it, like any enemy missile

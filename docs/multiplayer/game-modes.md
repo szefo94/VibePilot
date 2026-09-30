@@ -46,10 +46,14 @@ Each mode keeps its own rooms, so `?mp=pvp&room=x` and `?mp=coop&room=x` are two
 - **Kills and deaths:** every pilot, player or bot, shows `kills K / deaths D` in the roster. The server keeps the records, so every player sees the same numbers. A crash or collision counts as a death with no kill. A bot keeps its record between lives; it drops off the list when a player takes its place, and a player's record is dropped when they leave.
 - **Bots:**
   - They must **see** an enemy before they attack. Until then they patrol around the flag.
-  - They level up from kills: more HP, sharper, full ammo. They heal on collectibles.
+  - When no enemy pilot is close, they attack the enemy bases' units to level up. Those units are shared, so everyone sees them destroyed, and the bot keeps the XP, not a player.
+  - They level up from kills of pilots and units: more HP, sharper, full ammo. They heal on collectibles.
   - A bot comes back about 8 s after it goes down.
   - Flying into any aircraft, a bot included, destroys both planes.
 - **XP:** the enemy bases work as in single-player, so every player can earn XP on them.
+
+### Difficulty
+Each player's **Difficulty** (Settings or the start menu: Easy, Normal or Hard) sets how hard the enemy bases hit that player. The bots and aces fly with the **host's** difficulty.
 
 ### PvP and co-op: Ace Hunt
 - **The ace:** the room's host (the first player in) runs Ace Hunt. An ace launches about 90 s into the host's flight, or when the host presses H.
