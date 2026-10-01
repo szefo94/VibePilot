@@ -5,6 +5,7 @@
 > Last pruned 2026-10-01: removed the win condition (mission complete), named boss aircraft (the aces, with levels), the
 > hit-direction arc, engine hum and wind, explosion scale by weapon and saved settings, which all exist now.
 > Multiplayer plans live in MULTIPLAYER.md on the `multiplayer` branch.
+> Design research on what makes fighter-plane games good, with a recommended order for VibePilot: docs/design/fighter-game-design.md.
 
 ---
 
