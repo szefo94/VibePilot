@@ -52,12 +52,6 @@ function partHelpers(root, color) {
     });
     return out;
 }
-/** Air units: the sphere planes and bullets collide with (world radius, whatever the model's scale). */
-function sphereHelper(group, radius) {
-    const r = sharedResources(), m = new THREE.Mesh(r.sphereGeo, r.airMat), s = group.scale.x || 1;
-    m.scale.setScalar(radius / s);
-    const out = []; attach(group, m, out); return out;
-}
 function wireHelper(owner, geometry, material) {
     const out = [];
     attach(owner, new THREE.Mesh(geometry, material), out);
@@ -88,7 +82,7 @@ export function updateDebugBoxes() {
     collectibles.forEach(c => track(c, () => { const r = sharedResources(); return wireHelper(c, r.collectibleGeo, r.collectibleMat); }));
     groundUnits.forEach(u => track(u, () => partHelpers(u, 0xff8800)));
     enemies.forEach(e => e.parts.forEach(p => track(p, () => boxHelpers(p, 0xff0000, false))));
-    airUnits.forEach(au => { if (au.hp > 0) track(au.group, () => sphereHelper(au.group, au.collisionRadius)); });
+    airUnits.forEach(au => { if (au.hp > 0) track(au.group, () => partHelpers(au.group, 0xff44ff)); }); // their real shapes (combat/hitShapes.js)
     // Owners that left the world (destroyed, collected, dying) release their helpers
     for (const [owner, list] of _helpers) if (!live.has(owner)) { list.forEach(disposeHelper); _helpers.delete(owner); }
 }

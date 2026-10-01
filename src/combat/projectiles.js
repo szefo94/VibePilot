@@ -9,6 +9,7 @@ import { _enemyBulletPool } from './enemyBullets.js';
 import { createExplosion, updateExplosions } from '../effects/effects.js';
 import { groundUnitWorldPos } from './damage.js';
 import { nearGroundUnit } from './partBoxes.js';
+import { shapeHits } from './hitShapes.js';
 import { beginHits } from './hits.js';
 import { heightAt } from '../world/terrain.js';
 import { disposeGroup } from '../core/utils.js';
@@ -114,7 +115,7 @@ export function updateProjectiles(dt) {
             if (u.userData.hp > 0 && nearGroundUnit(u, m.position, 2, groundUnitWorldPos(u))) { struck = u; break; }
         }
         if (!struck) for (const au of airUnits) {
-            if (au.hp > 0 && !au.friendly && m.position.distanceToSquared(au.group.position) < (au.collisionRadius + 2) ** 2) { struck = au; break; }
+            if (au.hp > 0 && !au.friendly && shapeHits(au.group, m.position, 2.5)) { struck = au; break; }
         }
         if (!struck) for (const en of enemies) {
             if (en.parts.some(p => p.userData.hp > 0 && m.position.distanceToSquared(p.position) < 12 * 12)) { struck = en; break; }

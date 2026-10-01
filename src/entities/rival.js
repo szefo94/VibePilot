@@ -26,6 +26,7 @@ import { scene } from '../core/scene.js';
 import { _up3 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
 import { airUnits, collectibles, enemyBullets, groundUnits, markers, missiles } from './registry.js';
+import { pointsHit } from '../combat/hitShapes.js';
 import { beginHits } from '../combat/hits.js';
 import { canDamageGround, groundUnitWorldPos } from '../combat/damage.js';
 import { _bombBodyGeo, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial } from '../combat/resources.js';
@@ -94,7 +95,7 @@ const ENABLE_DELAY = 5 * 60; // Ace Hunt switched on mid-run (after firstDelay):
 // Module-private scratch (never pass these into spawnEnemyBullet — it uses the shared _sv* scratch)
 const _fwd = new THREE.Vector3(), _pFwd = new THREE.Vector3(), _pVel = new THREE.Vector3(), _toP = new THREE.Vector3();
 const _des = new THREE.Vector3(), _loc = new THREE.Vector3(), _aim = new THREE.Vector3(), _muzzle = new THREE.Vector3();
-const _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3(), _qInv = new THREE.Quaternion();
+const _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3(), _qInv = new THREE.Quaternion(), _hitA = new THREE.Vector3(), _hitB = new THREE.Vector3();
 
 // Session bookkeeping
 const rivals = [];          // every ace spawned and not yet reaped
@@ -287,10 +288,13 @@ export function updateRival(au, dt) {
         return;
     }
     // Mid-air collision with any other aircraft: both explode, like the player on a direct impact
+    const span = RIVAL.wingHalfSpan * 0.8;
+    _tmp2.set(1, 0, 0).applyQuaternion(group.quaternion);
+    const pts = [[pos, 4], [_hitA.copy(pos).addScaledVector(_tmp2, span), 2.5], [_hitB.copy(pos).addScaledVector(_tmp2, -span), 2.5]];
     for (const other of airUnits) {
         if (other === au || other.proxy || !(other.hp > 0)) continue;
-        const r = (au.collisionRadius + other.collisionRadius) * RIVAL.collisionScale;
-        if (other.group.position.distanceToSquared(pos) < r * r) { if (other.isBoss) { au.crashed = true; destroyAirUnit(au, { reward: false }); } else midAir(au, other); return; } // into a boss: only the ace goes down
+        // its centre and wingtips against the other aircraft's real shape (combat/hitShapes.js)
+        if (pointsHit(other.group, pts)) { if (other.isBoss) { au.crashed = true; destroyAirUnit(au, { reward: false }); } else midAir(au, other); return; } // into a boss: only the ace goes down
     }
 
     // 6. Weapons
