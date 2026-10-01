@@ -33,6 +33,7 @@
         - Mouse: Steer · LMB Shoot · RMB Missile<br>
         - Esc: Pause · V: Mute · T: Day/Night · B: Hitboxes<br>
         - Shift+H: Ace Hunt · H: Spawn Ace<br>
+        - K: Summon a boss (Freaky mode)<br>
         <strong style="color: #ffcc00;">(Watch out! Enemies shoot back!)</strong>
     </div>
     <div id="conquered-panel" class="ui-overlay">
@@ -149,9 +150,10 @@
             <button type="button" data-action="difficulty" data-value="normal">Normal</button>
             <button type="button" data-action="difficulty" data-value="hard">Hard</button>
         </div>
+        <button type="button" class="freaky-toggle" data-action="freaky" aria-pressed="false">☣ Freaky mode <span class="freaky-state">off</span></button>
         <details class="menu-controls">
             <summary>Controls</summary>
-            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · T day/night · Esc pause · V mute · Shift+H Ace Hunt</p>
+            <p><b>Keyboard</b>: ↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · Space gun · E bomb · R missiles · Q flares · X napalm · F laser · T day/night · Esc pause · V mute · Shift+H Ace Hunt · K summon a boss</p>
             <p><b>Mouse</b>: move to steer · left button gun · right button missiles</p>
             <p><b>Touch</b>: left wheel pitch and yaw · right wheel throttle (up/down) and roll (Settings → Touch wheels to rearrange) · hold GUN · MSL / FLR / BOMB / NAP / LASER · TILT = steer by tilting the phone (LEVEL recentres) · ⛶ fullscreen</p>
             <p><b>Gamepad</b>: left stick yaw/throttle · right stick roll/pitch · RT gun · A/B bomb · X missiles · Y flares · LB napalm · RB laser · Start pause</p>
@@ -174,6 +176,7 @@
             </select>
         </label>
         <label>Ace Hunt (Shift+H) <input type="checkbox" data-setting="aceHunt"></label>
+        <label>Freaky mode: random giant bosses (K summons one) <input type="checkbox" data-setting="freakyMode"></label>
         <label>Time of day (T)
             <select data-setting="timeOfDay">
                 <option value="day">Day</option>

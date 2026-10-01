@@ -10,6 +10,7 @@ import { refreshGroundUnitWorldPos } from './combat/damage.js';
 import { bakePartBoxes } from './combat/partBoxes.js';
 import { difficulty } from './core/settings.js';
 import { updateRival, updateRivalSystem } from './entities/rival.js';
+import { updateBoss, updateBossSystem } from './entities/bosses.js';
 
 const _targetWorldPosition = new THREE.Vector3();
 export function updateAI(dt) {
@@ -29,6 +30,7 @@ export function updateAI(dt) {
     for (const id of _despawnIds) destroyLogicalEnemy(id, { reward: false }); // recycling, not a kill
     // Ace rivals: missiles, respawns and warnings; each ace flies itself in the loop below
     updateRivalSystem(dt);
+    updateBossSystem(dt); // Freaky mode: boss events, their shots
     // Air units
     for (let i = airUnits.length - 1; i >= 0; i--) {
         const au = airUnits[i];
@@ -36,6 +38,7 @@ export function updateAI(dt) {
         if (au.proxy) continue; // owned elsewhere (e.g. another player): its owner moves it and it never shoots from here
         if (au.hp <= 0) continue;
         if (au.isRival) { updateRival(au, dt); continue; } // own flight model and weapons (may remove itself)
+        if (au.isBoss) { updateBoss(au, dt); continue; }   // Freaky mode boss (entities/bosses.js)
         if (au.velocity) {
             // Interceptor: steer toward player, track altitude
             if (au.isInterceptor && !state.isGameOver) {

@@ -569,6 +569,60 @@ const probes = {
         });
     }, { init: () => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('denied', 'SecurityError'); } }) }),
     // #21 an enabled splash holds the simulation until dismissed
+    // Combo: kills close together raise the multiplier; a close gun kill pays 1.5×
+    async combo(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const P = await import('./src/game/progression.js');
+            const { state } = await import('./src/state.js');
+            const s0 = state.score;
+            P.awardKill(10); P.awardKill(10); P.markCloseKill(true); P.awardKill(10);
+            const c = P.comboState(), gained = state.score - s0;
+            return { multi: c.multi, gained, pass: c.multi === 3 && gained === 10 + 20 + 45 };
+        });
+    },
+    // Lead marker: an ace crossing in front of the nose is marked, with a firing solution in gun range
+    async leadMarker(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const R = await import('./src/entities/rival.js');
+            const { plane } = await import('./src/player/plane.js');
+            const { state } = await import('./src/state.js');
+            const { leadStats } = await import('./src/ui/leadMarker.js');
+            plane.position.set(0, 120, 0); plane.quaternion.identity(); state.speed = 0.4;
+            const ace = R.spawnAce({ callsign: 'Probe', position: new THREE.Vector3(-20, 122, 180), heading: Math.PI / 2 });
+            await new Promise(r => setTimeout(r, 900));
+            const s = leadStats();
+            return { ...s, pass: s.target === ace.id && s.inRange === true && s.dist > 100 && s.dist < 300 };
+        });
+    },
+    // Freaky mode: every boss can appear, only one at a time, has an HP frame, and pays out when shot down
+    async bosses(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const B = await import('./src/entities/bosses.js');
+            const { airUnits } = await import('./src/entities/registry.js');
+            const { beginHits } = await import('./src/combat/hits.js');
+            const { simulate } = await import('./src/game/simulation.js');
+            const { state } = await import('./src/state.js');
+            const frames = n => new Promise(r => { let i = 0; const f = () => (++i >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+            const out = {};
+            for (const kind of Object.keys(B.BOSS_TYPES)) {
+                const au = B.spawnBoss(kind);
+                if (!au) { out[kind] = 'no spot'; continue; }
+                const second = B.spawnBoss();
+                for (let f = 0; f < 260; f++) simulate(1); // emerges
+                await frames(2);
+                const frame = !document.getElementById('boss-frame').hidden && document.querySelector('#boss-frame .bf-name').textContent === au.boss.def.name;
+                const score0 = state.score;
+                const h = beginHits('missile'); h.damage(au, au.hp + 1); h.finish();
+                simulate(1);
+                out[kind] = { second: !!second, phase: au.boss.phase, frame, gone: !airUnits.includes(au), paid: state.score > score0, cleared: B.bossStatus() === null };
+            }
+            const ok = Object.values(out).every(v => typeof v === 'object' && !v.second && v.frame && v.gone && v.paid && v.cleared);
+            return { out, pass: ok && Object.keys(out).length === 6 };
+        });
+    },
     async splash(page) {
         await worldReady(page);
         const during = await page.evaluate(async () => {

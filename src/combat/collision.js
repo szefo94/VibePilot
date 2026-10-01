@@ -287,6 +287,7 @@ export function resolveCollisions() {
             if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) {
                 // Direct impact: the other aircraft goes down too (a proxy is owned elsewhere: tell its owner)
                 if (au.proxy) au.proxy.ram?.();
+                else if (au.isBoss) { /* a boss shrugs it off */ }
                 else { runHooks('unitHit', au, au.hp, 'missile'); if (au.isRival) au.crashed = true; au.hp = 0; destroyAirUnit(au, { reward: false }); }
                 triggerGameOver(); break;
             }

@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Flight feel, lead marker, combo, Freaky mode
+- **Missile warning tones** (`ui/threatTone.js`): slow beeps while an ace locks on, fast beeps once it is locked or a missile is up, and a solid tone when a missile is closer than 300. Flare on the solid tone.
+- **Speed you can feel:** the field of view widens from 75° to 88° with airspeed and dives (less with reduced motion).
+- **Lead marker** (`ui/leadMarker.js`):
+  - **Target:** the hostile closest to your nose. A gun pipper shows where your bullets go, and the lead ring shows where to aim. The ring's spinning arcs close in as your aim improves, with a dotted guide line between the two.
+  - **In gun range and on target**, it turns gold, glows and pulses "» FIRE «".
+  - **Hits and kills:** hits send out a ring, and a kill bursts "SPLASH!".
+- **Combo** (`ui/comboHud.js`): every kill within 5 s of the last raises the multiplier (×2 to ×5) on a draining bar. Gun kills closer than 150 pay ×1.5 score and XP ("CLOSE KILL ×1.5").
+- **Freaky mode** (Settings, the start menu, **K** summons one now): giant bosses as random special events, one at a time.
+  - **The bosses** (`entities/bosses.js`, models in `entities/bossModels.js`):
+    - GORGAZON: a kaiju from the sea, with an atomic-breath beam.
+    - KRAKOTH: a kraken whose tentacles burst from the water under you.
+    - MAGMAROK: a magma golem on a glowing volcano, which lobs lava bombs.
+    - TITAN-9: a mech in a village, with homing missiles and an eye laser.
+    - SPECIMEN 47: an alien that breaks out of a base, spitting acid.
+    - STAHLMOND ZOMBOT: an iron robo-zombie from the dark side of the Moon, firing plasma and a beam.
+  - **Fighting them:** every attack is telegraphed and dodgeable. Below half HP a boss is ENRAGED; after 5 minutes it escapes.
+  - **Interface** (`ui/bossHud.js`): a siren and a big alert, a pulsing vignette, and an HP frame with name, title, distance and bearing. The HP bar is segmented, lost HP trails behind the fill, and the 50 % mark is shown.
+  - **Rewards:** about 900 XP.
+
 ### Three.js r128 → r164
 - Three.js is now the ES module build `three.module.min.js` (r164); `src/core/three.js`, imported first by `main.js`, publishes it as the same global `THREE`, so no game code had to change apart from one renamed constant (`Object3D.DefaultUp`).
 - **The look is kept.** Newer Three.js changed two defaults: colour management (r152) and light units (r155). Colour management is switched off with linear output, and the legacy lights are kept (`renderer.useLegacyLights`, which r164 still has; the browser console shows one deprecation warning). A fixed scene of models rendered on both versions looks the same by day and by night.

@@ -10,6 +10,7 @@
  *   aceLevelUp  (ace)        an ace gained a level (entities/rival.js rewardAce)
  *   aceDropped  (ace, weapon, pos, velocity)  an ace released a bomb or napalm (entities/rival.js)
  *   aceImpact   (weapon, pos)        an ace's bomb or napalm hit the ground
+ *   bossEvent   (event, boss)        Freaky mode: 'spawn' · 'enrage' · 'leaving' · 'escape' · 'defeat' (entities/bosses.js)
  *   playerFired (weapon, detail)  the player fired: 'gun' | 'missile' | 'bomb' | 'napalm' | 'flare' (combat/weapons.js);
  *                            detail holds live/scratch vectors — read them immediately, don't keep them
  */
