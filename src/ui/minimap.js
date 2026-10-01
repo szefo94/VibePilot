@@ -43,10 +43,6 @@ export function updateRadarSnapshot() {
 }
 export function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
-    // The map follows the plane live (terrain, landmarks); blips stay where the last sweep saw them
-    _radarPlayerPos.copy(plane.position);
-    plane.getWorldDirection(_sv1);
-    _radarPlayerAngle = Math.atan2(_sv1.x, _sv1.z);
     // Terrain under everything, turned with the plane like the blips
     const scale0 = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE, getMinimapPoint = wp => ({ x: -(wp.x - _radarPlayerPos.x) * scale0, y: -(wp.z - _radarPlayerPos.z) * scale0 });
     minimapCtx.save();

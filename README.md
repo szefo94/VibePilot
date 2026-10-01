@@ -717,7 +717,7 @@ The minimap operates as a real radar:
 - Three concentric range rings at 33 / 66 / 100 % of the view radius.
 - A rotating sweep line completes one full revolution every 3 s; a pie-slice gradient trail fades behind it.
 - On each sweep completion all entity positions are captured into a frozen `_radarBlips[]` snapshot. Blips do not move between sweeps — they update atomically once every 3 seconds.
-- The map itself (terrain, landmarks) follows the plane live; the blips stay where the last sweep saw them.
+- The terrain layer and landmarks move with that same snapshot, so the whole radar picture refreshes once per sweep.
 
 ### Terrain layer (`ui/terrainMap.js`)
 
