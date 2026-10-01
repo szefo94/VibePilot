@@ -30,7 +30,7 @@ import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, DEFAULT_ROOM,
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 // Public files: the page, its stylesheet, three.js and the game modules. Never .git, server/, node_modules, docs.
-const PUBLIC = /^\/(index\.html|style\.css|three\.min\.js|src\/[\w/.-]+\.(js|css))$/;
+const PUBLIC = /^\/(index\.html|style\.css|three\.module\.min\.js|src\/[\w/.-]+\.(js|css))$/;
 
 const isVec = (a, n) => Array.isArray(a) && a.length === n && a.every(Number.isFinite);
 const round = (a, d) => a.map(v => +v.toFixed(d));

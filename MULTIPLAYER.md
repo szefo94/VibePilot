@@ -102,7 +102,7 @@ git merge master           # bring single-player changes in (conflicts: only the
 - Its own flight, for zero control lag.
 - The server checks every report. A physically impossible report (a teleport, or leaving the map) is dropped, and after three in a row the server sends the client back to its last accepted position (`CORRECT`).
 
-**One server does everything.** The multiplayer server serves the game files and handles WebSocket on **one port**. Players open `https://your-server/?mp`, so there are no cross-origin problems and nothing to configure in the client. It serves only public files (`index.html`, `style.css`, `three.min.js`, `src/**`), never `.git`, `server/` or `node_modules`.
+**One server does everything.** The multiplayer server serves the game files and handles WebSocket on **one port**. Players open `https://your-server/?mp`, so there are no cross-origin problems and nothing to configure in the client. It serves only public files (`index.html`, `style.css`, `three.module.min.js`, `src/**`), never `.git`, `server/` or `node_modules`.
 
 **Multiplayer rules:**
 
@@ -216,7 +216,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `name=` | Your callsign, up to 16 characters | Remembered, or a random one; change it with **Callsign** in the menus |
 | `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `tdm` |
 
-**Messages** (`src/net/protocol.js`, version 8): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
+**Messages** (`src/net/protocol.js`, version 9): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
 
 **Limits:**
 - 10 players per room (two teams of five in tdm), 32 rooms per server.

@@ -18,7 +18,7 @@
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9; // 9: Three.js r164 (seeded maps differ from r128 clients)
 export const DEFAULT_PORT = 8787;
 
 // pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
