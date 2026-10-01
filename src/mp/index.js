@@ -1,8 +1,10 @@
 /**
  * Multiplayer entry point (multiplayer branch). Imported once by main.js; does nothing without ?mp.
  *
- * With ?mp the player joins straight away (room "lobby", mode pvp by default) under their remembered callsign — or
- * a random one (callsigns.js); "Callsign" in the start and pause menus changes it (lobby.js). The session belongs
+ * With ?mp and a room the player joins straight away; opened from the server without a room, the room picker comes
+ * first (rooms.js: the default room of every mode plus any open ones, with players and bots; "Rooms" in the menus
+ * opens it again). The player flies under their remembered callsign — or a random one (callsigns.js); "Callsign"
+ * in the start and pause menus changes it (lobby.js). The session belongs
  * to the server: respawn instead of game over, the server's WELCOME / SPAWN / CORRECT place the player, and other
  * players are drawn from its snapshots. Everything plugs in through game/hooks.js.
  *
@@ -26,7 +28,7 @@ import { respawnPlayer } from '../game/respawn.js';
 import { state } from '../state.js';
 import { aimingLaser, plane } from '../player/plane.js';
 import { FLAGS, MODES, MSG, PVP_DAMAGE, PVP_KILL_XP, TEAMS } from '../net/protocol.js';
-import { net, netSend, onNet, startNet, updateNet } from '../net/net.js';
+import { needsRoomPick, net, netSend, onNet, startNet, updateNet } from '../net/net.js';
 import { clearRemotePlanes, colorKey, cssColor, enablePvpTargets, peerPosition, remoteRadarBlips, updateRemotePlanes } from './remotePlanes.js';
 import { clearRemoteFx, onRemoteFire, updateRemoteFx } from './remoteFx.js';
 import { damagePlayer } from '../combat/collision.js';
@@ -37,6 +39,7 @@ import { defaultCallsign, saveCallsign } from './callsigns.js';
 import { startCoop, updateCoop } from './coop.js';
 import { botKiller, botRoster, startBots, updateBots } from './bots.js';
 import { startFlag } from './flag.js';
+import { openRoomPicker } from './rooms.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
@@ -130,7 +133,8 @@ if (net.enabled) {
         chip.dataset.status = net.status;
         const head = document.createElement('div');
         const mode = MODES[net.mode].label;
-        head.textContent = net.status === 'online' ? `● ${mode} · room ${net.room} · ${net.rtt} ms`
+        head.textContent = net.status === 'picking' ? '○ Multiplayer · choose a room'
+            : net.status === 'online' ? `● ${mode} · room ${net.room} · ${net.rtt} ms`
             : net.status === 'error' ? `✕ Multiplayer: ${net.error}` : `○ ${mode} · connecting${net.error ? ` — ${net.error}` : '…'}`;
         const rows = [head];
         if (net.status === 'online') {
@@ -195,6 +199,12 @@ if (net.enabled) {
             location.assign(u.href);
         });
         box.appendChild(b);
+        // "Rooms": the room picker (joining another room reloads the page onto it)
+        const rooms = document.createElement('button');
+        rooms.type = 'button'; rooms.className = 'mp-callsign'; rooms.textContent = 'Rooms';
+        rooms.addEventListener('click', () => openRoomPicker({ canClose: net.status !== 'picking' }));
+        box.appendChild(rooms);
     }
-    startNet();
+    // Opened without a room: pick one first (src/mp/rooms.js); otherwise join straight away
+    if (needsRoomPick()) { net.status = 'picking'; renderChip(); openRoomPicker(); } else startNet();
 }

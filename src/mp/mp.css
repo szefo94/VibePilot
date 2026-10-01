@@ -30,3 +30,37 @@ body.touch #net-status.folded::after { content: '▾ tap for pilots'; display: b
 #mp-lobby .mp-name-row { display: flex; gap: 8px; align-items: center; }
 #mp-lobby .mp-dice { font-size: 20px; padding: 6px 10px; background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright); cursor: pointer; }
 .menu-buttons .mp-callsign { text-transform: none !important; font-size: 15px !important; }
+/* Room picker (src/mp/rooms.js) */
+#mp-rooms { z-index: 940; background: rgba(0, 8, 4, 0.94); overflow-y: auto; justify-content: flex-start; }
+#mp-rooms > :first-child { margin-top: auto; }
+#mp-rooms > :last-child { margin-bottom: auto; }
+#mp-rooms h2 { margin: 0; letter-spacing: 0.15em; text-transform: uppercase; }
+#mp-rooms .mp-pilot b { color: #fff; }
+#mp-rooms .mp-rename { margin-left: 8px; font-size: 12px; padding: 3px 8px; }
+.mp-room-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; width: min(980px, 94vw); }
+.mp-room-empty { grid-column: 1 / -1; opacity: 0.7; }
+#mp-rooms .mp-room {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; text-align: left; text-transform: none;
+    font: 13px 'Share Tech Mono', 'Courier New', monospace; color: var(--hud-primary); background: rgba(0, 30, 16, 0.85);
+    border: 1px solid var(--hud-border); border-radius: 6px; cursor: pointer;
+}
+#mp-rooms .mp-room:hover:not(:disabled), #mp-rooms .mp-room:focus-visible { border-color: var(--hud-amber); outline: none; box-shadow: 0 0 10px rgba(255, 204, 0, 0.3); }
+#mp-rooms .mp-room.running { border-color: var(--hud-border-bright); }
+#mp-rooms .mp-room.here { border-color: var(--hud-amber); }
+#mp-rooms .mp-room:disabled { cursor: default; opacity: 0.75; }
+.mp-room-title { font-size: 15px; color: #fff; letter-spacing: 0.04em; }
+.mp-room-hint { font-size: 11px; opacity: 0.7; }
+.mp-room-counts { display: flex; gap: 14px; margin-top: 2px; }
+.mp-room-players { color: var(--hud-primary); }
+.mp-room-bots { color: var(--hud-amber); }
+.mp-room-state { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+#mp-rooms .mp-room.running .mp-room-state { color: var(--hud-primary); }
+.mp-new-room { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.mp-new-room input, .mp-new-room select { font: 15px 'Share Tech Mono', 'Courier New', monospace; color: var(--hud-primary); background: rgba(0, 30, 16, 0.9); border: 1px solid var(--hud-border-bright); padding: 5px 8px; }
+body.touch #mp-rooms { gap: 8px; }
+body.touch .mp-room-list { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+#mp-rooms .mp-rename, .mp-new-room button {
+    font: 13px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.06em; color: var(--hud-primary); background: rgba(0, 30, 16, 0.9);
+    border: 1px solid var(--hud-border-bright); border-radius: 4px; padding: 5px 10px; cursor: pointer;
+}
+#mp-rooms .mp-rename:hover, .mp-new-room button:hover, #mp-rooms .mp-rename:focus-visible, .mp-new-room button:focus-visible { border-color: var(--hud-amber); color: var(--hud-amber); outline: none; }

@@ -179,6 +179,12 @@ check('roomCap', extra.first.t === MSG.REJECT && extra.first.reason === 'room fu
 const pong = new Promise(r => a.ws.on('message', raw => { const m = JSON.parse(raw); if (m.t === MSG.PONG) r(m); }));
 a.ws.send(encode(MSG.PING, { c: 42 }));
 check('ping', (await pong).c === 42);
+{
+    const list = (await (await fetch(`${HTTP}/rooms`)).json()).rooms;
+    const byKey = k => list.find(r => `${r.mode}:${r.room}` === k);
+    check('roomsListDefaults', ['tdm', 'pvp', 'coop', 'skies'].every(m => byKey(`${m}:lobby`)?.isDefault), list.map(r => `${r.mode}:${r.room}`));
+    check('roomsListCounts', byKey('tdm:war')?.players === 3 && byKey('tdm:war')?.bots === 7 && byKey('tdm:war')?.running && byKey('pvp:lobby')?.running === false && byKey('pvp:lobby')?.players === 0, byKey('tdm:war'));
+}
 check('health', srv.stats().players === 2 + 3 + 2 + 3 + LIMITS.maxPlayers, srv.stats().players);
 
 for (const c of [a, b, p1, p2, p3, g, g2, r1, b1, r2, ...crowd]) c.ws.close();

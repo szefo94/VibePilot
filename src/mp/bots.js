@@ -49,7 +49,7 @@ const r2 = v => +v.toFixed(2), r4 = v => +v.toFixed(4);
 const feed = (text, hl = false) => showNotification(text, hl, { local: true });
 const flaresOn = at => performance.now() - (at ?? -1e9) < FLARE_DURATION / 60 * 1000;
 
-let enemies = false, teams = false, hosting = false, sendTimer = 0, nextBotId = 1, reconcileTimer = 0;
+let enemies = false, teams = false, hosting = false, sendTimer = 0, nextBotId = 1, reconcileTimer = 0, idleShare = 0;
 
 // --- Host -----------------------------------------------------------------------------------------------------
 const flareAt = new Map();   // peer id → when their flares went out (performance.now())
@@ -339,7 +339,7 @@ export function updateBots(rawDelta) {
     if (hosting) {
         if (teams && (reconcileTimer -= rawDelta) <= 0) { reconcileTimer = 1; reconcileTeams(performance.now()); }
         updateHostViews();
-        if ((sendTimer -= rawDelta * 1000) <= 0) { sendTimer = SEND_MS; if (net.peers.size) shareBots(); else hitsOwed.clear(); }
+        if ((sendTimer -= rawDelta * 1000) <= 0) { sendTimer = SEND_MS; if (net.peers.size) shareBots(); else { hitsOwed.clear(); drops.length = 0; if ((idleShare = (idleShare + 1) % 20) === 0) shareBots(); } } // alone: every 2 s, so the room picker can count the bots
     } else if (net.status === 'online') updateGuestBots();
 }
 

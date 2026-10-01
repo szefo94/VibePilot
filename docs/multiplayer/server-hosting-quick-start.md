@@ -36,9 +36,9 @@ Address options:
 
 | Address | Result |
 |---|---|
-| `http://<server>:<port>/` | PvP + co-op in room `lobby` |
-| `…/?mp=coop` / `…/?mp=skies` | Co-op without damage between players / just flying together |
-| `…/?room=friday` | Room `friday` (a separate world) |
+| `http://<server>:<port>/` | The **room picker**: one room per mode (team deathmatch, PvP, co-op, shared skies) plus any open rooms, with players and bots counted. Click one to join; you can also open a new room by name. |
+| `…/?mp=tdm&room=lobby` | Straight into that mode and room, without the picker (`tdm`, `pvp`, `coop`, `skies`) |
+| `…/?mp=pvp&room=friday` | Room `friday` (a separate world; opened by the first pilot who joins it) |
 | `…/?name=Anna` | Joins as Anna |
 | `…/?sp` | The normal single-player game |
 

@@ -10,7 +10,8 @@
 //   clock     one SNAP of the whole room per tick (LIMITS.tickHz) with the server time, for interpolation
 //   life      DOWN marks a player dead; SPAWN puts them back at their slot after LIMITS.respawnMs
 // PvP hits are routed to their target; in co-op the server tracks the host and hands it over (phases 2–3).
-// GET /health returns room and player counts as JSON. Only the game's own files are served over HTTP.
+// GET /health returns room and player counts as JSON; GET /rooms lists the rooms for the room picker (src/mp/rooms.js).
+// One default room per mode ('lobby') is always listed; a room starts running when its first player joins. Only the game's own files are served over HTTP.
 // The log names each player's IP address and rough location (geo.mjs; --no-geo turns the location lookup off).
 // A live memory line sits under the log in an interactive terminal (memwatch.mjs; --no-mem turns it off).
 import { createServer } from 'node:http';
@@ -24,7 +25,7 @@ import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { clientIp, locate } from './geo.mjs';
 import { startMemWatch } from './memwatch.mjs';
 import { WebSocketServer } from 'ws';
-import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
+import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, DEFAULT_ROOM, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
@@ -42,6 +43,17 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
     let nextId = 1;
     const started = Date.now();
 
+    /** Bots in a running room: tdm fills both teams to TEAM_SIZE; elsewhere what the host last reported (BOT). */
+    const botCount = room => (MODES[room.mode].teams ? Math.max(0, TEAM_SIZE * 2 - room.players.size) : room.bots ?? 0);
+    /** The room picker's list: the default room of every mode (running or not), then every other running room. */
+    const roomList = () => {
+        const row = (mode, name, room) => ({ mode, label: MODES[mode].label, room: name, players: room ? room.players.size : 0, bots: room ? botCount(room) : 0,
+            max: LIMITS.maxPlayers, running: !!room, isDefault: name === DEFAULT_ROOM });
+        const list = Object.keys(MODES).map(mode => row(mode, DEFAULT_ROOM, rooms.get(`${mode}:${DEFAULT_ROOM}`)));
+        for (const room of rooms.values()) if (room.name !== DEFAULT_ROOM) list.push(row(room.mode, room.name, room));
+        return list;
+    };
+
     const stats = () => ({
         uptimeS: Math.round((Date.now() - started) / 1000),
         rooms: [...rooms.values()].map(r => ({ mode: r.mode, room: r.name, seed: r.seed, players: r.players.size })),
@@ -56,6 +68,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             res.writeHead(302, { Location: `/?${q}` }).end();
             return;
         }
+        if (path === '/rooms') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify({ rooms: roomList(), modes: Object.keys(MODES) })); return; }
         if (path === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }).end(JSON.stringify(stats())); return; }
         const rel = path === '/' ? '/index.html' : path;
         if (serveGame && PUBLIC.test(rel) && !rel.includes('..')) {
@@ -214,6 +227,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                         send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +h.dmg || 0)), w: h.w, bot: String(h.bot ?? 'ACE').slice(0, 24), team: h.team === 0 || h.team === 1 ? h.team : null });
                     }
                 }
+                room.bots = m.bots.length; // for the room picker
                 broadcast(room, MSG.BOT, { bots: m.bots, m: m.m, fx: Array.isArray(m.fx) ? m.fx.slice(0, 8) : undefined, from: c.id }, c);
                 break;
             }
@@ -304,7 +318,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         http.once('error', fail);
         http.listen(port, host, () => done({
             port: http.address().port,
-            stats,
+            stats, roomList,
             close: () => new Promise(r => { clearInterval(tickTimer); clearInterval(heartbeat); for (const ws of wss.clients) ws.terminate(); wss.close(); http.close(() => r()); }),
         }));
     });

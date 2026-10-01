@@ -149,7 +149,7 @@ git merge master           # bring single-player changes in (conflicts: only the
 - [x] Client: joins onto the room's map, remote planes with interpolation, roster panel, minimap blips, respawn instead of game over.
 - [x] Configurable port and host; HTTPS (`--tls`, `--public`, own certificates); callsigns; the bare address opens multiplayer (`?sp` = single-player).
 - [x] Tested over the internet (router port 443 → 8443, phone and PC).
-- [ ] Room choice in the lobby (currently `?room=`; default `lobby`).
+- [x] Room picker (`src/mp/rooms.js`, `GET /rooms`): one default room per mode plus every open room, players and bots counted; new rooms by name; **Rooms** in the menus.
 - [ ] Tuning from real play: interpolation delay, report rate, spawn layout (a spawn can face an obstacle on some maps).
 
 **Phase 2: PvP ✅**
@@ -177,7 +177,6 @@ git merge master           # bring single-player changes in (conflicts: only the
 
 **Later**
 - Binary encoding.
-- A room list from `/health`.
 - Reconnecting to the same slot.
 - Spectator mode.
 
@@ -210,7 +209,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 
 | Parameter | Meaning | Default |
 |---|---|---|
-| `?mp=tdm` | Enable multiplayer in that mode (`tdm`, `pvp`, `coop`, `skies`) on the server that served the page. The multiplayer server sends its bare address to `?mp=tdm`. | Off (on when served by the multiplayer server) |
+| `?mp=tdm` | Enable multiplayer in that mode (`tdm`, `pvp`, `coop`, `skies`) on the server that served the page. Without `room=` the room picker comes first. The multiplayer server sends its bare address to `?mp=tdm`. | Off (on when served by the multiplayer server) |
 | `?sp` | Force single-player on the multiplayer server | – |
 | `?mp=wss://host/` | Connect to a different server | – |
 | `room=` | Room name, `[a-z0-9_-]`, up to 24 characters | `lobby` |
@@ -244,6 +243,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `src/mp/coop.js` | Shared enemy bases |
 | `src/mp/bots.js` | Bots: Ace Hunt aces and team bots, on the host and as seen by everyone else |
 | `src/mp/flag.js` | Team deathmatch flag |
+| `src/mp/rooms.js` | Room picker |
 | `src/mp/lobby.js`, `src/mp/callsigns.js` | Callsign prompt and random callsigns |
 | `src/mp/mp.css` | Multiplayer HUD styles |
 | `tests/mp-server.mjs`, `tests/mp-browser.mjs` | Server tests; two-player browser tests |

@@ -6,14 +6,18 @@ GitHub Pages (https://szefo94.github.io/VibePilot/) is always single-player. Mul
 
 ## How to open each mode
 
+The simplest way is the server's bare address (`SERVER/`). It opens the **room picker**, which lists one room per mode plus any rooms players have opened. Each room shows its players and bots, for example `👤 2 / 10 players · 🤖 8 bots`, or *empty · starts when you join*. Click a room to join, or type a name to open a new room of any mode. **Rooms** in the start and pause menus brings the picker back.
+
+To skip the picker, use these addresses:
+
 Replace `SERVER` with your server's address, for example `https://88.156.90.62` or `http://localhost:8787`.
 
 | Mode | Address | In short |
 |---|---|---|
-| **Team deathmatch** (default) | `SERVER/` or `SERVER/?mp=tdm` | Red against Blue, five a side; bots fill the empty places |
-| **PvP** | `SERVER/?mp=pvp` | Everyone for themselves, plus the enemy bases and Ace Hunt |
-| **Co-op** | `SERVER/?mp=coop` | Everyone together against the enemy bases and Ace Hunt |
-| **Shared skies** | `SERVER/?mp=skies` | Just flying together: no enemies, no damage |
+| **Team deathmatch** | `SERVER/?mp=tdm&room=lobby` | Red against Blue, five a side; bots fill the empty places |
+| **PvP** | `SERVER/?mp=pvp&room=lobby` | Everyone for themselves, plus the enemy bases and Ace Hunt |
+| **Co-op** | `SERVER/?mp=coop&room=lobby` | Everyone together against the enemy bases and Ace Hunt |
+| **Shared skies** | `SERVER/?mp=skies&room=lobby` | Just flying together: no enemies, no damage |
 | Single-player on the server | `SERVER/?sp` | The normal game, no connection |
 
 Options can be added to any multiplayer address:

@@ -5,13 +5,14 @@
  *   ?mp=tdm                connect to the server that served this page in that mode (tdm · pvp · coop · skies);
  *                          a bare ?mp means pvp. The multiplayer server sends its bare address here.
  *   ?mp=wss://host/        …or to another server (&mode= picks the mode then)
- *   &room=name             default "lobby"
+ *   &room=name             default "lobby"; without it, a page served by the multiplayer server shows the room picker
+ *                          first (src/mp/rooms.js)
  *   &name=Pilot            shown to other players; without it src/mp/ uses the remembered or a random callsign
  *
  * Joining a room whose map seed differs from ours reloads the page onto the room's seed, so everyone flies the
  * same world. Peers are updated from the server's room snapshots (SNAP); src/mp/ renders them.
  */
-import { cleanName, cleanRoom, decode, DEFAULT_MODE, encode, LIMITS, MODES, MSG, PROTOCOL_VERSION } from './protocol.js';
+import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_ROOM, encode, LIMITS, MODES, MSG, PROTOCOL_VERSION } from './protocol.js';
 
 const params = new URLSearchParams(location.search);
 const sameHost = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/`;
@@ -23,7 +24,7 @@ export const net = {
     enabled: !!url,
     url,
     mode: modeParam,
-    room: cleanRoom(params.get('room')) || 'lobby',
+    room: cleanRoom(params.get('room')) || DEFAULT_ROOM,
     name: cleanName(params.get('name')),
     status: url ? 'connecting' : 'off', // off · connecting · online · error
     error: '',
@@ -33,6 +34,8 @@ export const net = {
     peers: new Map(), // id → { id, name, slot, samples: [{ t, p, q, hp, alive }] (server time, oldest first) }
     clockOffset: Infinity, // min(local receive time − server time): local ms = server ms + clockOffset
 };
+/** Opened from the multiplayer server without a room: show the room picker before connecting. */
+export const needsRoomPick = () => !!url && url === sameHost && !params.has('room');
 export const isHost = () => net.status === 'online' && net.hostId === net.id;
 /** Server time now, estimated from snapshot arrival (lowest observed delay). */
 export const serverNow = () => performance.now() - net.clockOffset;

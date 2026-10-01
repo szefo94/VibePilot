@@ -25,7 +25,7 @@ export const DEFAULT_PORT = 8787;
 // teams: two teams, no friendly fire, bots fill the teams, the server keeps the score
 export const MODES = Object.freeze({
     tdm:   { label: 'Team deathmatch', pvp: true, enemies: true, hostAuthority: true, teams: true },
-    pvp:   { label: 'PvP + co-op', pvp: true,  enemies: true,  hostAuthority: true },
+    pvp:   { label: 'PvP',         pvp: true,  enemies: true,  hostAuthority: true },
     coop:  { label: 'Co-op',       pvp: false, enemies: true,  hostAuthority: true },
     skies: { label: 'Shared skies', pvp: false, enemies: false, hostAuthority: false },
 });
@@ -70,6 +70,8 @@ export function respawnPoint(i, random = Math.random) {
 
 // --- Teams (tdm) ---
 export const DEFAULT_MODE = 'tdm';
+/** Every mode has a default room of this name, always listed by the room picker (GET /rooms). */
+export const DEFAULT_ROOM = 'lobby';
 export const TEAM_SIZE = 5;
 export const TEAMS = Object.freeze([
     { name: 'Red', color: 0xff4d4d, css: '#ff4d4d', bot: 0x8c1a1a },

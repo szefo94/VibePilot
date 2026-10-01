@@ -1,6 +1,6 @@
 // Multiplayer browser checks: a real server and two headless players (host + guest), driven through the live ES
 // modules with dynamic import(). Covers team deathmatch (teams, bots, the flag, kills/deaths, score) and Ace Hunt
-// in PvP. Run with `npm run test:mp-browser`; set BROWSER_PATH to a Chromium-based browser (see browser-probes.mjs).
+// in PvP, and the room picker. Run with `npm run test:mp-browser`; set BROWSER_PATH to a Chromium-based browser (see browser-probes.mjs).
 import { chromium } from 'playwright-core';
 import { startMpServer } from '../server/server.mjs';
 
@@ -100,6 +100,20 @@ try {
     await until(G, async () => (await import('./src/mp/bots.js')).botStats().bots.length === 1 && /☠ ACE/.test(document.getElementById('net-status').innerText), undefined, 15000);
     const g = await stats(G);
     check('pvpAceSharedWithGuest', g.bots.bots.length === 1 && /ACE/.test(g.bots.bots[0].name) && /☠ ACE/.test(g.roster), g.bots.bots);
+
+    // --- Room picker: the bare address lists a room per mode with players and bots; joining one goes there ----
+    const P = await (await browser.newContext({ viewport: { width: 1100, height: 700 } })).newPage();
+    P.on('pageerror', e => errors.push(`P: ${e.message}`));
+    await P.goto(`http://127.0.0.1:${PORT}/`, { timeout: 120000 });
+    await P.waitForSelector('#mp-rooms .mp-room', { timeout: 120000 });
+    const rows = await P.$$eval('#mp-rooms .mp-room', els => els.map(e => e.innerText.replace(/\s+/g, ' ')));
+    check('pickerListsEveryMode', ['Team deathmatch · lobby', 'PvP · lobby', 'Co-op · lobby', 'Shared skies · lobby'].every(t => rows.some(r => r.includes(t))), rows);
+    check('pickerCountsPlayersAndBots', rows.some(r => r.includes('PvP · probe') && r.includes('2 / 10 players') && r.includes('1 bot')), rows.filter(r => r.includes('probe')));
+    if (process.env.SHOT) await P.screenshot({ path: process.env.SHOT });
+    await P.click('#mp-rooms .mp-room:has-text("Shared skies · lobby")');
+    await P.waitForURL(/room=lobby/);
+    const joined = await until(P, async () => { const { net } = await import('./src/net/net.js'); return net.status === 'online' && net.mode === 'skies' && net.room === 'lobby'; }, undefined, 60000);
+    check('pickerJoinsRoom', joined);
 } catch (e) {
     failures++;
     console.log(`FAIL exception ${e.message}`);
