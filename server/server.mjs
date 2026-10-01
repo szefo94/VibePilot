@@ -248,7 +248,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 routeHits(room, c, mode, m.hits, ['boss', 'bite']);
                 for (const e of Array.isArray(m.ev) ? m.ev.slice(0, 6) : []) {
                     const ev = Array.isArray(e) ? e[0] : e, kind = String(m.s?.kind ?? room.bossPos?.name ?? 'boss').toUpperCase();
-                    const line = { spawn: `@ BOSS ${kind} appears`, enrage: `@ ${kind} is enraged`, defeat: `★ BOSS defeated`, escape: `@ ${kind} escaped` }[ev];
+                    const line = { spawn: `@ BOSS ${kind} appears`, enrage: `@ ${kind} is enraged`, reborn: `@ ${kind} rises from its ashes`, defeat: `★ BOSS defeated`, escape: `@ ${kind} escaped` }[ev];
                     if (line) log(paint(ev === 'defeat' ? '1;32' : '1;35', line) + paint('2', ` · ${room.key}`));
                 }
                 room.bossPos = m.s && isVec(m.s.p, 3) ? { name: String(m.s.kind ?? 'boss').slice(0, 16), x: m.s.p[0], z: m.s.p[2] } : m.s ? room.bossPos : null;

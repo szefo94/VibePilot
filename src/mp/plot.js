@@ -117,18 +117,21 @@ function animateProxy(dt) {
     proxy.model.animate(proxy.t, proxy.boss);
     faceAim(proxy.model, aimVector(g.rotation.y, proxy.pt ?? 0, _aim)); // the head points where the host's boss aims
     // The beam, as the host has it
-    const bs = proxy.beamState;
+    const bs = proxy.beamState, shape = bs ? `${bs.w ?? 5}:${bs.cone ? 1 : 0}` : null;
+    if (bs && proxy.beam && proxy.beam.shape !== shape) { scene.remove(proxy.beam.warn, proxy.beam.mesh); proxy.beam = null; } // beam ↔ fire breath
     if (bs && !proxy.beam) {
         const color = proxy.boss.def.shot;
         const warn = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, depthWrite: false }));
-        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
-        scene.add(warn, mesh); proxy.beam = { warn, mesh };
+        const w = bs.w ?? 5; // the beam, or the dragon's / phoenix's widening cone of fire
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(w, bs.cone ? 1.5 : w, 1, 14, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: bs.cone ? 0.7 : 0.85, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        scene.add(warn, mesh); proxy.beam = { warn, mesh, shape };
     }
     if (!bs && proxy.beam) { scene.remove(proxy.beam.warn, proxy.beam.mesh); proxy.beam = null; }
     if (bs && proxy.beam) {
         _v.fromArray(bs.aim);
         for (const m of [proxy.beam.warn, proxy.beam.mesh]) { m.position.fromArray(bs.from).addScaledVector(_v, bs.len / 2); m.quaternion.setFromUnitVectors(_up, _v); m.scale.set(1, bs.len, 1); }
         proxy.beam.warn.visible = !bs.firing; proxy.beam.mesh.visible = bs.firing;
+        if (bs.firing) proxy.beam.mesh.scale.x = proxy.beam.mesh.scale.z = bs.cone ? 0.75 + 0.35 * Math.abs(Math.sin(proxy.t * 23)) : 0.8 + 0.3 * Math.sin(proxy.t * 40);
     }
 }
 
