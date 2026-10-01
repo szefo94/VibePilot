@@ -679,6 +679,12 @@ body:has(#settings-dialog:not([hidden])) #paused { visibility: hidden; }
 #objective-arrow { display: inline-block; margin-right: 8px; color: var(--hud-amber); transition: transform 0.1s linear; }
 .objective-label { text-transform: uppercase; opacity: 0.75; }
 #objective-name { color: var(--hud-amber); }
+#objective-kicker, #objective-bar { display: none; }
+#objective.quest { border-color: rgba(255, 210, 58, 0.55); box-shadow: 0 0 14px rgba(255, 170, 0, 0.25); }
+#objective.quest #objective-kicker { display: block; font-size: 10px; letter-spacing: 0.16em; color: #ffd23a; text-transform: uppercase; margin-bottom: 2px; }
+#objective.quest #objective-name { color: #fff2b0; font-weight: bold; }
+#objective.quest #objective-bar { display: block; height: 3px; margin: 4px 0 2px; background: rgba(255, 210, 58, 0.18); }
+#objective.quest #objective-bar div { height: 100%; background: #ffd23a; box-shadow: 0 0 6px #ffd23a; transition: width 0.3s; }
 .objective-progress { font-size: 11px; opacity: 0.8; }
 #game-over.victory { color: var(--hud-amber); border-color: rgba(255, 204, 0, 0.6); text-shadow: 0 0 10px rgba(255, 204, 0, 0.85); }
 
@@ -906,18 +912,8 @@ body.touch #boss-frame .bf-title { display: none; }
 body.menu-open #parasite-warning { display: none; }
 
 /* Freaky mode quests (ui/questHud.js): tracker, radio comms, banners */
-#quest-tracker { position: fixed; top: 64px; left: 10px; z-index: 105; width: 260px; pointer-events: none; padding: 7px 10px 8px;
     font: 12px 'Share Tech Mono', 'Courier New', monospace; color: #fff; background: rgba(12, 10, 0, 0.72);
     border: 1px solid rgba(255, 210, 58, 0.55); border-left: 3px solid #ffd23a; border-radius: 3px; box-shadow: 0 0 14px rgba(255, 210, 58, 0.25); }
-#quest-tracker[hidden] { display: none; }
-#quest-tracker .qt-arc { font-size: 10px; letter-spacing: 0.16em; color: #ffd23a; text-transform: uppercase; }
-#quest-tracker .qt-title { margin-top: 2px; font: bold 14px 'Orbitron', 'Share Tech Mono', sans-serif; letter-spacing: 0.05em; color: #fff2b0; }
-#quest-tracker .qt-goal { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
-#quest-tracker .qt-dist { color: var(--hud-amber); white-space: nowrap; }
-#quest-tracker .qt-arrow { display: inline-block; margin-right: 4px; transition: transform 0.15s linear; }
-#quest-tracker .qt-bar { height: 4px; margin-top: 5px; background: rgba(255, 210, 58, 0.18); }
-#quest-tracker .qt-bar div { height: 100%; background: #ffd23a; box-shadow: 0 0 6px #ffd23a; transition: width 0.3s; }
-body.questing #instructions { top: 170px; max-height: calc(100vh - 470px); overflow: hidden; }
 #quest-comms { --speaker: #9fe8ff; position: fixed; left: 50%; bottom: 215px; transform: translateX(-50%); z-index: 115; width: min(560px, 80vw); pointer-events: none;
     padding: 8px 12px; background: rgba(0, 8, 12, 0.82); border: 1px solid var(--speaker); border-left-width: 4px; border-radius: 3px;
     font: 14px 'Share Tech Mono', 'Courier New', monospace; color: #e8f6ff; box-shadow: 0 0 16px color-mix(in srgb, var(--speaker) 35%, transparent); }
@@ -934,7 +930,4 @@ body.questing #instructions { top: 170px; max-height: calc(100vh - 470px); overf
 #quest-banner .qb-line { font-size: 14px; letter-spacing: 0.15em; color: #fff; text-shadow: 0 0 6px #000; }
 #quest-banner.done .qb-name { color: #9cff6a; text-shadow: 0 0 12px #2a8a00, 0 2px 0 #000; }
 #quest-banner.arc .qb-name { color: #ffd23a; font-size: clamp(24px, 5vw, 44px); }
-body.menu-open #quest-tracker, body.menu-open #quest-comms, body.menu-open #quest-banner { display: none; }
-body.touch #quest-tracker { top: 52px; width: 200px; font-size: 10px; padding: 4px 7px; }
-body.touch #quest-tracker .qt-title { font-size: 11px; }
-body.touch #quest-comms { bottom: auto; top: 30%; font-size: 12px; }
+body.menu-open body.touch body.touch body.touch #quest-comms { bottom: auto; top: 30%; font-size: 12px; }

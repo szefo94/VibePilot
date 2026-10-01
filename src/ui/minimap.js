@@ -8,6 +8,7 @@ import { airUnits, baseMarkers, collectibles, enemies, groundUnits, markers } fr
 import { tubes } from '../entities/tubes.js';
 import { rivalMissilesInFlight } from '../entities/rival.js';
 import { runHooks } from '../game/hooks.js';
+import { drawLandmarkLabels, drawTerrainLayer } from './terrainMap.js';
 
 let _radarBlips = [];                 // frozen positions updated once per sweep
 const _radarPlayerPos = new THREE.Vector3(); // frozen player world position at snapshot
@@ -37,11 +38,33 @@ export function updateRadarSnapshot() {
         : { wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
     rivalMissilesInFlight().forEach(m => { if (!m.userData.decoyed) _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: '#ff33cc', shape: 'dot' }); });
     baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
-    tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: '#00ccff', shape: 'ring' }); });
+    tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: t.isChallenge ? '#00ccff' : '#ff8800', shape: 'ring', dashed: !t.isChallenge }); }); // dashed = fly-through
     runHooks('radarBlips', _radarBlips); // extra blips from optional systems (game/hooks.js)
 }
 export function updateMinimap() {
     minimapCtx.clearRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+    // The map follows the plane live (terrain, landmarks); blips stay where the last sweep saw them
+    _radarPlayerPos.copy(plane.position);
+    plane.getWorldDirection(_sv1);
+    _radarPlayerAngle = Math.atan2(_sv1.x, _sv1.z);
+    // Terrain under everything, turned with the plane like the blips
+    const scale0 = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE, getMinimapPoint = wp => ({ x: -(wp.x - _radarPlayerPos.x) * scale0, y: -(wp.z - _radarPlayerPos.z) * scale0 });
+    minimapCtx.save();
+    minimapCtx.translate(MINIMAP_SIZE / 2, MINIMAP_SIZE / 2);
+    minimapCtx.rotate(_radarPlayerAngle);
+    if (!drawTerrainLayer(minimapCtx, _radarPlayerPos, scale0, performance.now() / 1000)) islets.forEach(islet => { // relief, contours, landmarks (ui/terrainMap.js); islet outlines until it is baked
+        minimapCtx.fillStyle = 'rgba(85,107,47,0.7)';
+        const ic = getMinimapPoint(islet), ir = islet.radius * scale0;
+        const _rd = MINIMAP_SIZE / 2 + ir;
+        if (ic.x * ic.x + ic.y * ic.y >= _rd * _rd) return;
+        minimapCtx.beginPath();
+        islet.polygon.forEach((pt, k) => {
+            const mp = getMinimapPoint(pt);
+            k === 0 ? minimapCtx.moveTo(mp.x, mp.y) : minimapCtx.lineTo(mp.x, mp.y);
+        });
+        minimapCtx.closePath(); minimapCtx.fill();
+    });
+    minimapCtx.restore();
     // Composite pre-drawn static rings (§3.4)
     minimapCtx.drawImage(_ringsCanvas, 0, 0);
     const playerPos = _radarPlayerPos, scale = (MINIMAP_SIZE / 2) / MINIMAP_VIEW_RANGE;
@@ -72,22 +95,9 @@ export function updateMinimap() {
     minimapCtx.save();
     minimapCtx.translate(MINIMAP_SIZE / 2, MINIMAP_SIZE / 2);
     minimapCtx.rotate(playerAngle);
-    const getMinimapPoint = wp => ({ x: -(wp.x - playerPos.x) * scale, y: -(wp.z - playerPos.z) * scale });
     const compassRadius = MINIMAP_SIZE / 2 - 12;
     minimapCtx.fillStyle = 'rgba(255,255,255,0.8)'; minimapCtx.font = 'bold 12px Arial'; minimapCtx.textAlign = 'center'; minimapCtx.textBaseline = 'middle';
     minimapCtx.fillText('N', 0, -compassRadius); minimapCtx.fillText('S', 0, compassRadius); minimapCtx.fillText('E', compassRadius, 0); minimapCtx.fillText('W', -compassRadius, 0);
-    minimapCtx.fillStyle = 'rgba(85,107,47,0.7)';
-    islets.forEach(islet => {
-        const ic = getMinimapPoint(islet), ir = islet.radius * scale;
-        const _rd = MINIMAP_SIZE / 2 + ir;
-        if (ic.x * ic.x + ic.y * ic.y >= _rd * _rd) return;
-        minimapCtx.beginPath();
-        islet.polygon.forEach((pt, k) => {
-            const mp = getMinimapPoint(pt);
-            k === 0 ? minimapCtx.moveTo(mp.x, mp.y) : minimapCtx.lineTo(mp.x, mp.y);
-        });
-        minimapCtx.closePath(); minimapCtx.fill();
-    });
     // Draw blips from last radar snapshot (positions frozen until next sweep)
     const namedLabels = [];
     _radarBlips.forEach(b => {
@@ -109,13 +119,15 @@ export function updateMinimap() {
             }
         } else if (b.shape === 'ring') {
             minimapCtx.strokeStyle = b.color; minimapCtx.lineWidth = 1.5;
+            if (b.dashed) minimapCtx.setLineDash([3, 3]);
             minimapCtx.beginPath(); minimapCtx.arc(mp.x, mp.y, 6, 0, Math.PI * 2); minimapCtx.stroke();
-            minimapCtx.lineWidth = 1;
+            minimapCtx.setLineDash([]); minimapCtx.lineWidth = 1;
         } else {
             minimapCtx.fillStyle = b.color; minimapCtx.fillRect(mp.x - 1.5, mp.y - 1.5, 3, 3);
         }
     });
     minimapCtx.restore();
+    drawLandmarkLabels(minimapCtx, playerPos, scale, (x, y) => ({ x: cx + x * Math.cos(playerAngle) - y * Math.sin(playerAngle), y: cy + x * Math.sin(playerAngle) + y * Math.cos(playerAngle) }));
     minimapCtx.font = 'bold 10px Arial'; minimapCtx.textAlign = 'left'; minimapCtx.lineWidth = 2;
     namedLabels.forEach(({ sx, sy, name, color }) => {
         minimapCtx.strokeStyle = 'rgba(0,0,0,0.85)'; minimapCtx.strokeText(name, sx + 5, sy + 3);

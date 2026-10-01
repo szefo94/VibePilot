@@ -173,7 +173,7 @@ All menus work with mouse, keyboard (Tab, Enter/Space, Esc) and gamepad. Animati
 
 ### Mission & Feedback
 
-- **Objective panel** (above the ammo bars): the nearest base not yet eliminated, with units left, distance, a bearing arrow and bases conquered. Eliminate every base for **Mission complete** (+1000 score).
+- **Objective panel** (above the ammo bars): the one place for what to do next. With a Freaky mode quest running it shows the quest (act, arc, step, title, objective with a progress bar, distance and bearing to its beacon); otherwise the nearest base not yet eliminated, with units left, distance and a bearing arrow. Bases conquered sit underneath either way. Eliminate every base for **Mission complete** (+1000 score).
 - **Threats:** a red arc at the screen edge points to where a hit came from. PULL UP, CEILING, BOUNDARY and LOW HP warnings blink before they end the run.
 - **Lock-on reticle:** green or orange for hostiles, blue ("NON-HOSTILE") for tankers and balloons. Missiles home on exactly what the reticle shows.
 - **Feedback:** an engine hum and wind follow airspeed. Kills flash the hit marker gold with a confirm sound. Explosion size depends on the weapon.
@@ -661,7 +661,10 @@ After 1 minute of gameplay a random timer fires every 90 – 150 s, spawning a w
 
 ### Tubes
 
-Two types of mathematical hollow tunnels are placed across the map — 3 challenge (cyan) + 3 free (orange).
+Two types of mathematical hollow tunnels are placed across the map — 3 challenge (cyan) + 3 free (orange). They look different on purpose:
+
+- **Challenge = solid:** a wire cage over a glassy, pulsing wall, with a glowing gate ring and inward chevrons at each end. Close to the wall, a warning says `SOLID WALL — ENTER AT A GLOWING GATE`. On the minimap: a solid cyan ring.
+- **Free = fly-through:** only a loose cloud of orange dots, with no wall. On the minimap: a dashed orange ring.
 
 - Path types: helix · sine S-curve · corkscrew dive (random per tube)
 - Named: `Tube Alpha / Beta / Gamma / Delta / Epsilon / …`
@@ -679,7 +682,7 @@ Two types of mathematical hollow tunnels are placed across the map — 3 challen
 | Orb collection | Only counted when actively in a run (entered state) |
 | Exit scoring | XP = `max(20, round(200 × collected / total))`; notification shows orb count, percentage, and XP |
 | Abort | Exiting back through the **entry end** cancels the run cleanly with no penalty |
-| Completion | Tube wireframe and remaining orbs removed; ribbon banner shown |
+| Completion | Tube cage, wall, gates and remaining orbs removed; ribbon banner shown |
 
 #### Free Tubes (orange)
 
@@ -706,7 +709,21 @@ The minimap operates as a real radar:
 - Three concentric range rings at 33 / 66 / 100 % of the view radius.
 - A rotating sweep line completes one full revolution every 3 s; a pie-slice gradient trail fades behind it.
 - On each sweep completion all entity positions are captured into a frozen `_radarBlips[]` snapshot. Blips do not move between sweeps — they update atomically once every 3 seconds.
-- The player's own position and heading are also frozen at sweep time, so the player triangle and all relative blip positions always reflect the same snapshot moment.
+- The map itself (terrain, landmarks) follows the plane live; the blips stay where the last sweep saw them.
+
+### Terrain layer (`ui/terrainMap.js`)
+
+Baked once per map from the real heightfield, under the radar:
+
+- **Relief:** hypsometric tints (beach, lowland green, upland olive, rock, summit), with hill shading lit from the north-west.
+- **Contours (isohypses):** every 10 m above the sea, with a bolder index line every 50 m.
+- **Coast and sea:** a bright coastline; the sea is dark blue.
+- **Landmarks:**
+  - each island's summit (▲ with its height)
+  - villages (house icon and label)
+  - ruins (✕)
+  - lighthouses (blinking beacons)
+  - sea stacks (hazard dots)
 
 ### Legend
 
@@ -721,7 +738,8 @@ The minimap operates as a real radar:
 | Triangle ▲ | Light blue | Non-hostile air unit |
 | Square ■ | Cyan | Active base |
 | Label `name N/T` | — | Base name with alive/total count |
-| Ring ○ | Cyan | Active tube challenge |
+| Ring ○ | Cyan (solid) | Challenge tube: solid walls, enter at the gates |
+| Ring ○ | Orange (dashed) | Free tube: fly through anywhere |
 | Triangle ▲ | White (centre) | Player |
 
 ---

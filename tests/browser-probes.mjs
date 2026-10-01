@@ -653,6 +653,47 @@ const probes = {
                 pass: first?.goal.type === 'scout' && second?.goal.unit === 'destroyer' && targets.length === 2 && fresh };
         });
     },
+    // Boss facing: a boss behind which the player sits turns round before it attacks; its head points along its aim
+    async bossFacing(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const B = await import('./src/entities/bosses.js');
+            const { simulate } = await import('./src/game/simulation.js');
+            const { plane } = await import('./src/player/plane.js');
+            const au = B.spawnBoss('robot') ?? B.spawnBoss();
+            if (!au) return { pass: false, why: 'no spawn' };
+            for (let f = 0; f < 260; f++) simulate(1);
+            const g = au.group, behind = g.position.clone().addScaledVector(new THREE.Vector3(Math.sin(g.rotation.y), 0, Math.cos(g.rotation.y)), -300);
+            behind.y = g.position.y + 40;
+            let first = null;
+            for (let f = 0; f < 600 && !first; f++) { plane.position.copy(behind); simulate(1); if (au.boss.attack) first = { f, facing: au.boss.facing }; }
+            const head = (au.boss.model.head ?? au.boss.model.emitter).getWorldDirection(new THREE.Vector3());
+            const align = head.angleTo(au.boss.aim);
+            au.hp = 0; simulate(1); simulate(1);
+            return { kind: au.boss.kind, first, align: +align.toFixed(3), pass: !!first && first.f > 30 && first.facing <= B.BOSS.faceCone && align < 0.05 };
+        });
+    },
+    // The one objective panel shows the Freaky mode quest; the minimap's terrain layer is baked with its landmarks;
+    // challenge tubes (solid) and free tubes (fly-through) look different
+    async questPanelMapTubes(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { setSetting } = await import('./src/core/settings.js');
+            const { simulate } = await import('./src/game/simulation.js');
+            const { terrainMapStats } = await import('./src/ui/terrainMap.js');
+            const { tubes } = await import('./src/entities/tubes.js');
+            setSetting('freakyMode', true);
+            for (let i = 0; i < 9 * 60; i++) simulate(1);
+            await new Promise(r => setTimeout(r, 300));
+            const panel = document.getElementById('objective');
+            const quest = panel.classList.contains('quest') && /QUEST/i.test(panel.innerText), tracker = !!document.getElementById('quest-tracker');
+            setSetting('freakyMode', false);
+            const map = terrainMapStats();
+            const challenge = tubes.find(t => t.isChallenge), free = tubes.find(t => !t.isChallenge);
+            const looks = (!challenge || challenge.mesh.children.length === 3) && (!free || free.mesh.isPoints);
+            return { quest, tracker, map, looks, pass: quest && !tracker && map.baked && (map.landmarks.peak ?? 0) > 0 && looks };
+        });
+    },
     async splash(page) {
         await worldReady(page);
         const during = await page.evaluate(async () => {

@@ -38,6 +38,11 @@ export const BOSS = Object.freeze({
     life: 300 * 60,                  // escapes after 5 min
     emerge: 240,                     // rising out of the sea / ground / sky
     attackEvery: 170, enragedFactor: 0.62,
+    // Turning (rad per frame): a boss only attacks along where its mouth points, so it has to turn to you first.
+    // Slower while an attack charges, slowest while the beam fires: the beam sweeps, and flying across it escapes.
+    turn: 0.018, turnAttack: 0.011, turnBeam: 0.0042, enragedTurn: 1.35,
+    faceCone: 0.35,                  // starts an attack only when facing the pilot within this (rad)
+    shotCone: 0.3,                   // shots leave the mouth at most this far off its aim (rad)
     range: 1500,                     // attacks only within this distance of the player
     hpPerLevel: 0.2,                 // tougher as the player levels up
 });
@@ -55,7 +60,7 @@ let active = null, lastKind = null;
 const shots = [];      // { mesh, v, gravity, dmg, r, life, homing, aoe, decoyed }
 const effects = [];    // { mesh, life, update(dt) } — beams, warning rings, tentacles, the volcano
 const pending = [];    // { at, fn } — delayed explosions (a defeat), in frames
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _f = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 
 // --- Pilots: who a boss fights ------------------------------------------------------------------------------------------
 // Single-player: the local plane. Multiplayer's host adds the other players (setBossPilots); a boss fights the nearest,
@@ -161,7 +166,7 @@ export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
     if (k === 'golem') { effects.push(volcano(spot, () => !!active && active.boss.kind === 'golem')); fxOut?.push(['volcano', spot.x, spot.ground, spot.z]); }
     const hp = Math.round(def.hp * (1 + BOSS.hpPerLevel * (state.level - 1)) * hpMul);
     const b = { kind: k, def, model, rest, start, home: new THREE.Vector3(spot.x, spot.ground, spot.z), t: 0, frames: 0, phase: 'emerge',
-        attackIn: 120, attack: null, attackT: 0, charge: 0, enraged: false, walking: false, beam: null, aim: new THREE.Vector3() };
+        attackIn: 120, attack: null, attackT: 0, charge: 0, enraged: false, walking: false, beam: null, aim: new THREE.Vector3(), pitch: 0, facing: Math.PI };
     const au = {
         id: THREE.MathUtils.generateUUID(), type: 'boss', group: g, hp, maxHp: hp, collisionRadius: def.radius, xpValue: def.xp + 40 * (state.level - 1),
         isHostile: true, baseId: null, label: createUnitLabel(def.name, 99, hp, hp), shootCooldown: 0, userData: { baseId: null },
@@ -181,7 +186,7 @@ export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
 export function bossSnapshot() {
     if (!active) return null;
     const b = active.boss, g = active.group, r2 = v => +v.toFixed(2);
-    return { kind: b.kind, p: g.position.toArray().map(r2), ry: r2(g.rotation.y), hp: Math.round(active.hp), maxHp: active.maxHp, phase: b.phase,
+    return { kind: b.kind, p: g.position.toArray().map(r2), ry: r2(g.rotation.y), pt: r2(b.pitch), hp: Math.round(active.hp), maxHp: active.maxHp, phase: b.phase,
         attack: b.attack, charge: +b.charge.toFixed(2), enraged: b.enraged, walking: b.walking, xp: b.rewardXp,
         beam: b.beam ? { from: b.model.emitter.getWorldPosition(new THREE.Vector3()).toArray().map(r2), aim: b.aim.toArray().map(v => +v.toFixed(3)), firing: b.beam.mesh.visible, len: b.beam.len } : null };
 }
@@ -226,10 +231,7 @@ export function updateBoss(au, dt) {
     const b = au.boss, g = au.group, def = b.def;
     b.t += dt / 60; b.frames += dt;
     T = nearestPilot(g.position) ?? localPilot;
-    // Face the pilot it fights
-    const yaw = Math.atan2(T.position.x - g.position.x, T.position.z - g.position.z);
-    const dy = ((yaw - g.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    g.rotation.y += THREE.MathUtils.clamp(dy, -0.02 * dt, 0.02 * dt);
+    turnToPilot(b, g, dt);
 
     if (b.phase === 'emerge') {
         const k = Math.min(1, b.frames / BOSS.emerge), e = 1 - Math.pow(1 - k, 3);
@@ -250,6 +252,34 @@ export function updateBoss(au, dt) {
     }
     b.charge = Math.max(0, b.charge - 0.01 * dt);
     b.model.animate(b.t, b);
+    faceAim(b.model, b.aim);
+}
+
+/**
+ * Turn the body (yaw) and the head (pitch) toward the pilot it fights at a limited rate (BOSS.turn…); the aim is
+ * where the mouth points — the beam and every shot go that way, so a boss can't hit what it isn't facing.
+ */
+function turnToPilot(b, g, dt) {
+    const from = emitterPos(b, _f);
+    const yaw = Math.atan2(T.position.x - g.position.x, T.position.z - g.position.z);
+    const beaming = b.attack === 'beam' && b.attackT > BEAM_CHARGE;
+    const rate = (beaming ? BOSS.turnBeam : b.attack ? BOSS.turnAttack : BOSS.turn) * (b.enraged ? BOSS.enragedTurn : 1) * dt;
+    const dy = wrapAngle(yaw - g.rotation.y);
+    g.rotation.y += THREE.MathUtils.clamp(dy, -rate, rate);
+    b.facing = Math.abs(wrapAngle(yaw - g.rotation.y));
+    const pitch = THREE.MathUtils.clamp(Math.atan2(T.position.y - from.y, Math.hypot(T.position.x - from.x, T.position.z - from.z)), -0.8, 0.95);
+    b.pitch += THREE.MathUtils.clamp(pitch - b.pitch, -rate, rate);
+    aimVector(g.rotation.y, b.pitch, b.aim);
+}
+const wrapAngle = a => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+/** The unit direction of a yaw (about +Y, 0 = +Z) and a pitch (up positive). */
+export const aimVector = (yaw, pitch, out) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+/** Point the model's head (the kraken: its emitter) along `aim` — the mouth faces where it attacks. */
+export function faceAim(model, aim) {
+    const node = model.head ?? model.emitter;
+    node.parent.updateWorldMatrix(true, false);
+    node.getWorldPosition(_f);
+    node.lookAt(_f.add(aim));
 }
 
 function move(au, dt) {
@@ -281,7 +311,7 @@ function attack(au, dt) {
     if (!T.alive) { clearAttack(b); return; }
     if (!b.attack) {
         const far = T.position.distanceTo(au.group.position) > BOSS.range;
-        if (far || (b.attackIn -= dt) > 0) return;
+        if (far || (b.attackIn -= dt) > 0 || b.facing > BOSS.faceCone) return; // turns to the pilot first
         const list = b.def.attacks;
         b.attack = list[Math.floor(Math.random() * list.length)]; b.attackT = 0;
         b.attackIn = BOSS.attackEvery * difficulty().enemyFireInterval * (b.enraged ? BOSS.enragedFactor : 1);
@@ -298,6 +328,14 @@ const emitterPos = (b, out) => b.model.emitter.getWorldPosition(out);
 /** Where the pilot it fights will be in `frames`, flying straight. */
 const predict = (frames, out) => out.set(0, 0, 1).applyQuaternion(T.quaternion).multiplyScalar(T.speed * frames).add(T.position);
 const crossed = (b, dt, at) => b.attackT >= at && b.attackT - dt < at;
+/** Direction from `from` toward `to`, kept within BOSS.shotCone of where the mouth points. */
+function aimAt(b, from, to, out) {
+    out.subVectors(to, from).normalize();
+    const off = out.angleTo(b.aim);
+    if (off > BOSS.shotCone) out.lerp(b.aim, 1 - BOSS.shotCone / off).normalize();
+    return out;
+}
+const BEAM_CHARGE = 85; // frames the beam charges (warning line) before it fires
 
 const ATTACKS = {
     // A spread of glowing orbs at where the player is going
@@ -307,7 +345,7 @@ const ATTACKS = {
         const from = emitterPos(b, new THREE.Vector3()), n = b.enraged ? 7 : 5;
         const to = predict(from.distanceTo(T.position) / 1.3, new THREE.Vector3());
         for (let i = 0; i < n; i++) {
-            _v.subVectors(to, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.07).multiplyScalar(1.3);
+            aimAt(b, from, to, _v).applyAxisAngle(_up, (i - (n - 1) / 2) * 0.07).multiplyScalar(1.3);
             fire(from, _v, { dmg: 9, r: 3.4, color: b.def.shot, look: 'orb' });
         }
         return false;
@@ -317,7 +355,7 @@ const ATTACKS = {
         if (!crossed(b, dt, 30)) return b.attackT > 50;
         const from = emitterPos(b, new THREE.Vector3()), n = 9;
         for (let i = 0; i < n; i++) {
-            _v.subVectors(T.position, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.09).multiplyScalar(1.15);
+            aimAt(b, from, T.position, _v).applyAxisAngle(_up, (i - (n - 1) / 2) * 0.09).multiplyScalar(1.15);
             _v.y += 0.12;
             fire(from, _v, { dmg: 7, r: 3, color: b.def.shot, gravity: 0.0025, look: 'acid' });
         }
@@ -327,7 +365,7 @@ const ATTACKS = {
         b.charge = 1;
         for (const at of [20, 34, 48]) if (crossed(b, dt, at)) {
             const from = emitterPos(b, new THREE.Vector3());
-            for (let i = -1; i <= 1; i++) { _v.subVectors(predict(25, _w), from).normalize().applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot, look: 'plasma' }); }
+            for (let i = -1; i <= 1; i++) { aimAt(b, from, predict(25, _w), _v).applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot, look: 'plasma' }); }
         }
         return b.attackT > 60;
     },
@@ -352,7 +390,8 @@ const ATTACKS = {
         }
         return b.attackT > 90;
     },
-    // A sweeping beam: a warning line while it charges, then it fires and slowly follows the player
+    // A beam from the mouth: a warning line while it charges, then it fires along where the head points — the boss
+    // turns slowly while it fires (BOSS.turnBeam), so the beam sweeps after the pilot and flying across it escapes
     beam(au, b, dt) {
         const from = emitterPos(b, new THREE.Vector3());
         if (!b.beam) {
@@ -360,12 +399,9 @@ const ATTACKS = {
             const mesh = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: b.def.shot, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
             mesh.visible = false; scene.add(warn, mesh);
             b.beam = { warn, mesh, len: 1300 };
-            b.aim.subVectors(T.position, from).normalize();
         }
-        const firing = b.attackT > 85;
-        b.charge = firing ? 1 : b.attackT / 85;
-        _v.subVectors(T.position, from).normalize();
-        b.aim.lerp(_v, (firing ? 0.012 : 0.05) * dt).normalize(); // fast to aim while charging, slow to follow while firing
+        const firing = b.attackT > BEAM_CHARGE;
+        b.charge = firing ? 1 : b.attackT / BEAM_CHARGE;
         for (const m of [b.beam.warn, b.beam.mesh]) {
             m.position.copy(from).addScaledVector(b.aim, b.beam.len / 2);
             m.quaternion.setFromUnitVectors(_up, b.aim);
@@ -381,7 +417,7 @@ const ATTACKS = {
                 if (along > 0 && along < b.beam.len && off < 6 + planeSphereRadius) hitPilot(p, dmg(7), from);
             }
         }
-        return b.attackT > 85 + (b.enraged ? 130 : 100);
+        return b.attackT > BEAM_CHARGE + (b.enraged ? 130 : 100);
     },
     // A brood of minions that latch on and bite (entities/minions.js)
     minions(au, b, dt) {
