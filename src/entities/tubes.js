@@ -1,8 +1,34 @@
-/** Tube challenges (cyan challenge tubes and orange free tubes). */
+/**
+ * Tube challenges. Two kinds that must never be confused:
+ *   challenge (teal)  SOLID: a glassy wall with a wire cage — flying through the wall destroys the plane. Enter and
+ *                     leave through the glowing gates at its two ends (rings with chevrons pointing in).
+ *   free (orange)     FLY-THROUGH: only a loose cloud of dots, no wall — cross it anywhere, collect its orbs.
+ */
 import { ceilingLevel, groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
-import { randomRange } from '../core/utils.js';
+import { markShared, randomRange } from '../core/utils.js';
+import { onHook } from '../game/hooks.js';
 import { collectibleGeo } from './collectibles.js';
+
+// Shared looks (one set for every tube; per-tube meshes reuse the tube's own geometry)
+const WALL_MAT = markShared(new THREE.MeshStandardMaterial({ color: 0x00ccff, emissive: 0x00505e, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+const GATE_MAT = markShared(new THREE.MeshBasicMaterial({ color: 0xaaffff, transparent: true, opacity: 0.95 }));
+const GATE_GEO = markShared(new THREE.TorusGeometry(1, 0.07, 10, 40));
+const CHEVRON_GEO = markShared(new THREE.ConeGeometry(0.16, 0.3, 4));
+onHook('frame', () => { const t = performance.now() / 1000; GATE_MAT.opacity = 0.6 + 0.4 * Math.abs(Math.sin(t * 3)); WALL_MAT.opacity = 0.16 + 0.06 * Math.sin(t * 1.7); });
+/** A challenge tube's gate at one end of its curve: a glowing ring with chevrons pointing into the tube. */
+function gate(curve, end, radius) {
+    const g = new THREE.Group(), at = curve.getPoint(end), inward = curve.getTangent(end).multiplyScalar(end === 0 ? 1 : -1);
+    g.add(new THREE.Mesh(GATE_GEO, GATE_MAT));
+    for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4, c = new THREE.Mesh(CHEVRON_GEO, GATE_MAT);
+        c.position.set(Math.cos(a) * 1.25, Math.sin(a) * 1.25, -0.35); c.rotation.x = Math.PI / 2; // tips point along +Z: into the tube
+        g.add(c);
+    }
+    g.position.copy(at); g.scale.setScalar(radius + 1.2);
+    g.lookAt(at.clone().add(inward));
+    return g;
+}
 
 // --- Tube challenges (ideas 7-9) ---
 export const tubes = [];
@@ -78,7 +104,11 @@ export function spawnTube(cx, cy, cz, type = 'challenge') {
     const isChallenge = type === 'challenge';
     const tubeColor  = isChallenge ? 0x00ccff : 0xff8800; // cyan = challenge, orange = free
     const orbColor   = isChallenge ? 0x00ccff : 0xff8800;
-    const tubeMesh = new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: tubeColor, wireframe: true, transparent: true, opacity: 0.35 }));
+    // Challenge: wire cage + glassy wall + gates (solid). Free: just dots (fly-through).
+    const tubeMesh = isChallenge
+        ? new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: tubeColor, wireframe: true, transparent: true, opacity: 0.55 }))
+        : new THREE.Points(tubeGeo, new THREE.PointsMaterial({ color: tubeColor, size: 1.4, transparent: true, opacity: 0.6, depthWrite: false }));
+    if (isChallenge) { tubeMesh.add(new THREE.Mesh(tubeGeo, WALL_MAT), gate(curve, 0, tubeRadius), gate(curve, 1, tubeRadius)); }
     scene.add(tubeMesh);
     // Place collectibles at even intervals along the curve
     const numTC = 10, tubeCols = [];

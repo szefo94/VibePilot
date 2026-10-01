@@ -143,6 +143,21 @@ export function heightAt(x, z) {
     return best === -Infinity ? groundLevel : Math.max(groundLevel, TERRAIN.surface + best);
 }
 
+/** Ground heights (world y, as heightAt) on a grid of nx × nz samples from (x0, z0) every `step` — the minimap's relief. */
+export function heightGrid(x0, z0, step, nx, nz) {
+    const out = new Float32Array(nx * nz).fill(-Infinity);
+    for (const f of fields) { // only the samples over each islet's field
+        const i0 = Math.max(0, Math.ceil((f.x0 - x0) / step)), i1 = Math.min(nx - 1, Math.floor((f.x0 + (f.nx - 1) * TERRAIN.cell - x0) / step));
+        const j0 = Math.max(0, Math.ceil((f.z0 - z0) / step)), j1 = Math.min(nz - 1, Math.floor((f.z0 + (f.nz - 1) * TERRAIN.cell - z0) / step));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+            const v = sample(f, x0 + i * step, z0 + j * step), k = j * nx + i;
+            if (v !== null && v > out[k]) out[k] = v;
+        }
+    }
+    for (let k = 0; k < out.length; k++) out[k] = out[k] === -Infinity ? groundLevel : Math.max(groundLevel, TERRAIN.surface + out[k]);
+    return out;
+}
+
 /** Highest ground within `r` of (x, z) (sampled on the grid) — for placing things above the terrain. */
 export function maxHeightNear(x, z, r) {
     let best = groundLevel;

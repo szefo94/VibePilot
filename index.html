@@ -112,11 +112,13 @@
             <span id="napalm-status" class="ammo-status">2/2</span>
         </div>
     </div>
-    <!-- Mission objective (game/mission.js) -->
+    <!-- The one objective panel (game/mission.js): the Freaky mode quest when there is one, otherwise the nearest base -->
     <div id="objective" class="ui-overlay" aria-live="polite" hidden>
+        <div id="objective-kicker"></div>
         <span id="objective-arrow" aria-hidden="true">▲</span>
-        <span class="objective-label">Objective</span> <span id="objective-name"></span><span class="obj-sep"> · </span><span id="objective-units"></span> · <span id="objective-distance"></span>
-        <div class="objective-progress">Bases conquered <span id="objective-progress"></span></div>
+        <span class="objective-label" id="objective-label">Objective</span> <span id="objective-name"></span><span class="obj-sep"> · </span><span id="objective-units"></span> · <span id="objective-distance"></span>
+        <div id="objective-bar"><div></div></div>
+        <div class="objective-progress"><span id="objective-progress-label">Bases conquered</span> <span id="objective-progress"></span></div>
     </div>
     <!-- Threat readability (ui/threats.js) -->
     <div id="hit-indicators" aria-hidden="true"></div>

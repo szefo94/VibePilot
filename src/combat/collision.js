@@ -205,7 +205,7 @@ export function resolveCollisions() {
         }
     }
     // Challenge tube entry / exit / wall-collision logic
-    let _inAnyChallengeTube = false;
+    let _inAnyChallengeTube = false, nearWall = null;
     for (const tube of tubes) {
         if (!tube.isChallenge || tube.completed || tube.state === 'done') continue;
         const { t, d } = _nearestTubeT(tube.curve, plane.position);
@@ -225,7 +225,7 @@ export function resolveCollisions() {
             } else if (inside && !nearEnd) {
                 // Flew in through the wall from outside — fatal
                 triggerGameOver();
-            }
+            } else if (!nearEnd && d < tube.tubeRadius + 45) nearWall = tube; // closing in on a solid wall: warn
         } else if (tube.state === 'entered') {
             if (inside) {
                 tube.wasInside = true;
@@ -262,7 +262,10 @@ export function resolveCollisions() {
             }
         }
     }
-    if (!_inAnyChallengeTube) _tubeStatusEl.style.display = 'none';
+    if (!_inAnyChallengeTube) {
+        _tubeStatusEl.style.display = nearWall ? 'block' : 'none';
+        if (nearWall) _tubeStatusEl.textContent = `⚠ ${nearWall.name}: SOLID WALL — ENTER AT A GLOWING GATE`;
+    }
     // Player vs World obstacles
     for (const o of obstacles) {
         if (o.userData.type === 'torus') continue;

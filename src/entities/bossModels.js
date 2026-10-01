@@ -3,6 +3,7 @@
  * parts. Each builder returns { group, height, emitter, glow, animate(t, b) }:
  *   group    origin at the body's centre (the boss's hit sphere); +Z faces the player
  *   emitter  Object3D its beam and shots come from
+ *   head     the part that turns to aim (entities/bosses.js faceAim points it along the aim); the kraken has none
  *   glow     materials whose emissive intensity follows the charge of an attack (b.charge 0…1)
  *   animate  called every step: t = seconds alive, b = the boss state (charge, enraged, attack, walking)
  */
@@ -75,7 +76,7 @@ export function buildKaiju() {
     tail.forEach((j, i) => { const p = mesh(new THREE.ConeGeometry(2.4 - i * 0.3, 6 - i * 0.6, 4), plate, 0, 5, 5, j); p.scale.z = 0.35; p.rotation.x = 1.6; });
     g.scale.setScalar(1.25);
     return {
-        group: g, height: 110, emitter, glow: [plate],
+        group: g, height: 110, emitter, head, glow: [plate],
         animate(t, b) {
             tail.forEach((j, i) => { j.rotation.z = Math.sin(t * 1.4 - i * 0.7) * 0.18; });
             neck.rotation.x = -0.15 + Math.sin(t * 0.9) * 0.06 - b.charge * 0.25;
@@ -139,7 +140,7 @@ export function buildGolem() {
     for (let i = 0; i < 8; i++) { const v = detail(new THREE.BoxGeometry(0.9, 6 + (i % 3) * 3, 0.9), lava, Math.sin(i * 1.7) * 14, -2 + (i % 4) * 7, -15 + Math.cos(i) * 3, g); v.rotation.set(i * 0.4, 0, (i % 2 ? 0.7 : -0.6)); }
     g.scale.setScalar(1.3);
     return {
-        group: g, height: 100, emitter, glow: [lava],
+        group: g, height: 100, emitter, head, glow: [lava],
         animate(t, b) {
             lava.emissiveIntensity = 1.1 + 0.4 * Math.sin(t * 3) + b.charge * 2 + (b.enraged ? 0.8 : 0);
             core.rotation.y = t * 0.7; core.scale.setScalar(1 + 0.08 * Math.sin(t * 4));
@@ -193,7 +194,7 @@ export function buildRobot() {
     for (const { fore } of arms) for (const c of [-1, 1]) detail(new THREE.ConeGeometry(0.8, 4, 8), darkS, c * 2.6, -15, 2, fore).rotation.x = Math.PI;
     g.scale.setScalar(1.35);
     return {
-        group: g, height: 110, emitter, pods, glow: [visor],
+        group: g, height: 110, emitter, head, pods, glow: [visor],
         animate(t, b) {
             const w = b.walking ? 1 : 0.15;
             legs.forEach(({ hip, knee }, i) => { const ph = t * 2.4 + i * Math.PI; hip.rotation.x = Math.sin(ph) * 0.35 * w; knee.rotation.x = Math.max(0, -Math.sin(ph)) * 0.5 * w; });
@@ -236,7 +237,7 @@ export function buildAlien() {
     mesh(new THREE.ConeGeometry(1.4, 6, 12), acid, 0, 6, 0, tail[tail.length - 1]);
     g.scale.setScalar(1.4);
     return {
-        group: g, height: 70, emitter, glow: [acid],
+        group: g, height: 70, emitter, head, glow: [acid],
         animate(t, b) {
             sacs.forEach((s, i) => s.scale.setScalar(1 + 0.25 * Math.sin(t * 4 + i) + b.charge * 0.5));
             tail.forEach((j, i) => { j.rotation.x = Math.sin(t * 2 - i * 0.6) * 0.25; j.rotation.z = Math.cos(t * 1.4 - i * 0.5) * 0.2; });
@@ -281,7 +282,7 @@ export function buildZombot() {
     detail(new THREE.CylinderGeometry(2, 2, 0.6, 20), glowMat(0x66ff66, 0.8), 6, 4, 7.4, g).rotation.x = Math.PI / 2; // a rotting gauge
     g.scale.setScalar(1.45);
     return {
-        group: g, height: 75, emitter, glow: [eye], flies: true,
+        group: g, height: 75, emitter, head, glow: [eye], flies: true,
         animate(t, b) {
             flames.forEach((f, i) => { f.scale.set(1, 0.8 + 0.4 * Math.abs(Math.sin(t * 23 + i * 2)), 1); });
             cannonArm.rotation.x = -0.4 - b.charge * 0.9 + Math.sin(t * 1.3) * 0.1;
