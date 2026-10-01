@@ -1,7 +1,7 @@
 /**
- * Ground-unit hitboxes: oriented boxes that turn with the unit. One per mesh (its geometry's bounding box), or the
- * boxes listed in `mesh.userData.collisionBoxes` (geometry space: { min, max } or { center, size, ry }) when one
- * merged mesh is a poor fit — the carrier's hull, deck and island. Ground units don't move, so each box's world
+ * Ground-unit hitboxes: oriented boxes that turn with the unit. A baked model's part boxes (core/meshkit.js,
+ * geometry.userData.boxes), else its geometry's bounding box, or the boxes listed in `mesh.userData.collisionBoxes`
+ * (geometry space: { min, max } or { center, size, ry }) where those are a poor fit — the carrier's hull, deck and island. Ground units don't move, so each box's world
  * matrix is baked once. The B key draws exactly these boxes (effects/debug.js).
  */
 const _p = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _up = new THREE.Vector3(0, 1, 0);
@@ -16,9 +16,10 @@ export function meshBoxes(mesh) {
             return { half, offset: new THREE.Matrix4().compose(center, _q.setFromAxisAngle(_up, b.ry || 0), _one) };
         });
     }
+    const toPart = bb => ({ half: bb.getSize(new THREE.Vector3()).multiplyScalar(0.5), offset: new THREE.Matrix4().makeTranslation(...bb.getCenter(_c).toArray()) });
+    if (mesh.geometry.userData?.boxes?.length) return mesh.geometry.userData.boxes.map(toPart);
     mesh.geometry.computeBoundingBox();
-    const bb = mesh.geometry.boundingBox;
-    return [{ half: bb.getSize(new THREE.Vector3()).multiplyScalar(0.5), offset: new THREE.Matrix4().makeTranslation(...bb.getCenter(_c).toArray()) }];
+    return [toPart(mesh.geometry.boundingBox)];
 }
 
 /** Bake a unit's world-space boxes (call once its matrices are final). */

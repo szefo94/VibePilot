@@ -8,15 +8,11 @@ import { _playEnemyShot } from '../audio.js';
 import { plane } from '../player/plane.js';
 import { enemyBullets } from '../entities/registry.js';
 import { _muzzleFlashGeo, _muzzleFlashMat, _muzzleFlashes } from '../effects/effects.js';
+import { tracer } from '../effects/projectileModels.js';
 
 // --- Enemy Bullet Pool (§2.4) ---
 function _createEnemyBulletMesh() {
-    const b = new THREE.Group();
-    b.add(
-        new THREE.Mesh(new THREE.CylinderGeometry(.75, .75, 5.5, 8), new THREE.MeshBasicMaterial({ color: 0xff2200 })),
-        new THREE.Mesh(new THREE.ConeGeometry(.75, 2, 8),             new THREE.MeshBasicMaterial({ color: 0xff6600 }))
-    );
-    b.children[1].position.y = 3.75;
+    const b = tracer(0xff4a12); // white-hot core in a glowing sheath (effects/projectileModels.js)
     b.userData = { type: 'enemy_bullet', collisionRadius: 2.8, damage: 0 };
     return b;
 }

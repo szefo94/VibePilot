@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Freaky mode becomes a story; real hit shapes; detailed shots; minions
+- **Freaky mode is a quest plot** (`game/quests.js`, story in `game/questData.js`, HUD in `ui/questHud.js`).
+  - **Arcs:** six of them, each a chain of quests that ends in its boss.
+    - *Something in the Water* (kaiju)
+    - *Heat Rising* (magma golem)
+    - *Project TITAN* (robot)
+    - *Specimen 47* (alien)
+    - *Ships Are Vanishing* (kraken)
+    - *Dark Side of the Moon* (zombot)
+  - **Quest types:** scout a place, destroy units, collect story items, clear a base, then the boss finale.
+  - **The next quest:** finishing a quest briefs the next. A step with alternatives takes the one whose targets exist now.
+  - **Targets:** destroy quests aim at existing units, the nearest first, and spawn new ones only when too few are left. Base quests take the nearest enemy base, or build a new one.
+  - **Bosses** now appear only as arc finales. One that escapes comes back. After all six arcs, a harder act begins.
+  - **Interface:**
+    - a radio briefing from a cast (Dr. Elke Voss, Command, the Archivist, intercepted signals)
+    - a tracker with progress, distance and bearing
+    - a beacon of light over the objective, and quest markers on the minimap
+    - quest and arc complete banners with XP.
+- **Hit shapes** (`combat/hitShapes.js`):
+  - **Per-part boxes:** baked models keep a box per part, and long parts are split into slices fitted to their faces.
+  - **What uses them:** aircraft, aces and bosses (by their moving parts) for your plane, bullets and missiles. Ground units and the carrier use the same boxes.
+  - **Accuracy,** measured against the models: coverage 99–100 % (the old spheres covered 8–82 %, so you could fly through a tanker's wing), and precision about double.
+- **Detailed projectiles** (`effects/projectileModels.js`):
+  - **Enemy rounds:** tracers with a white-hot core.
+  - **Missiles** with fins and an exhaust, for aces and the robot.
+  - **Boss shots:** energy orbs with a spinning ring, lava rocks, acid blobs, plasma bolts.
+- **Bosses** have about twice the polygons, plus teeth, claws, suckers, ribs, rivets and spikes.
+- **Minions** (`entities/minions.js`): the kraken's squidlings and Specimen 47's facehuggers.
+  - They home in on you, and you can shoot them down.
+  - One that reaches you latches on and drains 12 % of max HP over 6 s; rolling hard shakes it off.
+
 ### Flight feel, lead marker, combo, Freaky mode
 - **Respawn in single-player:** shot down, press **Respawn** (or R) on the game-over screen to carry on in the same session. You keep the map, score, level and XP. A new plane appears at a safe height near the crash, heading for the middle of the map, with full HP and ammo and spawn protection. The game-over screen and debrief count respawns. Restart and Replay this map work as before; after Mission complete there is nothing to respawn into.
 - **Missile warning tones** (`ui/threatTone.js`): slow beeps while an ace locks on, fast beeps once it is locked or a missile is up, and a solid tone when a missile is closer than 300. Flare on the solid tone.

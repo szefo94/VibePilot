@@ -26,6 +26,8 @@ import { scene } from '../core/scene.js';
 import { _up3 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
 import { airUnits, collectibles, enemyBullets, groundUnits, markers, missiles } from './registry.js';
+import { pointsHit } from '../combat/hitShapes.js';
+import { missile as missileModel } from '../effects/projectileModels.js';
 import { beginHits } from '../combat/hits.js';
 import { canDamageGround, groundUnitWorldPos } from '../combat/damage.js';
 import { _bombBodyGeo, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial } from '../combat/resources.js';
@@ -94,7 +96,7 @@ const ENABLE_DELAY = 5 * 60; // Ace Hunt switched on mid-run (after firstDelay):
 // Module-private scratch (never pass these into spawnEnemyBullet — it uses the shared _sv* scratch)
 const _fwd = new THREE.Vector3(), _pFwd = new THREE.Vector3(), _pVel = new THREE.Vector3(), _toP = new THREE.Vector3();
 const _des = new THREE.Vector3(), _loc = new THREE.Vector3(), _aim = new THREE.Vector3(), _muzzle = new THREE.Vector3();
-const _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3(), _qInv = new THREE.Quaternion();
+const _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3(), _qInv = new THREE.Quaternion(), _hitA = new THREE.Vector3(), _hitB = new THREE.Vector3();
 
 // Session bookkeeping
 const rivals = [];          // every ace spawned and not yet reaped
@@ -109,8 +111,6 @@ onSettingChange((key, value) => {
 });
 
 // Shared missile mesh resources — never disposed
-const _mslGeo = new THREE.CylinderGeometry(0.22, 0.22, 2.4, 6); // Y-aligned, oriented with setFromUnitVectors(_up3, dir)
-const _mslMat = new THREE.MeshBasicMaterial({ color: 0xff2233 });
 
 // --- Public API -------------------------------------------------------------------------------
 
@@ -287,10 +287,13 @@ export function updateRival(au, dt) {
         return;
     }
     // Mid-air collision with any other aircraft: both explode, like the player on a direct impact
+    const span = RIVAL.wingHalfSpan * 0.8;
+    _tmp2.set(1, 0, 0).applyQuaternion(group.quaternion);
+    const pts = [[pos, 4], [_hitA.copy(pos).addScaledVector(_tmp2, span), 2.5], [_hitB.copy(pos).addScaledVector(_tmp2, -span), 2.5]];
     for (const other of airUnits) {
         if (other === au || other.proxy || !(other.hp > 0)) continue;
-        const r = (au.collisionRadius + other.collisionRadius) * RIVAL.collisionScale;
-        if (other.group.position.distanceToSquared(pos) < r * r) { if (other.isBoss) { au.crashed = true; destroyAirUnit(au, { reward: false }); } else midAir(au, other); return; } // into a boss: only the ace goes down
+        // its centre and wingtips against the other aircraft's real shape (combat/hitShapes.js)
+        if (pointsHit(other.group, pts)) { if (other.isBoss) { au.crashed = true; destroyAirUnit(au, { reward: false }); } else midAir(au, other); return; } // into a boss: only the ace goes down
     }
 
     // 6. Weapons
@@ -508,10 +511,11 @@ function updateMissileLock(au, dist, offBore, dt) {
 }
 
 function launchMissile(au, side) {
-    const m = new THREE.Mesh(_mslGeo, _mslMat);
+    const m = missileModel(0xff2233, 'y'); // Y-aligned, oriented with setFromUnitVectors(_up3, dir)
+    const anim = m.userData.animate;
     au.group.localToWorld(m.position.set(side * 5.9, -0.3, 0.5));
     const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(au.group.quaternion);
-    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id, owner: au };
+    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id, owner: au, animate: anim };
     m.quaternion.setFromUnitVectors(_up3, dir);
     scene.add(m); rivalMissiles.push(m);
 }
@@ -529,6 +533,7 @@ function updateRivalMissiles(dt) {
     for (let i = rivalMissiles.length - 1; i >= 0; i--) {
         const m = rivalMissiles[i], d = m.userData;
         d.life -= dt;
+        d.animate?.(d.life * 0.05); // engine flicker
         d.speed = Math.min(RIVAL.mslMaxSpeed, d.speed + RIVAL.mslAccel * dt);
         const t = targetById(d.targetId, d.owner);
         // Its target's flares only spoof it in the terminal phase → timing matters, not spamming

@@ -1,11 +1,11 @@
 /**
- * Freaky mode: giant bosses as random special events, one at a time (Settings → Freaky mode; K summons one now).
+ * Freaky mode's giant bosses, one at a time: each the finale of a story arc (game/quests.js); K summons one now.
  *
  *   kaiju   GORGAZON          rises from the sea           atomic breath beam, energy volleys
- *   kraken  KRAKOTH           surfaces from the deep       tentacles burst from the water under you, volleys
+ *   kraken  KRAKOTH           surfaces from the deep       tentacles burst from the water under you, volleys, squidlings
  *   golem   MAGMAROK          erupts from the volcano      lava bombs, volleys        (on the highest peak)
  *   robot   TITAN-9           awakens in a village         homing missiles, eye laser
- *   alien   SPECIMEN 47       breaks out of a base         acid spray, volleys        (a hangar or airbase is lost)
+ *   alien   SPECIMEN 47       breaks out of a base         acid spray, volleys, facehuggers (a hangar or airbase is lost)
  *   zombot  STAHLMOND ZOMBOT  descends from the Moon       plasma bursts, beam        (flies)
  *
  * A boss is an ordinary hostile air unit in `airUnits` (`isBoss`), so bullets, missiles, bombs, the lock-on and
@@ -25,16 +25,16 @@ import { createExplosion } from '../effects/effects.js';
 import { damagePlayer } from '../combat/collision.js';
 import { groundUnitWorldPos } from '../combat/damage.js';
 import { heightAt } from '../world/terrain.js';
-import { difficulty, onSettingChange, settings } from '../core/settings.js';
+import { difficulty } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
 import { runHooks } from '../game/hooks.js';
 import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
+import { clearMinions, spawnMinions, updateMinions } from './minions.js';
 import { buildAlien, buildGolem, buildKaiju, buildKraken, buildRobot, buildZombot } from './bossModels.js';
+import { acidBlob, lavaRock, missile as missileModel, orb, plasmaBolt } from '../effects/projectileModels.js';
 
 /** Times in frames at 60 fps, distances in world units. */
 export const BOSS = Object.freeze({
-    firstDelay: [60 * 60, 120 * 60], // Freaky mode on: the first boss 1–2 min into the flight
-    nextDelay: [90 * 60, 180 * 60],  // then 1.5–3 min after the last one is gone
     life: 300 * 60,                  // escapes after 5 min
     emerge: 240,                     // rising out of the sea / ground / sky
     attackEvery: 170, enragedFactor: 0.62,
@@ -44,23 +44,20 @@ export const BOSS = Object.freeze({
 
 export const BOSS_TYPES = Object.freeze({
     kaiju: { name: 'GORGAZON', title: 'Kaiju of the Deep', verb: 'rises from the sea', where: 'sea', build: buildKaiju, hp: 1500, xp: 900, radius: 42, color: '#59c8ff', shot: 0x8fe4ff, attacks: ['beam', 'volley'], speed: 0.16 },
-    kraken: { name: 'KRAKOTH', title: 'Terror of the Tides', verb: 'surfaces from the deep', where: 'sea', build: buildKraken, hp: 1300, xp: 850, radius: 40, color: '#ff5c9a', shot: 0xff7ab8, attacks: ['tentacles', 'volley'], speed: 0.1 },
+    kraken: { name: 'KRAKOTH', title: 'Terror of the Tides', verb: 'surfaces from the deep', where: 'sea', build: buildKraken, hp: 1300, xp: 850, radius: 40, color: '#ff5c9a', shot: 0xff7ab8, attacks: ['tentacles', 'volley', 'minions'], speed: 0.1, minion: 'squid' },
     golem: { name: 'MAGMAROK', title: 'Heart of the Volcano', verb: 'erupts from the volcano', where: 'peak', build: buildGolem, hp: 1600, xp: 950, radius: 44, color: '#ff7a1a', shot: 0xff5a10, attacks: ['lava', 'volley'], speed: 0 },
     robot: { name: 'TITAN-9', title: 'Rampaging Mech', verb: 'awakens in a village', where: 'village', build: buildRobot, hp: 1400, xp: 900, radius: 46, color: '#ff4848', shot: 0xff4a3a, attacks: ['missiles', 'beam'], speed: 0.12 },
-    alien: { name: 'SPECIMEN 47', title: 'Escaped from a military facility', verb: 'breaks out of the base', where: 'base', build: buildAlien, hp: 1100, xp: 850, radius: 36, color: '#66ff55', shot: 0x66ff55, attacks: ['acid', 'volley'], speed: 0.28 },
+    alien: { name: 'SPECIMEN 47', title: 'Escaped from a military facility', verb: 'breaks out of the base', where: 'base', build: buildAlien, hp: 1100, xp: 850, radius: 36, color: '#66ff55', shot: 0x66ff55, attacks: ['acid', 'volley', 'minions'], speed: 0.28, minion: 'hugger' },
     zombot: { name: 'STAHLMOND ZOMBOT', title: 'Iron robo-zombie from the dark side of the Moon', verb: 'descends from the Moon', where: 'sky', build: buildZombot, hp: 1200, xp: 950, radius: 36, color: '#ff3a3a', shot: 0xff3a3a, attacks: ['plasma', 'beam'], speed: 0.6 },
 });
 
-let active = null, timer = rand(BOSS.firstDelay), lastKind = null;
+let active = null, lastKind = null;
 const shots = [];      // { mesh, v, gravity, dmg, r, life, homing, aoe, decoyed }
 const effects = [];    // { mesh, life, update(dt) } — beams, warning rings, tentacles, the volcano
 const pending = [];    // { at, fn } — delayed explosions (a defeat), in frames
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-const shotGeo = new THREE.SphereGeometry(1, 8, 6), missileGeo = new THREE.ConeGeometry(1.1, 5, 6).rotateX(Math.PI / 2);
-const shotMats = new Map();
-const shotMat = color => shotMats.get(color) ?? (shotMats.set(color, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })), shotMats.get(color));
 
-function rand([a, b]) { return a + Math.random() * (b - a); }
+
 const surface = (x, z) => Math.max(heightAt(x, z), waterLevel);
 const inMap = (x, z, m = 0.82) => Math.abs(x) < MAP_BOUNDARY * m && Math.abs(z) < MAP_BOUNDARY * m;
 const dmg = base => Math.max(1, Math.round(base * difficulty().enemyDamage));
@@ -76,8 +73,9 @@ function highestPeak() {
     }
     return (peak = best);
 }
-function findSpot(where) {
-    const p = plane.position;
+/** Where a boss of this kind can appear, around `from` (the player by default), or null. */
+export function findSpot(where, from = plane.position) {
+    const p = from;
     if (where === 'sea') {
         for (let i = 0; i < 120; i++) {
             const a = Math.random() * Math.PI * 2, d = 650 + Math.random() * 550, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
@@ -119,11 +117,11 @@ function restY(kind, h, ground) {
 // --- Spawning --------------------------------------------------------------------------------------------------------
 
 /** Summon a boss now (a given kind, or a random one that has somewhere to appear). Returns the air unit, or null. */
-export function spawnBoss(kind = null) {
+export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
     if (active || !RULES.bosses || state.isGameOver || state.awaitingStart) return null;
     const kinds = kind ? [kind] : Object.keys(BOSS_TYPES).filter(k => k !== lastKind).sort(() => Math.random() - 0.5);
     let def = null, spot = null, k = null;
-    for (k of kinds) { def = BOSS_TYPES[k]; spot = def && findSpot(def.where); if (spot) break; }
+    for (k of kinds) { def = BOSS_TYPES[k]; spot = def && (findSpot(def.where, near ?? plane.position) ?? (near && findSpot(def.where))); if (spot) break; }
     if (!spot) return null;
     const model = def.build(), g = model.group, h = model.height;
     const rest = restY(k, h, spot.ground);
@@ -133,7 +131,7 @@ export function spawnBoss(kind = null) {
     scene.add(g);
     if (spot.facility) killGroundUnit(spot.facility, { reward: false }); // it breaks out
     if (k === 'golem') effects.push(volcano(spot));
-    const hp = Math.round(def.hp * (1 + BOSS.hpPerLevel * (state.level - 1)));
+    const hp = Math.round(def.hp * (1 + BOSS.hpPerLevel * (state.level - 1)) * hpMul);
     const b = { kind: k, def, model, rest, start, home: new THREE.Vector3(spot.x, spot.ground, spot.z), t: 0, frames: 0, phase: 'emerge',
         attackIn: 120, attack: null, attackT: 0, charge: 0, enraged: false, walking: false, beam: null, aim: new THREE.Vector3() };
     const au = {
@@ -147,7 +145,6 @@ export function spawnBoss(kind = null) {
     return au;
 }
 
-onSettingChange((key, on) => { if (key === 'freakyMode' && on && !active) timer = Math.min(timer, 20 * 60); }); // switched on: one soon
 
 /** For the HUD and tests: the boss in the air, or null. */
 export function bossStatus() {
@@ -163,11 +160,9 @@ export const bossShots = () => shots;
 export function updateBossSystem(dt) {
     for (let i = pending.length - 1; i >= 0; i--) if ((pending[i].at -= dt) <= 0) { pending[i].fn(); pending.splice(i, 1); }
     updateShots(dt);
+    updateMinions(dt);
     for (let i = effects.length - 1; i >= 0; i--) if (!effects[i].update(dt)) { scene.remove(effects[i].mesh); effects.splice(i, 1); }
     if (active && !airUnits.includes(active)) finish(active);
-    if (!active && RULES.bosses && settings.freakyMode && !state.isGameOver && !state.awaitingStart && (timer -= dt) <= 0) {
-        if (!spawnBoss()) timer = 10 * 60; // nowhere to appear right now: try again soon
-    }
     // Homing boss missiles sound the warning tone like an ace's
     let near = Infinity, homing = false;
     for (const s of shots) if (s.homing && !s.decoyed) { homing = true; near = Math.min(near, s.mesh.position.distanceTo(plane.position)); }
@@ -181,10 +176,10 @@ function finish(au) {
         runHooks('bossEvent', 'defeat', au);
     } else runHooks('bossEvent', 'escape', au);
     clearAttack(b);
+    clearMinions();
     for (const e of effects) scene.remove(e.mesh);
     effects.length = 0;
     active = null;
-    timer = rand(BOSS.nextDelay);
 }
 
 /** One boss's behaviour, every step (ai.js). */
@@ -273,7 +268,7 @@ const ATTACKS = {
         const to = predict(from.distanceTo(plane.position) / 1.3, new THREE.Vector3());
         for (let i = 0; i < n; i++) {
             _v.subVectors(to, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.07).multiplyScalar(1.3);
-            fire(from, _v, { dmg: 9, r: 3.4, color: b.def.shot });
+            fire(from, _v, { dmg: 9, r: 3.4, color: b.def.shot, look: 'orb' });
         }
         return false;
     },
@@ -284,7 +279,7 @@ const ATTACKS = {
         for (let i = 0; i < n; i++) {
             _v.subVectors(plane.position, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.09).multiplyScalar(1.15);
             _v.y += 0.12;
-            fire(from, _v, { dmg: 7, r: 3, color: b.def.shot, gravity: 0.0025 });
+            fire(from, _v, { dmg: 7, r: 3, color: b.def.shot, gravity: 0.0025, look: 'acid' });
         }
         return false;
     },
@@ -292,7 +287,7 @@ const ATTACKS = {
         b.charge = 1;
         for (const at of [20, 34, 48]) if (crossed(b, dt, at)) {
             const from = emitterPos(b, new THREE.Vector3());
-            for (let i = -1; i <= 1; i++) { _v.subVectors(predict(25, _w), from).normalize().applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot }); }
+            for (let i = -1; i <= 1; i++) { _v.subVectors(predict(25, _w), from).normalize().applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot, look: 'plasma' }); }
         }
         return b.attackT > 60;
     },
@@ -304,7 +299,7 @@ const ATTACKS = {
         for (let i = 0; i < n; i++) {
             const to = predict(T, new THREE.Vector3()).add(_w.set((Math.random() - 0.5) * 70, 0, (Math.random() - 0.5) * 70));
             const v = to.sub(from).divideScalar(T); v.y += 0.5 * G * T;
-            fire(from, v, { dmg: 14, r: 4.5, color: b.def.shot, gravity: G, aoe: 26 });
+            fire(from, v, { dmg: 14, r: 4.5, color: b.def.shot, gravity: G, aoe: 26, look: 'lava' });
         }
         return false;
     },
@@ -313,7 +308,7 @@ const ATTACKS = {
         b.charge = Math.min(1, b.attackT / 40);
         for (const [i, at] of [40, 52, 64, 76].entries()) if (crossed(b, dt, at)) {
             const pod = b.model.pods[i % 2].getWorldPosition(new THREE.Vector3());
-            fire(pod, _v.set(0, 0.9, 0), { dmg: 15, r: 2.4, color: b.def.shot, homing: true, life: 460, geo: missileGeo });
+            fire(pod, _v.set(0, 0.9, 0), { dmg: 15, r: 2.4, color: b.def.shot, homing: true, life: 460, look: 'missile' });
         }
         return b.attackT > 90;
     },
@@ -346,6 +341,12 @@ const ATTACKS = {
         }
         return b.attackT > 85 + (b.enraged ? 130 : 100);
     },
+    // A brood of minions that latch on and bite (entities/minions.js)
+    minions(au, b, dt) {
+        b.charge = Math.min(1, b.attackT / 50);
+        if (crossed(b, dt, 50)) spawnMinions(b.def.minion, emitterPos(b, new THREE.Vector3()), b.enraged ? 5 : 3);
+        return b.attackT > 70;
+    },
     // Tentacles burst from the water under the player, after a warning ring
     tentacles(au, b, dt) {
         b.charge = 1;
@@ -357,17 +358,21 @@ const ATTACKS = {
     },
 };
 
-function fire(from, v, { dmg: d, r, color, gravity = 0, homing = false, aoe = 0, life = 300, geo = shotGeo }) {
-    const mesh = new THREE.Mesh(geo, shotMat(color));
-    mesh.position.copy(from); mesh.scale.setScalar(geo === shotGeo ? r : 1);
+const LOOKS = { orb: c => orb(c), lava: () => lavaRock(), acid: c => acidBlob(c), plasma: c => plasmaBolt(c), missile: c => missileModel(c, 'z') };
+function fire(from, v, { dmg: d, r, color, gravity = 0, homing = false, aoe = 0, life = 300, look = 'orb' }) {
+    const mesh = LOOKS[look](color); // detailed, animated shots (effects/projectileModels.js)
+    mesh.position.copy(from);
+    if (look !== 'missile') mesh.scale.setScalar(r * (look === 'plasma' ? 0.8 : 0.7)); else mesh.scale.setScalar(2.2);
+    if (look === 'plasma' || look === 'missile') mesh.quaternion.setFromUnitVectors(_w.set(0, 0, 1), _v.copy(v).normalize());
     scene.add(mesh);
-    shots.push({ mesh, v: v.clone(), gravity, dmg: dmg(d), r, life, homing, aoe, decoyed: false });
+    shots.push({ mesh, v: v.clone(), gravity, dmg: dmg(d), r, life, homing, aoe, decoyed: false, t: Math.random() * 10 });
 }
 
 function updateShots(dt) {
     for (let i = shots.length - 1; i >= 0; i--) {
         const s = shots[i], p = s.mesh.position;
-        s.life -= dt;
+        s.life -= dt; s.t += dt / 60;
+        s.mesh.userData.animate?.(s.t);
         if (s.homing) {
             if (!s.decoyed && state.flareTimer > 0 && p.distanceTo(plane.position) < 160) s.decoyed = true; // flares spoof it up close
             if (!s.decoyed && !state._playerDown) { const speed = Math.min(1.25, s.v.length() + 0.012 * dt); s.v.lerp(_v.subVectors(plane.position, p).normalize().multiplyScalar(speed), 0.03 * dt).setLength(speed); }

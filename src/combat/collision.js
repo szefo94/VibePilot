@@ -16,6 +16,7 @@ import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
 import { boxHitsPart, nearGroundUnit } from './partBoxes.js';
+import { pointsHit, segmentHits } from './hitShapes.js';
 import { beginHits } from './hits.js';
 import { showHitDirection } from '../ui/threats.js';
 import { destroyAirUnit } from '../entities/airUnits.js';
@@ -55,7 +56,7 @@ function segmentDistSq(a, b, c) {
 const bulletDistSq = (b, c) => b.prevPosition ? segmentDistSq(b.prevPosition, b.position, c) : b.position.distanceToSquared(c);
 
 // Return a player bullet (and its tracer) to the pool
-function removeBullet(b, index) {
+export function removeBullet(b, index) {
     if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
     scene.remove(b); _playerBulletPool.push(b); bullets.splice(index, 1);
 }
@@ -78,7 +79,17 @@ export function damagePlayer(amount, source) {
 // Scratch Box3 for plane pickup AABB (covers full wingspan, recomputed each resolveCollisions call)
 const _planePickupBox = new THREE.Box3();
 const _planeMarkerBox = new THREE.Box3();
+// The player's plane, for collisions with aircraft: nose, tail, fin, wingtips and mid-wings (with radii), from its model
+const PLANE_POINTS = [[0, 0, 0, 1.4], [0, 0, 3.2, 0.8], [0, 0.4, -2.4, 0.8], [0, 1.5, -2.3, 0.6], [5.6, -0.12, -0.2, 0.6], [-5.6, -0.12, -0.2, 0.6], [3, -0.12, 0.1, 0.8], [-3, -0.12, 0.1, 0.8]]
+    .map(([x, y, z, r]) => [new THREE.Vector3(x, y, z), r]);
+const _planePts = PLANE_POINTS.map(([, r]) => [new THREE.Vector3(), r]);
+function planePoints() {
+    plane.updateMatrixWorld();
+    PLANE_POINTS.forEach(([local], i) => _planePts[i][0].copy(local).applyMatrix4(plane.matrixWorld));
+    return _planePts;
+}
 export function resolveCollisions() {
+    for (const au of airUnits) au.group.updateMatrixWorld(true); // hit shapes use the parts' world matrices: fresh for this step
     // Build plane AABB (union of all part boxes) expanded by collectible radius — covers full wingspan
     _planePickupBox.makeEmpty();
     planePartBoxes.forEach(pb => _planePickupBox.union(pb));
@@ -284,7 +295,7 @@ export function resolveCollisions() {
     }
     if (!state.isGameOver) {
         for (const au of airUnits) {
-            if (au.hp > 0 && au.group.position.distanceToSquared(plane.position) < (au.collisionRadius + planeSphereRadius) ** 2) {
+            if (au.hp > 0 && pointsHit(au.group, planePoints())) { // nose, tail, fin and wingtips against its real shape
                 // Direct impact: the other aircraft goes down too (a proxy is owned elsewhere: tell its owner)
                 if (au.proxy) au.proxy.ram?.();
                 else if (au.isBoss) { /* a boss shrugs it off */ }
@@ -327,19 +338,8 @@ export function resolveCollisions() {
             if ('group' in obj) {
                 const au = obj;
                 if (au.hp <= 0 || au.friendly) continue; // allies don't stop the player's bullets
-                // Main fuselage sphere check
-                let _auHit = bulletDistSq(b, au.group.position) < (b.userData.collisionRadius + au.collisionRadius) ** 2;
-                // Wing/rotor sub-sphere checks (corrects for scale×3 models with large wingspans)
-                if (!_auHit && au.wingHalfSpan) {
-                    let _wwx, _wwz;
-                    if (au.wingType === 'q') { _sv1.set(1, 0, 0).applyQuaternion(au.group.quaternion); _wwx = _sv1.x; _wwz = _sv1.z; }
-                    else { const _ry = au.group.rotation.y; _wwx = Math.sin(_ry); _wwz = Math.cos(_ry); }
-                    const _wr2 = (b.userData.collisionRadius + au.wingR) ** 2, _hs = au.wingHalfSpan, _gp = au.group.position;
-                    const _dx1 = b.position.x-(_gp.x+_wwx*_hs), _dy = b.position.y-_gp.y, _dz1 = b.position.z-(_gp.z+_wwz*_hs);
-                    const _dx2 = b.position.x-(_gp.x-_wwx*_hs),                              _dz2 = b.position.z-(_gp.z-_wwz*_hs);
-                    _auHit = (_dx1*_dx1+_dy*_dy+_dz1*_dz1 < _wr2) || (_dx2*_dx2+_dy*_dy+_dz2*_dz2 < _wr2);
-                }
-                if (_auHit) {
+                // The bullet's path this step against the unit's real shape (combat/hitShapes.js)
+                if (segmentHits(au.group, b.prevPosition ?? b.position, b.position, b.userData.collisionRadius + 0.4)) {
                     removeBullet(b, i); hit = true;
                     const hits = beginHits('bullet'); hits.damage(au, b.userData.damage); hits.finish();
                 }
