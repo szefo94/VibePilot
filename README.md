@@ -195,6 +195,7 @@ Freaky mode (start menu toggle) turns the run into a quest story: arcs of four q
 
 **How bosses fight:**
 - **Facing:** a boss turns toward its target and attacks only along where its mouth faces. Beams and fire breath sweep slowly, so flying across them escapes.
+- **Bombs and napalm:** they work on bosses as well as guns and missiles. A bomb bursts on a boss's body, and its blast reaches the boss's feet or back. Napalm splashed on a boss, or a boss standing in burning napalm, sets it on fire; more napalm burns hotter.
 - **Enraged:** below half HP, a boss becomes enraged.
 - **Escape:** after 5 minutes, a boss escapes; in a quest it returns later.
 
