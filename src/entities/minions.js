@@ -33,7 +33,7 @@ warn.id = 'parasite-warning'; warn.hidden = true; warn.setAttribute('role', 'ale
 document.body.appendChild(warn);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 
-/** Multiplayer: who minions may chase ([{ id, local, position, alive }]) and how bites on others are delivered. */
+/** Multiplayer: who minions may chase ([{ id, local, position, alive, maxHP? }] — bites drain a share of maxHP) and how bites on others are delivered. */
 export function setMinionTargets(targets, onBite) { targetsFn = targets || (() => [localTarget]); remoteBite = onBite || null; }
 
 // --- Models ------------------------------------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ export function updateMinions(dt) {
             const every = MINION.latch / MINION.bites, before = Math.floor((MINION.latch - m.life - dt) / every), now = Math.floor((MINION.latch - m.life) / every);
             if (now > before && m.bitten < MINION.bites) {
                 m.bitten++;
-                const dmg = Math.max(1, Math.round((state.maxHP * MINION.drain * difficulty().enemyDamage) / MINION.bites));
+                const dmg = Math.max(1, Math.round(((t.maxHP ?? state.maxHP) * MINION.drain * difficulty().enemyDamage) / MINION.bites));
                 if (t.local) damagePlayer(dmg, g.position); else remoteBite?.(t.id, dmg);
             }
             if (t.local) { onMe++; worst = Math.max(worst, 1 - m.life / MINION.latch); }
