@@ -1,5 +1,5 @@
 /**
- * Freaky mode: giant bosses as random special events, one at a time (Settings → Freaky mode; K summons one now).
+ * Freaky mode's giant bosses, one at a time: each the finale of a story arc (game/quests.js); K summons one now.
  *
  *   kaiju   GORGAZON          rises from the sea           atomic breath beam, energy volleys
  *   kraken  KRAKOTH           surfaces from the deep       tentacles burst from the water under you, volleys, squidlings
@@ -25,7 +25,7 @@ import { createExplosion } from '../effects/effects.js';
 import { damagePlayer } from '../combat/collision.js';
 import { groundUnitWorldPos } from '../combat/damage.js';
 import { heightAt } from '../world/terrain.js';
-import { difficulty, onSettingChange, settings } from '../core/settings.js';
+import { difficulty } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
 import { runHooks } from '../game/hooks.js';
 import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
@@ -35,8 +35,6 @@ import { acidBlob, lavaRock, missile as missileModel, orb, plasmaBolt } from '..
 
 /** Times in frames at 60 fps, distances in world units. */
 export const BOSS = Object.freeze({
-    firstDelay: [60 * 60, 120 * 60], // Freaky mode on: the first boss 1–2 min into the flight
-    nextDelay: [90 * 60, 180 * 60],  // then 1.5–3 min after the last one is gone
     life: 300 * 60,                  // escapes after 5 min
     emerge: 240,                     // rising out of the sea / ground / sky
     attackEvery: 170, enragedFactor: 0.62,
@@ -53,13 +51,13 @@ export const BOSS_TYPES = Object.freeze({
     zombot: { name: 'STAHLMOND ZOMBOT', title: 'Iron robo-zombie from the dark side of the Moon', verb: 'descends from the Moon', where: 'sky', build: buildZombot, hp: 1200, xp: 950, radius: 36, color: '#ff3a3a', shot: 0xff3a3a, attacks: ['plasma', 'beam'], speed: 0.6 },
 });
 
-let active = null, timer = rand(BOSS.firstDelay), lastKind = null;
+let active = null, lastKind = null;
 const shots = [];      // { mesh, v, gravity, dmg, r, life, homing, aoe, decoyed }
 const effects = [];    // { mesh, life, update(dt) } — beams, warning rings, tentacles, the volcano
 const pending = [];    // { at, fn } — delayed explosions (a defeat), in frames
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 
-function rand([a, b]) { return a + Math.random() * (b - a); }
+
 const surface = (x, z) => Math.max(heightAt(x, z), waterLevel);
 const inMap = (x, z, m = 0.82) => Math.abs(x) < MAP_BOUNDARY * m && Math.abs(z) < MAP_BOUNDARY * m;
 const dmg = base => Math.max(1, Math.round(base * difficulty().enemyDamage));
@@ -75,8 +73,9 @@ function highestPeak() {
     }
     return (peak = best);
 }
-function findSpot(where) {
-    const p = plane.position;
+/** Where a boss of this kind can appear, around `from` (the player by default), or null. */
+export function findSpot(where, from = plane.position) {
+    const p = from;
     if (where === 'sea') {
         for (let i = 0; i < 120; i++) {
             const a = Math.random() * Math.PI * 2, d = 650 + Math.random() * 550, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
@@ -118,11 +117,11 @@ function restY(kind, h, ground) {
 // --- Spawning --------------------------------------------------------------------------------------------------------
 
 /** Summon a boss now (a given kind, or a random one that has somewhere to appear). Returns the air unit, or null. */
-export function spawnBoss(kind = null) {
+export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
     if (active || !RULES.bosses || state.isGameOver || state.awaitingStart) return null;
     const kinds = kind ? [kind] : Object.keys(BOSS_TYPES).filter(k => k !== lastKind).sort(() => Math.random() - 0.5);
     let def = null, spot = null, k = null;
-    for (k of kinds) { def = BOSS_TYPES[k]; spot = def && findSpot(def.where); if (spot) break; }
+    for (k of kinds) { def = BOSS_TYPES[k]; spot = def && (findSpot(def.where, near ?? plane.position) ?? (near && findSpot(def.where))); if (spot) break; }
     if (!spot) return null;
     const model = def.build(), g = model.group, h = model.height;
     const rest = restY(k, h, spot.ground);
@@ -132,7 +131,7 @@ export function spawnBoss(kind = null) {
     scene.add(g);
     if (spot.facility) killGroundUnit(spot.facility, { reward: false }); // it breaks out
     if (k === 'golem') effects.push(volcano(spot));
-    const hp = Math.round(def.hp * (1 + BOSS.hpPerLevel * (state.level - 1)));
+    const hp = Math.round(def.hp * (1 + BOSS.hpPerLevel * (state.level - 1)) * hpMul);
     const b = { kind: k, def, model, rest, start, home: new THREE.Vector3(spot.x, spot.ground, spot.z), t: 0, frames: 0, phase: 'emerge',
         attackIn: 120, attack: null, attackT: 0, charge: 0, enraged: false, walking: false, beam: null, aim: new THREE.Vector3() };
     const au = {
@@ -146,7 +145,6 @@ export function spawnBoss(kind = null) {
     return au;
 }
 
-onSettingChange((key, on) => { if (key === 'freakyMode' && on && !active) timer = Math.min(timer, 20 * 60); }); // switched on: one soon
 
 /** For the HUD and tests: the boss in the air, or null. */
 export function bossStatus() {
@@ -165,9 +163,6 @@ export function updateBossSystem(dt) {
     updateMinions(dt);
     for (let i = effects.length - 1; i >= 0; i--) if (!effects[i].update(dt)) { scene.remove(effects[i].mesh); effects.splice(i, 1); }
     if (active && !airUnits.includes(active)) finish(active);
-    if (!active && RULES.bosses && settings.freakyMode && !state.isGameOver && !state.awaitingStart && (timer -= dt) <= 0) {
-        if (!spawnBoss()) timer = 10 * 60; // nowhere to appear right now: try again soon
-    }
     // Homing boss missiles sound the warning tone like an ace's
     let near = Infinity, homing = false;
     for (const s of shots) if (s.homing && !s.decoyed) { homing = true; near = Math.min(near, s.mesh.position.distanceTo(plane.position)); }
@@ -185,7 +180,6 @@ function finish(au) {
     for (const e of effects) scene.remove(e.mesh);
     effects.length = 0;
     active = null;
-    timer = rand(BOSS.nextDelay);
 }
 
 /** One boss's behaviour, every step (ai.js). */

@@ -35,7 +35,7 @@ function createAC130Visual() {
 
 // --- Air Unit Factory & Destruction ---
 const AIR_VISUALS = { helicopter: createHelicopterVisual, balloon: createBalloonVisual, fighter: createFighterVisual, tanker: createTankerVisual, ac130: createAC130Visual };
-function createAirUnit(type, x, y, z) {
+export function createAirUnit(type, x, y, z) {
     const stats = AIR_UNIT_TYPES[type]; // config.js
     const visual = AIR_VISUALS[type]();
     const level = stats.level ? ~~randomRange(stats.level[0], stats.level[1]) : 1;

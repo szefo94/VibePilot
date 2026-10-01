@@ -623,6 +623,36 @@ const probes = {
             return { out, pass: ok && Object.keys(out).length === 6 };
         });
     },
+    // Freaky mode quests: a quest chain starts; destroy quests use existing units, or spawn new ones when none are left
+    async quests(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const Q = await import('./src/game/quests.js');
+            const { setSetting } = await import('./src/core/settings.js');
+            const { simulate } = await import('./src/game/simulation.js');
+            const { plane } = await import('./src/player/plane.js');
+            const { groundUnits } = await import('./src/entities/registry.js');
+            const { killGroundUnit } = await import('./src/entities/groundUnits.js');
+            const run = n => { for (let i = 0; i < n; i++) simulate(1); };
+            setSetting('freakyMode', true);
+            run(9 * 60);
+            const first = Q.questStatus();
+            // Sink every destroyer and down every helicopter: neither variant of the next step has targets left, so the
+            // quest has to bring new ones (with helicopters left it would pick the helicopter variant instead)
+            const { airUnits } = await import('./src/entities/registry.js');
+            const { destroyAirUnit } = await import('./src/entities/airUnits.js');
+            for (const u of groundUnits.filter(g => g.userData.type === 'destroyer')) killGroundUnit(u, { reward: false });
+            for (const a of airUnits.filter(x => x.type === 'helicopter')) destroyAirUnit(a, { reward: false });
+            const p = first.goal.point; plane.position.set(p.x, 40, p.z); run(2);
+            run(7 * 60);
+            const second = Q.questStatus();
+            const targets = second?.goal.targets ?? [];
+            setSetting('freakyMode', false);
+            const fresh = targets.every(t => t.userData.hp > 0 && t.userData.type === 'destroyer');
+            return { first: first?.title, second: second?.title, unit: second?.goal.unit, spawned: targets.length, fresh,
+                pass: first?.goal.type === 'scout' && second?.goal.unit === 'destroyer' && targets.length === 2 && fresh };
+        });
+    },
     async splash(page) {
         await worldReady(page);
         const during = await page.evaluate(async () => {

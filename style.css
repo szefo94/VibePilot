@@ -904,3 +904,37 @@ body.touch #boss-frame .bf-title { display: none; }
     animation: flight-warning-blink 0.35s steps(1) infinite; }
 #parasite-warning[hidden] { display: none; }
 body.menu-open #parasite-warning { display: none; }
+
+/* Freaky mode quests (ui/questHud.js): tracker, radio comms, banners */
+#quest-tracker { position: fixed; top: 64px; left: 10px; z-index: 105; width: 260px; pointer-events: none; padding: 7px 10px 8px;
+    font: 12px 'Share Tech Mono', 'Courier New', monospace; color: #fff; background: rgba(12, 10, 0, 0.72);
+    border: 1px solid rgba(255, 210, 58, 0.55); border-left: 3px solid #ffd23a; border-radius: 3px; box-shadow: 0 0 14px rgba(255, 210, 58, 0.25); }
+#quest-tracker[hidden] { display: none; }
+#quest-tracker .qt-arc { font-size: 10px; letter-spacing: 0.16em; color: #ffd23a; text-transform: uppercase; }
+#quest-tracker .qt-title { margin-top: 2px; font: bold 14px 'Orbitron', 'Share Tech Mono', sans-serif; letter-spacing: 0.05em; color: #fff2b0; }
+#quest-tracker .qt-goal { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+#quest-tracker .qt-dist { color: var(--hud-amber); white-space: nowrap; }
+#quest-tracker .qt-arrow { display: inline-block; margin-right: 4px; transition: transform 0.15s linear; }
+#quest-tracker .qt-bar { height: 4px; margin-top: 5px; background: rgba(255, 210, 58, 0.18); }
+#quest-tracker .qt-bar div { height: 100%; background: #ffd23a; box-shadow: 0 0 6px #ffd23a; transition: width 0.3s; }
+body.questing #instructions { top: 170px; max-height: calc(100vh - 470px); overflow: hidden; }
+#quest-comms { --speaker: #9fe8ff; position: fixed; left: 50%; bottom: 215px; transform: translateX(-50%); z-index: 115; width: min(560px, 80vw); pointer-events: none;
+    padding: 8px 12px; background: rgba(0, 8, 12, 0.82); border: 1px solid var(--speaker); border-left-width: 4px; border-radius: 3px;
+    font: 14px 'Share Tech Mono', 'Courier New', monospace; color: #e8f6ff; box-shadow: 0 0 16px color-mix(in srgb, var(--speaker) 35%, transparent); }
+#quest-comms[hidden] { display: none; }
+#quest-comms .qc-who { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+#quest-comms .qc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--speaker); box-shadow: 0 0 8px var(--speaker); animation: boss-blink 0.8s steps(2) infinite; }
+#quest-comms .qc-name { font-weight: bold; color: var(--speaker); letter-spacing: 0.1em; }
+#quest-comms .qc-role { font-size: 11px; opacity: 0.65; }
+#quest-banner { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 510; pointer-events: none; text-align: center; white-space: nowrap;
+    font-family: 'Share Tech Mono', 'Courier New', monospace; animation: boss-alert-in 0.4s cubic-bezier(.2, 1.6, .4, 1); }
+#quest-banner[hidden] { display: none; }
+#quest-banner .qb-kicker { font-size: 13px; letter-spacing: 0.35em; color: #ffd23a; }
+#quest-banner .qb-name { font: 900 clamp(20px, 4vw, 34px) 'Orbitron', 'Share Tech Mono', sans-serif; color: #fff2b0; text-shadow: 0 0 12px #ffaa00, 0 2px 0 #000; }
+#quest-banner .qb-line { font-size: 14px; letter-spacing: 0.15em; color: #fff; text-shadow: 0 0 6px #000; }
+#quest-banner.done .qb-name { color: #9cff6a; text-shadow: 0 0 12px #2a8a00, 0 2px 0 #000; }
+#quest-banner.arc .qb-name { color: #ffd23a; font-size: clamp(24px, 5vw, 44px); }
+body.menu-open #quest-tracker, body.menu-open #quest-comms, body.menu-open #quest-banner { display: none; }
+body.touch #quest-tracker { top: 52px; width: 200px; font-size: 10px; padding: 4px 7px; }
+body.touch #quest-tracker .qt-title { font-size: 11px; }
+body.touch #quest-comms { bottom: auto; top: 30%; font-size: 12px; }
