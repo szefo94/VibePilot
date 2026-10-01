@@ -10,6 +10,10 @@ import { createExplosion, updateExplosions } from '../effects/effects.js';
 import { groundUnitWorldPos } from './damage.js';
 import { nearGroundUnit } from './partBoxes.js';
 import { shapeHits } from './hitShapes.js';
+import { igniteAirUnit } from '../effects/fire.js';
+const _bossAt = new THREE.Vector3();
+/** A live boss whose body (its hit shape) is within `r` of `p` — bombs and napalm strike bosses, not just the ground. */
+const bossAt = (p, r) => airUnits.find(au => au.type === 'boss' && au.hp > 0 && !au.friendly && shapeHits(au.group, p, r)) ?? null;
 import { beginHits } from './hits.js';
 import { heightAt } from '../world/terrain.js';
 import { disposeGroup } from '../core/utils.js';
@@ -52,11 +56,13 @@ export function updateProjectiles(dt) {
         const b = bombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
         if (b.velocity.lengthSq() > 0.001) b.quaternion.setFromUnitVectors(_sv1.set(0, 0, 1), _sv2.copy(b.velocity).normalize());
-        if (b.position.y <= surfaceAt(b.position) + b.userData.collisionRadius) {
+        const onBoss = bossAt(b.position, b.userData.collisionRadius + 1.5); // a bomb that strikes a boss bursts on it
+        if (onBoss || b.position.y <= surfaceAt(b.position) + b.userData.collisionRadius) {
             createExplosion(b.position, 1.4); // weapon-sized blast
-            const hits = beginHits('bomb'), rSq = b.userData.aoERadius * b.userData.aoERadius;
+            const R = b.userData.aoERadius, hits = beginHits('bomb'), rSq = R * R;
             for (const gu of groundUnits) if (groundUnitWorldPos(gu).distanceToSquared(b.position) < rSq) hits.damage(gu, b.userData.damage);
-            for (const au of airUnits) if (au.group.position.distanceToSquared(b.position) < rSq) hits.damage(au, b.userData.damage);
+            // Air units by their centre; a boss (or, in multiplayer, the host's boss as the others see it) by its body, so a blast at its feet or on its back reaches it
+            for (const au of airUnits) if (au === onBoss || (au.type === 'boss' ? au.hp > 0 && shapeHits(au.group, b.position, R) : au.group.position.distanceToSquared(b.position) < rSq)) hits.damage(au, b.userData.damage);
             for (const en of enemies) if (en.parts.some(p => p.position.distanceToSquared(b.position) < rSq)) hits.damage(en, b.userData.damage);
             hits.finish();
             _damageFenceNear(b.position, b.userData.aoERadius); // F5
@@ -149,6 +155,13 @@ export function updateProjectiles(dt) {
     for (let i = napalmBombs.length - 1; i >= 0; i--) {
         const b = napalmBombs[i];
         b.velocity.y -= gravity * dt; b.position.addScaledVector(b.velocity, dt);
+        const onBoss = bossAt(b.position, 1.5);
+        if (onBoss) { // splashes on a boss: it catches fire (effects/fire.js)
+            igniteAirUnit(onBoss, b.position);
+            createExplosion(b.position, 0.35);
+            scene.remove(b); b.material.dispose(); napalmBombs.splice(i, 1);
+            continue;
+        }
         if (b.position.y <= surfaceAt(b.position) + 0.8) {
             const pm = new THREE.Mesh(_napClusterPatchGeo, napalmPatchMat.clone());
             // Sit just above the surface the orb landed on (islet top or water), not below it
@@ -186,6 +199,9 @@ export function updateProjectiles(dt) {
             const hits = beginHits('napalm'); // burning ground only
             for (const gu of groundUnits) if (groundUnitWorldPos(gu).distanceToSquared(p.pos) < rSq) hits.damage(gu, dmg);
             hits.finish();
+            // A boss standing or wading in the fire catches it
+            _bossAt.set(p.pos.x, p.pos.y + 2, p.pos.z);
+            for (const au of airUnits) if (au.type === 'boss' && au.hp > 0 && !au.friendly && shapeHits(au.group, _bossAt, _pR)) igniteAirUnit(au, _bossAt);
         }
         if (p.life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); napalmPatches.splice(i, 1); }
     }

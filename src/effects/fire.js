@@ -11,6 +11,8 @@
 import { scene } from '../core/scene.js';
 import { markShared } from '../core/utils.js';
 import { beginHits } from '../combat/hits.js';
+import { airUnits } from '../entities/registry.js';
+import { state } from '../state.js';
 
 const BURN = Object.freeze({
     buildingFrom: 0.25,    // damage share (1 − hp/maxHp) at which a building starts to burn
@@ -81,6 +83,35 @@ export function onUnitDamaged(unit, weapon, remote = false) {
     if (weapon === 'napalm') { e.napalm = BURN.napalmFrames; e.remote = remote; }
 }
 
+// --- Bosses on fire ---------------------------------------------------------------------------------------------------
+// Napalm that splashes on a boss (or a boss standing in a burning patch) sticks: flames on its body where it hit,
+// moving with it, and damage every BOSS_BURN.tick frames; every splash refreshes the fire and makes it hotter.
+export const BOSS_BURN = Object.freeze({ frames: 6 * 60, tick: 30, damage: 12, maxHeat: 12, anchors: 10 });
+const burningAir = new Map(); // air unit → { frames, heat, tick, anchors: [points in its own frame] }
+const _a = new THREE.Vector3();
+/** Napalm on air unit `au` (a boss) at world point `at`. */
+export function igniteAirUnit(au, at) {
+    let e = burningAir.get(au);
+    if (!e) { e = { frames: 0, heat: 0, tick: BOSS_BURN.tick, anchors: [] }; burningAir.set(au, e); }
+    e.frames = BOSS_BURN.frames;
+    e.heat = Math.min(BOSS_BURN.maxHeat, e.heat + 1);
+    if (e.anchors.length < BOSS_BURN.anchors) e.anchors.push(au.group.worldToLocal(_a.copy(at)).clone());
+    else e.anchors[Math.floor(Math.random() * e.anchors.length)] = au.group.worldToLocal(_a.copy(at)).clone();
+}
+/** For the HUD and tests: whether `au` is on fire, and how hot (0…1). */
+export const airUnitBurn = au => { const e = burningAir.get(au); return e ? e.heat / BOSS_BURN.maxHeat : 0; };
+function updateBurningAir(dt) {
+    for (const [au, e] of burningAir) {
+        if (!(au.hp > 0) || !airUnits.includes(au) || (e.frames -= dt) <= 0) { burningAir.delete(au); continue; }
+        const heat = e.heat / BOSS_BURN.maxHeat, strength = 0.55 + 0.45 * heat;
+        for (const a of e.anchors) { au.group.localToWorld(_a.copy(a)); for (let k = 0; k < Math.ceil(dt); k++) burnAt(_a, strength, 4); }
+        if ((e.tick -= dt) <= 0) {
+            e.tick = BOSS_BURN.tick;
+            const hits = beginHits('napalm'); hits.damage(au, Math.max(1, Math.round(BOSS_BURN.damage * (0.5 + heat) * state.playerDamageMultiplier))); hits.finish();
+        }
+    }
+}
+
 /** Called when a ground unit is destroyed: it keeps smouldering for a while. */
 export function onUnitKilled(unit) {
     const e = burning.get(unit);
@@ -96,6 +127,7 @@ function burnAt(a, strength, spread) {
 
 /** Per simulated frame (effects.js). */
 export function updateFires(dt) {
+    updateBurningAir(dt);
     for (const [unit, e] of burning) {
         const ud = unit.userData;
         if (!(ud.hp > 0) || ud._alive === false) { burning.delete(unit); continue; }

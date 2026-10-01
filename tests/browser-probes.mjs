@@ -681,6 +681,29 @@ const probes = {
             return { kind: au.boss.kind, first, align: +align.toFixed(3), gameOver: state.isGameOver, pass: !!first && first.f > 30 && first.facing <= B.BOSS.faceCone && align < 0.05 };
         });
     }, { query: '?autostart&invulnerable' }), // a crash (hill, ceiling, boundary) would leave the boss no one to attack
+    // Bombs burst on a boss's body and their blast reaches it; napalm splashed on a boss sets it on fire
+    bossOrdnance: Object.assign(async page => {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const B = await import('./src/entities/bosses.js'), W = await import('./src/combat/weapons.js');
+            const { simulate } = await import('./src/game/simulation.js'), { plane } = await import('./src/player/plane.js');
+            const { state } = await import('./src/state.js'), { airUnitBurn } = await import('./src/effects/fire.js');
+            const au = B.spawnBoss('golem') ?? B.spawnBoss('robot') ?? B.spawnBoss();
+            if (!au) return { pass: false, why: 'no spot' };
+            for (let f = 0; f < 260; f++) simulate(1);
+            au.boss.attackIn = 1e9; // hold its fire
+            const above = () => { plane.position.copy(au.group.position); plane.position.y = Math.min(145, au.group.position.y + 45); plane.quaternion.identity(); state.speed = 0.05; };
+            const hp0 = au.hp;
+            above(); W.dropBomb();
+            for (let f = 0; f < 120; f++) { plane.position.y = 145; simulate(1); }
+            const bomb = hp0 - au.hp, hp1 = au.hp;
+            above(); W.dropNapalm();
+            let heat = 0;
+            for (let f = 0; f < 300; f++) { plane.position.y = 145; simulate(1); heat = Math.max(heat, airUnitBurn(au)); }
+            const napalm = hp1 - au.hp;
+            return { kind: au.boss.kind, bomb, napalm, heat, pass: bomb > 0 && napalm > 0 && heat > 0 };
+        });
+    }, { query: '?autostart&invulnerable' }),
     // The one objective panel shows the Freaky mode quest; the minimap's terrain layer is baked with its landmarks;
     // challenge tubes (solid) and free tubes (fly-through) look different
     async questPanelMapTubes(page) {
