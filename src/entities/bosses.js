@@ -7,6 +7,10 @@
  *   robot   TITAN-9           awakens in a village         homing missiles, eye laser
  *   alien   SPECIMEN 47       breaks out of a base         acid spray, volleys, facehuggers (a hangar or airbase is lost)
  *   zombot  STAHLMOND ZOMBOT  descends from the Moon       plasma bursts, beam        (flies)
+ *   dragon  VYRMATHRAX        wakes in its mountain lair   fire breath, fireballs, wyrmlings (flies; on the highest peak)
+ *   serpent LEVIATHAN         coils up from the abyss      water jet, coils burst from the sea, volleys
+ *   phoenix PYRRHAX           blazes down from the sun     fire nova, fireballs, fire breath (flies; reborn once from its ashes)
+ *   hydra   THE HYDRA         rises from a marsh           acid, venom bursts and volleys — from each of its three heads in turn
  *
  * A boss is an ordinary hostile air unit in `airUnits` (`isBoss`), so bullets, missiles, bombs, the lock-on and
  * the lead marker work on it; ai.js hands it to updateBoss(). Every attack is telegraphed (glow, a warning line, a
@@ -31,6 +35,8 @@ import { runHooks } from '../game/hooks.js';
 import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
 import { clearMinions, spawnMinions, updateMinions } from './minions.js';
 import { buildAlien, buildGolem, buildKaiju, buildKraken, buildRobot, buildZombot } from './bossModels.js';
+import { buildDragon, buildHydra, buildPhoenix, buildSerpent } from './mythModels.js';
+import { updateUnitLabel } from '../ui/labels.js';
 import { acidBlob, lavaRock, missile as missileModel, orb, plasmaBolt } from '../effects/projectileModels.js';
 
 /** Times in frames at 60 fps, distances in world units. */
@@ -53,7 +59,13 @@ export const BOSS_TYPES = Object.freeze({
     golem: { name: 'MAGMAROK', title: 'Heart of the Volcano', verb: 'erupts from the volcano', where: 'peak', build: buildGolem, hp: 1600, xp: 950, radius: 44, color: '#ff7a1a', shot: 0xff5a10, attacks: ['lava', 'volley'], speed: 0 },
     robot: { name: 'TITAN-9', title: 'Rampaging Mech', verb: 'awakens in a village', where: 'village', build: buildRobot, hp: 1400, xp: 900, radius: 46, color: '#ff4848', shot: 0xff4a3a, attacks: ['missiles', 'beam'], speed: 0.12 },
     alien: { name: 'SPECIMEN 47', title: 'Escaped from a military facility', verb: 'breaks out of the base', where: 'base', build: buildAlien, hp: 1100, xp: 850, radius: 36, color: '#66ff55', shot: 0x66ff55, attacks: ['acid', 'volley', 'minions'], speed: 0.28, minion: 'hugger' },
-    zombot: { name: 'STAHLMOND ZOMBOT', title: 'Iron robo-zombie from the dark side of the Moon', verb: 'descends from the Moon', where: 'sky', build: buildZombot, hp: 1200, xp: 950, radius: 36, color: '#ff3a3a', shot: 0xff3a3a, attacks: ['plasma', 'beam'], speed: 0.6 },
+    zombot: { name: 'STAHLMOND ZOMBOT', title: 'Iron robo-zombie from the dark side of the Moon', verb: 'descends from the Moon', where: 'sky', build: buildZombot, hp: 1200, xp: 950, radius: 36, color: '#ff3a3a', shot: 0xff3a3a, attacks: ['plasma', 'beam'], speed: 0.6, flies: true, orbit: 280 },
+    // Mythical creatures (entities/mythModels.js). flies: circles the pilot at `orbit`; from: 'below' climbs out of
+    // its spot (the dragon from its mountain) instead of descending; rebirth: rises again once at that share of HP
+    dragon: { name: 'VYRMATHRAX', title: 'The Ember Wyrm', verb: 'wakes in its mountain lair', where: 'peak', build: buildDragon, hp: 1500, xp: 1000, radius: 40, color: '#ff6a2a', shot: 0xff7a1a, attacks: ['breath', 'fireballs', 'minions'], speed: 0.9, flies: true, orbit: 300, from: 'below', minion: 'wyrmling' },
+    serpent: { name: 'LEVIATHAN', title: 'Serpent of the Abyss', verb: 'coils up from the abyss', where: 'sea', build: buildSerpent, hp: 1400, xp: 900, radius: 38, color: '#3ff0d8', shot: 0x7af7ff, attacks: ['beam', 'tentacles', 'volley'], speed: 0.22 },
+    phoenix: { name: 'PYRRHAX', title: 'The Undying Phoenix', verb: 'blazes down from the sun', where: 'sky', build: buildPhoenix, hp: 1000, xp: 1000, radius: 34, color: '#ffb020', shot: 0xffa21a, attacks: ['nova', 'fireballs', 'breath'], speed: 1.0, flies: true, orbit: 240, rebirth: 0.5 },
+    hydra: { name: 'THE HYDRA', title: 'Three Heads of the Marsh', verb: 'rises from the marsh by a village', where: 'village', build: buildHydra, hp: 1700, xp: 1000, radius: 44, color: '#9cff3a', shot: 0x9cff3a, attacks: ['acid', 'plasma', 'volley'], speed: 0.1 },
 });
 
 let active = null, lastKind = null;
@@ -142,7 +154,8 @@ export function findSpot(where, from = plane.position) {
 function restY(kind, h, ground) {
     if (kind === 'kaiju') return waterLevel + h * 0.22;   // wading, waist-deep
     if (kind === 'kraken') return waterLevel + h * 0.12;  // mantle above the waves
-    if (kind === 'zombot') return Math.min(ceilingLevel - 25, Math.max(ground + 85, plane.position.y));
+    if (BOSS_TYPES[kind].flies) return Math.min(ceilingLevel - 25, Math.max(ground + 85, plane.position.y));
+    if (kind === 'serpent') return waterLevel + 1;        // its neck rears from the waterline
     if (kind === 'alien') return ground + h * 0.36;       // low on its legs
     return ground + h * 0.48;
 }
@@ -158,7 +171,7 @@ export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
     if (!spot) return null;
     const model = def.build(), g = model.group, h = model.height;
     const rest = restY(k, h, spot.ground);
-    const start = k === 'zombot' ? rest + 380 : rest - h * 1.05;
+    const start = def.flies ? (def.from === 'below' ? rest - 160 : rest + 380) : rest - h * 1.05;
     g.position.set(spot.x, start, spot.z);
     g.lookAt(plane.position.x, start, plane.position.z);
     scene.add(g);
@@ -173,6 +186,7 @@ export function spawnBoss(kind = null, { near = null, hpMul = 1 } = {}) {
         isBoss: true, boss: b, blip: { color: def.color, shape: 'ace', label: `☠ ${def.name}` },
     };
     b.rewardXp = au.xpValue;
+    if (def.rebirth) au.cheatDeath = () => rebirth(au); // the phoenix: shot down once, it rises again (combat/hits.js)
     if (sharedReward) au.xpValue = 0; // multiplayer: paid to everyone instead
     airUnits.push(au);
     active = au; lastKind = k;
@@ -188,7 +202,7 @@ export function bossSnapshot() {
     const b = active.boss, g = active.group, r2 = v => +v.toFixed(2);
     return { kind: b.kind, p: g.position.toArray().map(r2), ry: r2(g.rotation.y), pt: r2(b.pitch), hp: Math.round(active.hp), maxHp: active.maxHp, phase: b.phase,
         attack: b.attack, charge: +b.charge.toFixed(2), enraged: b.enraged, walking: b.walking, xp: b.rewardXp,
-        beam: b.beam ? { from: b.model.emitter.getWorldPosition(new THREE.Vector3()).toArray().map(r2), aim: b.aim.toArray().map(v => +v.toFixed(3)), firing: b.beam.mesh.visible, len: b.beam.len } : null };
+        beam: b.beam ? { from: b.model.emitter.getWorldPosition(new THREE.Vector3()).toArray().map(r2), aim: b.aim.toArray().map(v => +v.toFixed(3)), firing: b.beam.mesh.visible, len: b.beam.len, w: b.beam.R.r, cone: b.beam.R.cone } : null };
 }
 export function bossStatus() {
     if (remoteStatus) return remoteStatus();
@@ -236,7 +250,7 @@ export function updateBoss(au, dt) {
     if (b.phase === 'emerge') {
         const k = Math.min(1, b.frames / BOSS.emerge), e = 1 - Math.pow(1 - k, 3);
         g.position.y = b.start + (b.rest - b.start) * e;
-        if (Math.floor(b.frames / 14) !== Math.floor((b.frames - dt) / 14) && b.kind !== 'zombot') { // splashes / rubble round the base
+        if (Math.floor(b.frames / 14) !== Math.floor((b.frames - dt) / 14) && !def.flies) { // splashes / rubble round the base
             const a = Math.random() * Math.PI * 2;
             createExplosion(_v.set(g.position.x + Math.cos(a) * def.radius, surface(g.position.x, g.position.z) + 2, g.position.z + Math.sin(a) * def.radius), 1.5);
         }
@@ -247,7 +261,7 @@ export function updateBoss(au, dt) {
         if (b.frames > BOSS.life) { b.phase = 'leave'; b.leaveAt = b.frames; clearAttack(b); runHooks('bossEvent', 'leaving', au); }
         else attack(au, dt);
     } else { // leave: sink back / fly off, then vanish (an escape)
-        g.position.y += (b.kind === 'zombot' ? 1.2 : -0.5) * dt;
+        g.position.y += (def.flies ? 1.2 : -0.5) * dt;
         if (b.frames - b.leaveAt > 260) { const i = airUnits.indexOf(au); if (i >= 0) airUnits.splice(i, 1); scene.remove(g); }
     }
     b.charge = Math.max(0, b.charge - 0.01 * dt);
@@ -260,9 +274,9 @@ export function updateBoss(au, dt) {
  * where the mouth points — the beam and every shot go that way, so a boss can't hit what it isn't facing.
  */
 function turnToPilot(b, g, dt) {
-    const from = emitterPos(b, _f);
+    const from = b.model.emitter.getWorldPosition(_f);
     const yaw = Math.atan2(T.position.x - g.position.x, T.position.z - g.position.z);
-    const beaming = b.attack === 'beam' && b.attackT > BEAM_CHARGE;
+    const beaming = !!b.beam?.mesh.visible; // a beam or breath firing: it sweeps slowly
     const rate = (beaming ? BOSS.turnBeam : b.attack ? BOSS.turnAttack : BOSS.turn) * (b.enraged ? BOSS.enragedTurn : 1) * dt;
     const dy = wrapAngle(yaw - g.rotation.y);
     g.rotation.y += THREE.MathUtils.clamp(dy, -rate, rate);
@@ -276,6 +290,11 @@ const wrapAngle = a => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 export const aimVector = (yaw, pitch, out) => out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
 /** Point the model's head (the kraken: its emitter) along `aim` — the mouth faces where it attacks. */
 export function faceAim(model, aim) {
+    if (model.heads) { // several heads (the hydra): every one looks at the same point ahead along the aim
+        model.emitter.getWorldPosition(_f).addScaledVector(aim, 220);
+        for (const h of model.heads) { h.parent.updateWorldMatrix(true, false); h.lookAt(_f); }
+        return;
+    }
     const node = model.head ?? model.emitter;
     node.parent.updateWorldMatrix(true, false);
     node.getWorldPosition(_f);
@@ -286,9 +305,9 @@ function move(au, dt) {
     const b = au.boss, g = au.group, p = g.position, def = b.def;
     const dist = Math.hypot(T.position.x - p.x, T.position.z - p.z);
     b.walking = false;
-    if (b.kind === 'zombot') { // circles the player at a distance, bobbing
-        const a = Math.atan2(p.z - T.position.z, p.x - T.position.x) + 0.004 * dt;
-        const tx = T.position.x + Math.cos(a) * 280, tz = T.position.z + Math.sin(a) * 280;
+    if (def.flies) { // circles the player at a distance, bobbing
+        const a = Math.atan2(p.z - T.position.z, p.x - T.position.x) + 0.004 * dt, R = def.orbit ?? 280;
+        const tx = T.position.x + Math.cos(a) * R, tz = T.position.z + Math.sin(a) * R;
         _v.set(tx - p.x, 0, tz - p.z);
         if (_v.length() > 1) p.addScaledVector(_v.normalize(), Math.min(def.speed * dt, _v.length()));
         const ty = Math.min(ceilingLevel - 25, Math.max(surface(p.x, p.z) + 70, T.position.y + 10)) + Math.sin(b.t * 1.3) * 8;
@@ -324,7 +343,21 @@ function clearAttack(b) {
     b.attack = null;
     if (b.beam) { scene.remove(b.beam.mesh, b.beam.warn); b.beam = null; }
 }
-const emitterPos = (b, out) => b.model.emitter.getWorldPosition(out);
+/** Where a shot leaves: the mouth — with several heads, each in turn. */
+const emitterPos = (b, out) => (b.model.emitters ? b.model.emitters[(b.shotN = (b.shotN ?? -1) + 1) % b.model.emitters.length] : b.model.emitter).getWorldPosition(out);
+/** The phoenix's rebirth: at 0 HP the first time, it bursts into flame and rises again, enraged. */
+function rebirth(au) {
+    const b = au.boss;
+    if (b.reborn || b.phase !== 'fight') return false;
+    b.reborn = true; b.enraged = true;
+    au.hp = Math.round(au.maxHp * b.def.rebirth);
+    updateUnitLabel(au.label, au.hp);
+    clearAttack(b); b.attackIn = 90;
+    const p = au.group.position.clone();
+    for (let i = 0; i < 8; i++) pending.push({ at: i * 6, fn: () => createExplosion(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 40, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 40)), 2.4) });
+    runHooks('bossEvent', 'reborn', au);
+    return true;
+}
 /** Where the pilot it fights will be in `frames`, flying straight. */
 const predict = (frames, out) => out.set(0, 0, 1).applyQuaternion(T.quaternion).multiplyScalar(T.speed * frames).add(T.position);
 const crossed = (b, dt, at) => b.attackT >= at && b.attackT - dt < at;
@@ -335,7 +368,42 @@ function aimAt(b, from, to, out) {
     if (off > BOSS.shotCone) out.lerp(b.aim, 1 - BOSS.shotCone / off).normalize();
     return out;
 }
-const BEAM_CHARGE = 85; // frames the beam charges (warning line) before it fires
+/** Rays from the mouth: the beam (long, thin) and the breath (short, a widening cone of fire). Frames, world units. */
+const RAYS = Object.freeze({
+    beam: { len: 1300, r: 5, charge: 85, fire: [100, 130], every: 12, dmg: 7, cone: false },
+    breath: { len: 430, r: 12, charge: 50, fire: [90, 120], every: 8, dmg: 5, cone: true },
+});
+/** A ray attack: a warning line while it charges, then it fires along where the head points — the boss turns slowly
+ *  while it fires (BOSS.turnBeam), so it sweeps after the pilot and flying across it escapes. */
+function ray(au, b, dt, R) {
+    const from = emitterPos(b, new THREE.Vector3());
+    if (!b.beam) {
+        const warn = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color: b.def.shot, transparent: true, opacity: 0.35, depthWrite: false }));
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(R.r, R.cone ? 1.5 : R.r, 1, 14, 1, true), new THREE.MeshBasicMaterial({ color: b.def.shot, transparent: true, opacity: R.cone ? 0.7 : 0.85, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        mesh.visible = false; scene.add(warn, mesh);
+        b.beam = { warn, mesh, len: R.len, R };
+    }
+    const firing = b.attackT > R.charge;
+    b.charge = firing ? 1 : b.attackT / R.charge;
+    for (const m of [b.beam.warn, b.beam.mesh]) {
+        m.position.copy(from).addScaledVector(b.aim, R.len / 2);
+        m.quaternion.setFromUnitVectors(_up, b.aim);
+        m.scale.set(1, R.len, 1);
+    }
+    b.beam.warn.visible = !firing; b.beam.mesh.visible = firing;
+    if (firing) {
+        const flicker = R.cone ? 0.75 + 0.35 * Math.abs(Math.sin(b.t * 23)) : 0.8 + 0.3 * Math.sin(b.t * 40);
+        b.beam.mesh.scale.x = b.beam.mesh.scale.z = flicker;
+        // Damage ticks for every pilot inside the ray (the breath is narrow at the mouth, wide at its end)
+        if (Math.floor(b.attackT / R.every) !== Math.floor((b.attackT - dt) / R.every)) for (const p of pilots()) {
+            _w.subVectors(p.position, from);
+            const along = _w.dot(b.aim), off = _w.addScaledVector(b.aim, -along).length();
+            const width = R.cone ? 1.5 + (R.r - 1.5) * (along / R.len) : R.r;
+            if (along > 0 && along < R.len && off < width + 1 + planeSphereRadius) hitPilot(p, dmg(R.dmg), from);
+        }
+    }
+    return b.attackT > R.charge + R.fire[b.enraged ? 1 : 0];
+}
 
 const ATTACKS = {
     // A spread of glowing orbs at where the player is going
@@ -390,34 +458,32 @@ const ATTACKS = {
         }
         return b.attackT > 90;
     },
-    // A beam from the mouth: a warning line while it charges, then it fires along where the head points — the boss
-    // turns slowly while it fires (BOSS.turnBeam), so the beam sweeps after the pilot and flying across it escapes
-    beam(au, b, dt) {
-        const from = emitterPos(b, new THREE.Vector3());
-        if (!b.beam) {
-            const warn = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1, 6, 1, true), new THREE.MeshBasicMaterial({ color: b.def.shot, transparent: true, opacity: 0.35, depthWrite: false }));
-            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 1, 10, 1, true), new THREE.MeshBasicMaterial({ color: b.def.shot, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
-            mesh.visible = false; scene.add(warn, mesh);
-            b.beam = { warn, mesh, len: 1300 };
+    beam: (au, b, dt) => ray(au, b, dt, RAYS.beam),
+    // Fire breath: a short, wide cone of flame (the dragon, the phoenix)
+    breath: (au, b, dt) => ray(au, b, dt, RAYS.breath),
+    // Fireballs in three salvos at where the pilot is going; they burst where they land
+    fireballs(au, b, dt) {
+        b.charge = Math.min(1, b.attackT / 35);
+        for (const at of [35, 55, 75]) if (crossed(b, dt, at)) {
+            const from = emitterPos(b, new THREE.Vector3()), n = b.enraged ? 3 : 2;
+            const to = predict(from.distanceTo(T.position) / 1.6, new THREE.Vector3());
+            for (let i = 0; i < n; i++) { aimAt(b, from, to, _v).applyAxisAngle(_up, (i - (n - 1) / 2) * 0.06).multiplyScalar(1.6); fire(from, _v, { dmg: 10, r: 4, color: b.def.shot, aoe: 20, look: 'lava' }); }
         }
-        const firing = b.attackT > BEAM_CHARGE;
-        b.charge = firing ? 1 : b.attackT / BEAM_CHARGE;
-        for (const m of [b.beam.warn, b.beam.mesh]) {
-            m.position.copy(from).addScaledVector(b.aim, b.beam.len / 2);
-            m.quaternion.setFromUnitVectors(_up, b.aim);
-            m.scale.set(1, b.beam.len, 1);
-        }
-        b.beam.warn.visible = !firing; b.beam.mesh.visible = firing;
-        if (firing) {
-            b.beam.mesh.scale.x = b.beam.mesh.scale.z = 0.8 + 0.3 * Math.sin(b.t * 40);
-            // Damage ticks for every pilot inside the beam
-            if (Math.floor(b.attackT / 12) !== Math.floor((b.attackT - dt) / 12)) for (const p of pilots()) {
-                _w.subVectors(p.position, from);
-                const along = _w.dot(b.aim), off = _w.addScaledVector(b.aim, -along).length();
-                if (along > 0 && along < b.beam.len && off < 6 + planeSphereRadius) hitPilot(p, dmg(7), from);
+        return b.attackT > 90;
+    },
+    // Nova: two rings of fire orbs bursting out of the body in every direction, tilted toward the pilot's height
+    nova(au, b, dt) {
+        b.charge = Math.min(1, b.attackT / 45);
+        for (const [k, at] of [45, 70].entries()) if (crossed(b, dt, at)) {
+            const from = au.group.position.clone(), n = b.enraged ? 18 : 14;
+            const tilt = THREE.MathUtils.clamp((T.position.y - from.y) / Math.max(60, T.position.distanceTo(from)), -0.5, 0.5);
+            for (let i = 0; i < n; i++) {
+                const a = (i / n) * Math.PI * 2 + k * Math.PI / n;
+                _v.set(Math.cos(a), tilt, Math.sin(a)).normalize().multiplyScalar(1.25);
+                fire(from, _v, { dmg: 8, r: 3.2, color: b.def.shot, look: 'orb', life: 260 });
             }
         }
-        return b.attackT > BEAM_CHARGE + (b.enraged ? 130 : 100);
+        return b.attackT > 90;
     },
     // A brood of minions that latch on and bite (entities/minions.js)
     minions(au, b, dt) {

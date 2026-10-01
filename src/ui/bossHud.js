@@ -66,6 +66,11 @@ onHook('bossEvent', (event, au) => {
         playBossRoar();
         showAlert('enrage', `<div class="ba-name">${d.name} IS ENRAGED</div><div class="ba-line">faster attacks · finish it!</div>`, d.color, 2.8);
         pulseVignette(d.color, 1.8);
+    } else if (event === 'reborn') {
+        playBossRoar(); playSiren();
+        showAlert('enrage', `<div class="ba-kicker">🔥 FROM THE ASHES 🔥</div><div class="ba-name">${d.name} IS REBORN</div><div class="ba-line">it will not rise a third time — finish it!</div>`, d.color, 3.5);
+        pulseVignette(d.color, 2.4);
+        lagPct = 100;
     } else if (event === 'defeat') {
         showAlert('defeat', `<div class="ba-kicker">★ BOSS DEFEATED ★</div><div class="ba-name">${d.name}</div><div class="ba-line">+${au.boss.rewardXp ?? au.xpValue} XP</div>`, '#ffdd33', 4.5);
     } else if (event === 'leaving') {

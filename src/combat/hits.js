@@ -48,7 +48,7 @@ export function beginHits(weapon, { remote = false, shooter = null } = {}) {
                 if (target.proxy) { target.proxy.damage(amount, weapon); anyHit = true; return true; }
                 target.hp -= amount;
                 updateUnitLabel(target.label, target.hp);
-                if (target.hp <= 0) dead.add(target);
+                if (target.hp <= 0 && !target.cheatDeath?.()) dead.add(target); // cheatDeath: the phoenix rises again once
             } else {
                 if (entityHp(target) <= 0) return false;
                 if (part) part.userData.hp -= amount;

@@ -176,6 +176,28 @@ All menus work with mouse, keyboard (Tab, Enter/Space, Esc) and gamepad. Animati
 - **Start menu map chooser:** a north-up preview of the current map, with its name, seed, island count, base count and highest summit. Use ◀ / ▶ for the neighbouring seeds, 🎲 for a random new map, or type a seed. Choosing a map reloads onto it and comes back to the start menu.
 - **Main menu button:** the pause menu, game-over screen and debrief all have one. It returns to the start menu on the current map. In multiplayer, the button opens the room picker instead.
 
+### Freaky mode: quest story and bosses
+
+Freaky mode (start menu toggle) turns the run into a quest story: arcs of four quests, each ending with a giant boss. K summons a boss at once.
+
+| Boss | Where it appears | Attacks |
+|---|---|---|
+| GORGAZON, kaiju | rises from the sea | atomic breath beam, energy volleys |
+| KRAKOTH, kraken | surfaces from the deep | tentacles under you, volleys, squidlings that latch on |
+| MAGMAROK, magma golem | erupts from the highest peak | lava bombs, volleys |
+| TITAN-9, mech | awakens in a village | homing missiles, eye laser |
+| SPECIMEN 47, alien | breaks out of a base | acid spray, volleys, facehuggers |
+| STAHLMOND ZOMBOT | descends from the Moon (flies) | plasma bursts, beam |
+| VYRMATHRAX, dragon | wakes in its mountain lair (flies) | fire breath, fireballs, wyrmlings |
+| LEVIATHAN, sea serpent | coils up from the abyss | water jet, coils bursting from the sea, volleys |
+| PYRRHAX, phoenix | blazes down from the sun (flies) | fire nova, fireballs, fire breath; **reborn once** at half HP |
+| THE HYDRA | rises from a marsh by a village | acid, venom bursts and volleys from each of its three heads |
+
+**How bosses fight:**
+- **Facing:** a boss turns toward its target and attacks only along where its mouth faces. Beams and fire breath sweep slowly, so flying across them escapes.
+- **Enraged:** below half HP, a boss becomes enraged.
+- **Escape:** after 5 minutes, a boss escapes; in a quest it returns later.
+
 ### Mission & Feedback
 
 - **Objective panel** (above the ammo bars): the one place for what to do next. With a Freaky mode quest running it shows the quest (act, arc, step, title, objective with a progress bar, distance and bearing to its beacon); otherwise the nearest base not yet eliminated, with units left, distance and a bearing arrow. Bases conquered sit underneath either way. Eliminate every base for **Mission complete** (+1000 score).
