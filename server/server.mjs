@@ -12,6 +12,7 @@
 // PvP hits are routed to their target; in co-op the server tracks the host and hands it over (phases 2–3).
 // GET /health returns room and player counts as JSON. Only the game's own files are served over HTTP.
 // The log names each player's IP address and rough location (geo.mjs; --no-geo turns the location lookup off).
+// A live memory line sits under the log in an interactive terminal (memwatch.mjs; --no-mem turns it off).
 import { createServer } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { readFile, stat } from 'node:fs/promises';
@@ -21,6 +22,7 @@ import { parseArgs } from 'node:util';
 import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { clientIp, locate } from './geo.mjs';
+import { startMemWatch } from './memwatch.mjs';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
 
@@ -320,6 +322,7 @@ const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/serve
   --no-geo            log players' IP addresses only; by default each new public IP is also sent once to
                       ip-api.com to log a rough location (city, country, network)
   --trust-proxy       behind a reverse proxy or tunnel (Cloudflare, nginx): log the IP it forwards, not the proxy's
+  --no-mem            no live memory line under the log (when the output goes to a file it is written once a minute)
   --help              show this help
 Command-line options win over environment variables.`;
 
@@ -329,7 +332,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         ({ values: args } = parseArgs({ options: {
             port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' },
             tls: { type: 'boolean' }, public: { type: 'string' }, 'tls-cert': { type: 'string' }, 'tls-key': { type: 'string' },
-            'no-geo': { type: 'boolean' }, 'trust-proxy': { type: 'boolean' },
+            'no-geo': { type: 'boolean' }, 'trust-proxy': { type: 'boolean' }, 'no-mem': { type: 'boolean' },
             help: { type: 'boolean', short: 'h' },
         } }));
     } catch (e) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
@@ -355,8 +358,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         }
     } catch (e) { console.error(`TLS: ${e.message}`); process.exit(1); }
 
-    let srv;
-    try { srv = await startMpServer({ port, host, allowedOrigins, tls, geo: !args['no-geo'], trustProxy: !!args['trust-proxy'] }); } catch (e) {
+    let srv, mem = null;
+    const log = (...parts) => (mem ? mem.log(...parts) : console.log(...parts)); // log lines go above the memory line
+    try { srv = await startMpServer({ port, host, allowedOrigins, tls, geo: !args['no-geo'], trustProxy: !!args['trust-proxy'], log }); } catch (e) {
         console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — stop the other program or choose another port: --port ${port + 1}`
             : e.code === 'EACCES' ? `No permission to use port ${port} — use a port above 1024, e.g. --port 8787` : e.message);
         process.exit(1);
@@ -375,6 +379,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         `  origins:  ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (use --origins to restrict)'}`,
         'Stop with Ctrl+C.',
     ].join('\n'));
-    const stop = () => srv.close().then(() => process.exit(0));
+    if (!args['no-mem']) mem = startMemWatch({ stats: () => { const s = srv.stats(); return { rooms: s.rooms.length, players: s.players }; } });
+    const stop = () => { mem?.stop(); return srv.close().then(() => process.exit(0)); };
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

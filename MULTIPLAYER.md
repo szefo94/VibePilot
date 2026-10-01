@@ -225,7 +225,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 - 60 messages per second per client.
 - 8 KB per message.
 
-**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy). `npm run mp-server -- --help` lists them.
+**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy), `--no-mem` (no live memory line, `server/memwatch.mjs`). `npm run mp-server -- --help` lists them.
 
 **Files:**
 
@@ -234,6 +234,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `server/server.mjs` | The server: game files, rooms, state, validation, team score. Run it with `npm run mp-server -- --port <n> --host <addr>` |
 | `server/cert.mjs` | Self-signed certificate for `--tls` |
 | `server/geo.mjs` | Player IP and location for the log |
+| `server/memwatch.mjs` | Live memory line under the log |
 | `server/deploy/` | systemd unit and `update.sh` for the Pi |
 | `src/net/protocol.js` | Protocol shared by browser and server: modes, limits, teams, spawns, messages |
 | `src/net/net.js` | Connection, peers, clock, score |

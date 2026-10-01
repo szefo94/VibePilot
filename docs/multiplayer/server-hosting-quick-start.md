@@ -20,7 +20,17 @@ npm run mp-server           # 3. start on the default port 8787
 
 Open `http://localhost:8787/`. The bare address goes straight into multiplayer: team deathmatch (`?mp=tdm`, room `lobby`), Red against Blue with five pilots a side, where bots fill any place a player hasn't taken. Other modes are `?mp=pvp` (everyone for themselves), `?mp=coop` and `?mp=skies`; [game-modes.md](game-modes.md) explains each mode and every address. You play under a random callsign such as "Ghost Hornet" (remembered); change it with **Callsign** in the start or pause menu. Stop the server with **Ctrl+C**.
 
-The server window logs every player who joins or leaves, with their IP address and rough location, for example `+ Ghost Hornet#3 → tdm:lobby slot 1 team Blue (2) from 88.1.2.3 (Wroclaw, Lower Silesia, Poland · Vectra S.A)`. The location comes from ip-api.com: each new public IP is sent there once. To log IPs only, start with `--no-geo`. Behind a tunnel or reverse proxy (Cloudflare, nginx), add `--trust-proxy` to log the players' IPs rather than the proxy's.
+The server window logs every player who joins or leaves, with their IP address and rough location, for example `+ Ghost Hornet#3 → tdm:lobby slot 1 team Blue (2) from 88.1.2.3 (Wroclaw, Lower Silesia, Poland · Vectra S.A)`. The location comes from ip-api.com: each new public IP is sent there once. To log IPs only, start with `--no-geo`. Under the log, a live line shows the server's memory:
+
+```text
+MEM  rss 61.2 MB ▁▁▂▂▃▃▃▄▄▅  heap 14.8 MB / 22.1 MB  ext 2.3 MB · 1 room · 3 players · up 12m
+```
+
+- **rss:** all the memory the operating system gives the server. The bars are its history over the last two minutes, scaled between the lowest and highest value shown.
+- **heap:** JavaScript objects in use, out of the space reserved for them. The line turns yellow above 75% and red above 90%.
+- **ext:** buffers outside the heap, such as network data.
+
+A server whose rss keeps climbing while the player count stays flat is leaking memory. `--no-mem` hides the line. When the output goes to a file, it is written there once a minute instead. Behind a tunnel or reverse proxy (Cloudflare, nginx), add `--trust-proxy` to log the players' IPs rather than the proxy's.
 
 Address options:
 
