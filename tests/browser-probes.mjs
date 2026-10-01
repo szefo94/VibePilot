@@ -84,7 +84,7 @@ const probes = {
         await worldReady(page);
         const after = await page.evaluate(async () => ({ search: location.search, seed: window.__vpSeed, awaiting: (await import('./src/state.js')).state.awaitingStart }));
         const sameMap = (await islets()) === before;
-        return { seed, focused, after, sameMap, pass: after.seed === seed && sameMap && after.search.includes('autostart') && !after.awaiting && focused === 'restart' };
+        return { seed, focused, after, sameMap, pass: after.seed === seed && sameMap && after.search.includes('autostart') && !after.awaiting && focused === 'respawn' }; // game over focuses Respawn (carry on), then Restart and Replay
     },
     // #1 spawn protection counts down in simulated seconds (independent of how slow the headless frames are)
     async grace(page) {
