@@ -151,4 +151,6 @@ export function updateCivilianCollisions() {
 }
 
 /** For tests. */
+/** Village, ruin and lighthouse sites (entities/bosses.js: a robot boss awakens in a village). */
+export const civilianSites = () => sites;
 export const civilianStats = () => ({ villages: sites.filter(s => s.kind === 'village').length, houses: sites.reduce((n, s) => n + (s.houses?.length || 0), 0), lighthouses: sites.filter(s => s.kind === 'lighthouse').length, colliders: colliders.length, firstVillage: sites.find(s => s.kind === 'village'), firstLighthouse: sites.find(s => s.kind === 'lighthouse') });

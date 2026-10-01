@@ -21,7 +21,9 @@ import { state } from '../state.js';
 import { _playKeyClick, _playKillConfirm } from '../audio.js';
 import { updateUnitLabel } from '../ui/labels.js';
 import { canDamageGround } from './damage.js';
-import { entityHp, entityKind } from '../entities/contract.js';
+import { entityHp, entityKind, entityPosition } from '../entities/contract.js';
+import { CLOSE_KILL_RANGE, markCloseKill } from '../game/progression.js';
+import { plane } from '../player/plane.js';
 import { killGroundUnit } from '../entities/groundUnits.js';
 import { destroyAirUnit, destroyLogicalEnemy } from '../entities/airUnits.js';
 import { runHooks } from '../game/hooks.js';
@@ -63,10 +65,12 @@ export function beginHits(weapon, { remote = false, shooter = null } = {}) {
             const kill = () => {
                 for (const target of dead) {
                     const kind = entityKind(target), reward = !remote && !shooter;
+                    if (reward) markCloseKill(weapon === 'bullet' && entityPosition(target).distanceTo(plane.position) < CLOSE_KILL_RANGE); // gun kill up close: bonus
                     if (kind === 'ground') killGroundUnit(target, { reward });
                     else if (kind === 'air') destroyAirUnit(target, { reward });
                     else destroyLogicalEnemy(target.id, { reward });
                 }
+                markCloseKill(false);
             };
             const xp = [...dead].reduce((sum, t) => sum + (t.userData?.xpValue ?? t.xpValue ?? 0), 0);
             if (remote || shooter) { quietly(kill); return { hit: anyHit, kills: dead.size, xp }; }

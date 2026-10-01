@@ -5,9 +5,17 @@ import { hpElement, levelElement, scoreElement, xpElement, xpToNextLevelElement 
 import { showLevelUpBanner, showNotification } from '../ui/notifications.js';
 import { updateDamageUI } from '../ui/hud.js';
 
-// G20: kill-streak score multiplier
-const _killTimes = [];
-export const _multiEl = (() => { const el = document.createElement('div'); el.style.cssText = 'display:none;position:fixed;top:52%;left:50%;transform:translate(-50%,-50%);color:#ffdd00;font:bold 22px monospace;text-align:center;text-shadow:0 0 8px #ff8800,0 0 16px #ff8800;pointer-events:none;z-index:200;letter-spacing:3px;'; document.body.appendChild(el); return el; })();
+// Combo: each kill within COMBO_WINDOW of the last raises the score multiplier (ui/comboHud.js shows it draining).
+// A gun kill closer than CLOSE_KILL_RANGE is worth CLOSE_BONUS × score and XP (combat/hits.js marks it).
+export const COMBO_WINDOW = 5000, MAX_COMBO = 5, CLOSE_KILL_RANGE = 150, CLOSE_BONUS = 1.5;
+let combo = 0, lastKillAt = -Infinity, closeNext = false, closeAt = -Infinity;
+/** For the HUD: kills in the combo, its multiplier, the share of the window left (1 → 0), and the last close kill's time. */
+export function comboState() {
+    const left = Math.max(0, 1 - (performance.now() - lastKillAt) / COMBO_WINDOW);
+    return { combo: left > 0 ? combo : 0, multi: left > 0 ? Math.min(combo, MAX_COMBO) : 1, left, closeAt };
+}
+/** combat/hits.js: the next rewarded kill was a gun kill up close (or not). */
+export function markCloseKill(close) { closeNext = close; }
 
 export function addXP(a) {
     if (state.isGameOver) return;
@@ -31,24 +39,22 @@ export function _healPlayer(amount) {
     state.planeHP = Math.min(state.maxHP, state.planeHP + amount);
     if (state.planeHP > prev) { hpElement.textContent = Math.max(0, state.planeHP); showNotification(`+${state.planeHP - prev} HP`, false, { local: true }); }
 }
-// G20: record a kill, return current streak multiplier
+/** Record a kill; returns the combo multiplier it earns. */
 export function _addKill() {
-    const now = Date.now();
-    _killTimes.push(now);
-    while (_killTimes.length > 0 && now - _killTimes[0] > 5000) _killTimes.shift();
-    const streak = _killTimes.length;
-    state._scoreMulti = streak >= 4 ? 4 : streak >= 3 ? 3 : streak >= 2 ? 2 : 1;
-    if (state._scoreMulti > 1) {
-        state._multiDisplayTimer = 150;
-        _multiEl.style.display = 'block';
-        _multiEl.textContent = `×${state._scoreMulti}  STREAK`;
-    }
+    const now = performance.now();
+    combo = now - lastKillAt <= COMBO_WINDOW ? combo + 1 : 1;
+    lastKillAt = now;
+    state._scoreMulti = Math.min(combo, MAX_COMBO);
     return state._scoreMulti;
 }
-/** The single kill reward: score × streak multiplier, and XP. No reward after game over. */
+/** The single kill reward: score × combo multiplier (× CLOSE_BONUS up close), and XP (× CLOSE_BONUS up close). No reward after game over. */
 export function awardKill(xpValue) {
+    const close = closeNext;
+    closeNext = false;
     if (state.isGameOver) return;
-    state.score += xpValue * _addKill();
+    const bonus = close ? CLOSE_BONUS : 1;
+    if (close) closeAt = performance.now();
+    state.score += Math.round(xpValue * _addKill() * bonus);
     scoreElement.textContent = state.score;
-    addXP(xpValue);
+    addXP(Math.round(xpValue * bonus));
 }

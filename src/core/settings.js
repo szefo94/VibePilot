@@ -11,6 +11,7 @@ const DEFAULTS = Object.freeze({
     showReferencePanels: true, // controls / debug / coordinates panels
     difficulty: 'normal',     // key of DIFFICULTY_PRESETS (config.js)
     aceHunt: true,            // Shift+H — hostile aces hunt the player (entities/rival.js)
+    freakyMode: false,        // random giant boss events (entities/bosses.js)
     timeOfDay: 'day',         // key of TIME_OF_DAY (config.js); world/sky.js
     touchWheels: 'pitch,yaw,throttle,roll', // phone wheels (ui/touch.js): left ↕, left ↔, right ↕, right ↔
 });

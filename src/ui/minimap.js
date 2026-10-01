@@ -32,7 +32,7 @@ export function updateRadarSnapshot() {
     collectibles.forEach(c => _radarBlips.push({ wx: c.position.x, wz: c.position.z, color: '#00ff44', shape: 'dot' }));
     enemies.forEach(e => { if (e.parts.length > 0) _radarBlips.push({ wx: e.parts[0].position.x, wz: e.parts[0].position.z, color: 'red', shape: 'dot' }); });
     groundUnits.forEach(u => { if (u.userData.hp > 0) { u.getWorldPosition(_wp); _radarBlips.push({ wx: _wp.x, wz: _wp.z, color: u.userData.isHostile ? 'orange' : 'white', shape: 'dot' }); } });
-    airUnits.forEach(au => { if (au.hp > 0 && !au.proxy) _radarBlips.push(au.isRival
+    airUnits.forEach(au => { if (au.hp > 0 && !au.proxy) _radarBlips.push(au.blip ? { wx: au.group.position.x, wz: au.group.position.z, ...au.blip } : au.isRival
         ? { wx: au.group.position.x, wz: au.group.position.z, color: au.blipColor ?? '#ff33cc', shape: 'ace', label: au.blipLabel ?? `ACE ${au.callsign}` }
         : { wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
     rivalMissilesInFlight().forEach(m => { if (!m.userData.decoyed) _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: '#ff33cc', shape: 'dot' }); });

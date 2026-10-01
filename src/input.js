@@ -7,6 +7,7 @@ import { _toggleColorMode } from './effects/colorMode.js';
 import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { spawnRival, toggleRivalMode } from './entities/rival.js';
+import { spawnBoss } from './entities/bosses.js';
 import { RULES } from './game/rules.js';
 import { setSetting, settings } from './core/settings.js';
 import { touchAxes, updateTouchAxes } from './ui/touch.js';
@@ -84,6 +85,7 @@ document.addEventListener('keydown', e => {
     else if (k === 'q') tryDeployFlares();
     else if (k === 'x') tryDropNapalm();
     else if (k === 'i' && RULES.interceptors) spawnInterceptors(); // debug: instant interceptor wave
+    else if (k === 'k') { if (!spawnBoss()) showNotification('No boss can appear right now', false, { local: true }); } // Freaky mode: summon a boss
     else if (k === 'h') { if (e.shiftKey) toggleRivalMode(); else spawnRival(); } // Ace Hunt on/off · spawn an ace now
 });
 document.addEventListener('keyup', e => {

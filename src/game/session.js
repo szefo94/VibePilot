@@ -105,10 +105,12 @@ settingsDialog.addEventListener('input', e => {
 });
 const applyReferencePanels = () => document.body.classList.toggle('hide-reference', !settings.showReferencePanels);
 // Start-menu difficulty toggle mirrors Settings → Difficulty
+const syncFreakyToggle = () => document.querySelectorAll('[data-action="freaky"]').forEach(b => { b.setAttribute('aria-pressed', String(settings.freakyMode)); b.querySelector('.freaky-state').textContent = settings.freakyMode ? 'ON' : 'off'; });
 const syncDifficultyToggle = () => document.querySelectorAll('[data-action="difficulty"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === settings.difficulty)));
 onSettingChange(key => {
     if (key === 'showReferencePanels') applyReferencePanels();
     if (key === 'difficulty') syncDifficultyToggle();
+    if (key === 'freakyMode') syncFreakyToggle();
     if (key === 'mouseSteering') refresh();
     if (!settingsDialog.hidden) syncSettingsForm();
 });
@@ -123,6 +125,7 @@ document.addEventListener('click', e => {
     else if (action === 'settings') openSettings();
     else if (action === 'close-settings') closeSettings();
     else if (action === 'difficulty') setSetting('difficulty', button.dataset.value);
+    else if (action === 'freaky') setSetting('freakyMode', !settings.freakyMode);
 });
 /** Move focus through the open menu's controls (D-pad up/down). */
 export function menuNavigate(delta) {
@@ -143,6 +146,7 @@ export function menuActivate() {
 // --- Initial state ---
 applyReferencePanels();
 syncDifficultyToggle();
+syncFreakyToggle();
 document.getElementById('start-best').textContent = state._highScore;
 if (DEBUG_PARAMS.autostart) {
     state.awaitingStart = false;

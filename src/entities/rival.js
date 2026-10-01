@@ -41,6 +41,7 @@ import { heightAt } from '../world/terrain.js';
 import { aceGeo } from './models.js';
 import { kitMaterial } from '../core/meshkit.js';
 import { markShared } from '../core/utils.js';
+import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
 import { runHooks } from '../game/hooks.js';
 
 // --- Targets: who the aces hunt ----------------------------------------------------------------------------
@@ -289,7 +290,7 @@ export function updateRival(au, dt) {
     for (const other of airUnits) {
         if (other === au || other.proxy || !(other.hp > 0)) continue;
         const r = (au.collisionRadius + other.collisionRadius) * RIVAL.collisionScale;
-        if (other.group.position.distanceToSquared(pos) < r * r) { midAir(au, other); return; }
+        if (other.group.position.distanceToSquared(pos) < r * r) { if (other.isBoss) { au.crashed = true; destroyAirUnit(au, { reward: false }); } else midAir(au, other); return; } // into a boss: only the ace goes down
     }
 
     // 6. Weapons
@@ -702,9 +703,15 @@ function setWarning(text) {
 }
 
 function updateWarnings() {
-    const missile = rivalMissiles.some(m => !m.userData.decoyed && m.userData.targetId === 'local'); // only threats to this player
-    const locking = rivals.some(r => r.wpn.lock > 0 && r.ai.targetId === 'local');
-    setWarning(state.isGameOver ? '' : missile ? '⚠ MISSILE — FLARES (Q) / BREAK TURN' : locking ? '⚠ ACE LOCKING ON' : '');
+    // Only threats to this player: missiles after it, and aces locking on to it
+    let missileDist = Infinity, lock = 0;
+    for (const m of rivalMissiles) if (!m.userData.decoyed && m.userData.targetId === 'local') missileDist = Math.min(missileDist, m.position.distanceTo(plane.position));
+    const lockTime = rivalSkill().mslLockTime || 1;
+    for (const r of rivals) if (r.wpn.lock > 0 && r.ai.targetId === 'local') lock = Math.max(lock, r.wpn.lock / lockTime);
+    const missile = missileDist < Infinity;
+    setWarning(state.isGameOver ? '' : missile ? '⚠ MISSILE — FLARES (Q) / BREAK TURN' : lock > 0 ? '⚠ ACE LOCKING ON' : '');
+    // The warning tone: slow beeps while an ace locks, fast once (almost) locked or a missile is up, solid when it's close
+    reportThreat('aces', missile ? (missileDist < MISSILE_CLOSE ? THREAT.missile : THREAT.locked) : lock > 0.6 ? THREAT.locked : lock > 0 ? THREAT.locking : THREAT.none);
 }
 
 // --- Visual -----------------------------------------------------------------------------------

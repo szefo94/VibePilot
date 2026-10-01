@@ -8,7 +8,6 @@ import { hitMarkerEl, memDebugEl } from '../ui/dom.js';
 import { _planeMaterials, _playerMuzzleLight, plane } from '../player/plane.js';
 import { _fenceRegistry, activeExplosions, airUnits, bullets, collectibles, enemies, enemyBullets, groundUnits, markers, missiles, napalmFireParticles } from '../entities/registry.js';
 import { _expMatPool, explosionGeometry } from '../combat/resources.js';
-import { _multiEl } from '../game/progression.js';
 import { collectibleMat } from '../entities/collectibles.js';
 import { tubes } from '../entities/tubes.js';
 
@@ -152,7 +151,6 @@ export function updateEffects(dt) {
     if (state._killMarkerTimer > 0) state._killMarkerTimer = Math.max(0, state._killMarkerTimer - dt);
     hitMarkerEl.classList.toggle('kill', state._killMarkerTimer > 0); // kills flash gold and larger
     // ── G20: streak multiplier display decay ─────────────────────
-    if (state._multiDisplayTimer > 0) { state._multiDisplayTimer = Math.max(0, state._multiDisplayTimer - dt); if (state._multiDisplayTimer <= 0) { _multiEl.style.display = 'none'; state._scoreMulti = 1; } }
     // ── V13: muzzle light decay ───────────────────────────────────
     if (_playerMuzzleLight.intensity > 0) _playerMuzzleLight.intensity = Math.max(0, _playerMuzzleLight.intensity - 0.45 * dt);
     // ── V13: empty-clip flash ─────────────────────────────────────

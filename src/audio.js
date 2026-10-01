@@ -227,3 +227,48 @@ export function updateEngineSound(speedFraction, active) {
     engine.windGain.gain.setTargetAtTime(active && f > 0.6 ? Math.min(0.08, (f - 0.6) * 0.12) : 0, now, 0.3);
 }
 export const engineSoundStarted = () => !!engine;
+
+// --- Freaky mode (ui/bossHud.js): an air-raid siren when a boss appears, and its roar ---
+export function playSiren() {
+    play(t => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain(), lp = ctx.createBiquadFilter();
+        osc.type = 'sawtooth'; lp.type = 'lowpass'; lp.frequency.value = 1800;
+        for (let i = 0; i < 3; i++) { osc.frequency.setValueAtTime(420, t + i * 0.9); osc.frequency.linearRampToValueAtTime(980, t + i * 0.9 + 0.55); osc.frequency.linearRampToValueAtTime(420, t + i * 0.9 + 0.9); }
+        gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(0.09, t + 0.25);
+        gain.gain.setValueAtTime(0.09, t + 2.4); gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+        osc.connect(lp); lp.connect(gain); gain.connect(master);
+        osc.start(t); osc.stop(t + 2.8);
+        return osc;
+    });
+}
+export function playBossRoar() {
+    play(t => {
+        const src = noiseSource(1.6, 1.2), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+        lp.type = 'lowpass'; lp.frequency.setValueAtTime(700, t); lp.frequency.exponentialRampToValueAtTime(160, t + 1.5);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.15); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+        src.connect(lp); lp.connect(g); g.connect(master); src.start(t);
+        sweep(t, 'sawtooth', 110, 48, 1.3, 0.12, 1.5);
+        return src;
+    });
+}
+
+// --- Missile warning tone (ui/threatTone.js): 0 off · 1 slow beeps · 2 fast beeps · 3 solid tone ---
+let warn = null;
+function createWarn() {
+    const osc = ctx.createOscillator(); osc.type = 'square'; osc.frequency.value = 1000;
+    const soft = ctx.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 2600;
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    osc.connect(soft); soft.connect(gain); gain.connect(master); osc.start();
+    return { osc, gain, phase: 0, on: false, level: 0 };
+}
+/** level: 0–3 (ui/threatTone.js THREAT); seconds: time since the last call, for the beep rhythm. */
+export function updateWarningTone(level, seconds) {
+    if (!ctx || ctx.state !== 'running') return;
+    if (!warn) { if (!level) return; warn = createWarn(); }
+    const now = ctx.currentTime;
+    if (level !== warn.level) { warn.level = level; warn.phase = 0; warn.osc.frequency.setTargetAtTime([1000, 950, 1200, 1400][level], now, 0.01); }
+    const rate = [0, 2.2, 7.5, 0][level]; // beeps per second
+    let on = level === 3;
+    if (rate) { warn.phase = (warn.phase + seconds * rate) % 1; on = warn.phase < 0.42; }
+    if (on !== warn.on) { warn.on = on; warn.gain.gain.setTargetAtTime(on ? 0.055 : 0, now, 0.005); }
+}

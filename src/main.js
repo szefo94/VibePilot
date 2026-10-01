@@ -17,6 +17,10 @@ import { updateDebugBoxes } from './effects/debug.js';
 import { updateDamageUI, updateHUD } from './ui/hud.js';
 import { _statHp, _statLvl, _statScore, _statXp } from './ui/debrief.js';
 import { _drawReticle } from './ui/reticle.js';
+import { drawLeadMarker } from './ui/leadMarker.js';
+import { updateComboHud } from './ui/comboHud.js';
+import { updateThreatTone } from './ui/threatTone.js';
+import { updateBossHud } from './ui/bossHud.js';
 import { runSplash, splashActive } from './ui/splash.js';
 import { updateMinimap, updateRadarSnapshot } from './ui/minimap.js';
 import { _searchlights, buildBaseFences, updateBasePerimeters } from './entities/fences.js';
@@ -170,7 +174,7 @@ function animate() {
     perf.end('minimap');
     updateSky(rawDelta); // dome follows the camera (world/sky.js)
     perf.renderBegin(); renderer.render(scene, camera); perf.renderEnd();
-    perf.begin('reticle'); _drawReticle(); perf.end('reticle');
+    perf.begin('reticle'); _drawReticle(); drawLeadMarker(rawDelta); updateComboHud(); updateThreatTone(rawDelta); updateBossHud(rawDelta); perf.end('reticle');
     runHooks('frame', rawDelta); // optional systems (game/hooks.js)
     perf.frameEnd();
 }
