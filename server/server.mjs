@@ -24,7 +24,6 @@ import { networkInterfaces } from 'node:os';
 import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { clientIp, locate } from './geo.mjs';
 import { startMemWatch } from './memwatch.mjs';
-import { renderMap, validMap } from './consoleMap.mjs';
 import { createDashboard } from './dashboard.mjs';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, DEFAULT_ROOM, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
@@ -119,7 +118,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0], stats: {}, quest: null, spawns: [], map: null, botPos: [], bossPos: null }; // map, botPos, bossPos: the console map; units: damage log for late joiners; stats: kills/deaths per pilot; quest + spawns: the Freaky mode plot
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0], stats: {}, quest: null, spawns: [], botPos: [], bossPos: null }; // botPos, bossPos: for the dashboard; units: damage log for late joiners; stats: kills/deaths per pilot; quest + spawns: the Freaky mode plot
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
@@ -135,7 +134,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
         const spawn = placeAtSpawn(c);
-        send(c, MSG.WELCOME, { units: room.units, quest: room.quest, spawns: room.spawns, needMap: !room.map, id: c.id, slot: c.slot, team: c.team, score: room.score, stats: room.stats, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+        send(c, MSG.WELCOME, { units: room.units, quest: room.quest, spawns: room.spawns, id: c.id, slot: c.slot, team: c.team, score: room.score, stats: room.stats, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
             players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot, team: p.team })) });
         broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot, team: c.team }, c);
         log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot}${c.team === null ? '' : ` team ${c.team ? 'Blue' : 'Red'}`} (${room.players.size}) from ${where(c)}`);
@@ -265,9 +264,6 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 if (host && host !== c) send(host, MSG.MINION_ACT, { from: c.id, hit: Number.isInteger(m.hit) ? m.hit : undefined, shake: m.shake === true || undefined });
                 break;
             }
-            case MSG.MAP: // the relief for the console map: the first well-formed one stays
-                if (!room.map && validMap(m)) room.map = { w: m.w, h: m.h, rows: m.rows };
-                break;
             case MSG.UNIT_SPAWN: {
                 if (!mode.enemies || room.hostId !== c.id || typeof m.id !== 'string' || !UNIT_ID.test(m.id) || !m.spec || typeof m.spec !== 'object' || room.spawns.length >= 400) return;
                 const spawn = { id: m.id, spec: m.spec };
@@ -372,23 +368,11 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         }
     }, LIMITS.heartbeatMs);
 
-    /** The console map of the `index`-th room (busiest first), as terminal lines; `count` rooms in all. */
-    function mapView(index, size) {
-        const list = [...rooms.values()].sort((a, b) => b.players.size - a.players.size || a.key.localeCompare(b.key));
-        const room = list.length ? list[((index % list.length) + list.length) % list.length] : null;
-        if (!room) return { lines: renderMap(null, size), count: 0 };
-        const mode = MODES[room.mode], players = [...room.players.values()];
-        const title = `${room.key} · ${players.length} player${players.length === 1 ? '' : 's'} · ${room.botPos.length || botCount(room)} bot(s)${room.bossPos ? ` · boss ${room.bossPos.name}` : ''}${list.length > 1 ? ` · room ${list.indexOf(room) + 1}/${list.length}` : ''}`;
-        const view = { title, map: room.map, bound: VALIDATION.maxX, players: players.map(p => ({ name: p.name ?? '?', team: p.team, x: p.p?.[0] ?? 0, z: p.p?.[2] ?? 0, alive: p.alive && !!p.p })),
-            bots: room.botPos, boss: room.bossPos, flag: mode.teams ? { x: 0, z: 0 } : null };
-        return { lines: renderMap(view, size), count: list.length };
-    }
-
     return new Promise((done, fail) => {
         http.once('error', fail);
         http.listen(port, host, () => done({
             port: http.address().port,
-            stats, roomList, mapView,
+            stats, roomList,
             /** For the terminal dashboard: traffic counters (cumulative), the tick load since the last call (then reset), rooms. */
             load: () => {
                 const t = { avg: tickLoad.n ? tickLoad.sum / tickLoad.n : 0, max: tickLoad.max, n: tickLoad.n, budget: 1000 / LIMITS.tickHz };
@@ -413,9 +397,7 @@ const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/serve
                       ip-api.com to log a rough location (city, country, network)
   --trust-proxy       behind a reverse proxy or tunnel (Cloudflare, nginx): log the IP it forwards, not the proxy's
   --no-mem            no live memory line under the log (when the output goes to a file it is written once a minute)
-  --map               start with the live map of the busiest room shown above the memory line. In the terminal:
-                      M shows / hides the map, N switches to the next room, D hides / shows the dashboard
-                      (rooms, traffic, tick load) — all need the memory line
+  In the terminal, D hides / shows the dashboard (rooms, traffic, tick load) above the memory line
   --help              show this help
 Command-line options win over environment variables.`;
 
@@ -425,7 +407,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         ({ values: args } = parseArgs({ options: {
             port: { type: 'string', short: 'p' }, host: { type: 'string' }, origins: { type: 'string' },
             tls: { type: 'boolean' }, public: { type: 'string' }, 'tls-cert': { type: 'string' }, 'tls-key': { type: 'string' },
-            'no-geo': { type: 'boolean' }, 'trust-proxy': { type: 'boolean' }, 'no-mem': { type: 'boolean' }, map: { type: 'boolean' },
+            'no-geo': { type: 'boolean' }, 'trust-proxy': { type: 'boolean' }, 'no-mem': { type: 'boolean' },
             help: { type: 'boolean', short: 'h' },
         } }));
     } catch (e) { console.error(`${e.message}\n\n${USAGE}`); process.exit(1); }
@@ -472,20 +454,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         `  origins:  ${allowedOrigins.length ? `this host + ${allowedOrigins.join(', ')}` : 'any (use --origins to restrict)'}`,
         'Stop with Ctrl+C.',
     ].join('\n'));
-    // The live map (consoleMap.mjs) pinned above the memory line: M toggles it, N cycles the rooms
-    let showMap = !!args.map, mapRoom = 0;
-    const mapPanel = () => {
-        if (!showMap) return [];
-        const cols = Math.max(20, (process.stdout.columns || 100) - 4), rows = Math.max(8, (process.stdout.rows || 40) - 8);
-        const { lines } = srv.mapView(mapRoom, { cols, rows });
-        const legend = '  ~ sea  . : - lowland  = + upland  # ^ rock, summit · A-Z players  a-z bots  ! ace  @ boss  F flag · [M] hide  [N] next room';
-        return [...lines, `\x1b[2m${legend.slice(0, cols + 2)}\x1b[0m`]; // never wider than the terminal (a wrapped line breaks the redraw)
-    };
-    // The dashboard (dashboard.mjs: rooms, traffic, tick load) and the map, pinned above the memory line, redrawn twice a second
+    // The dashboard (dashboard.mjs: rooms, traffic, tick load), pinned above the memory line, redrawn twice a second
     let showDash = true;
     const dash = createDashboard(() => srv.load());
-    const panel = () => { const cols = Math.max(20, (process.stdout.columns || 100) - 2); return [...mapPanel(), ...(showDash ? dash(cols) : [])]; };
-    const setMap = on => { showMap = on; mem.refresh(); };
+    const panel = () => { const cols = Math.max(20, (process.stdout.columns || 100) - 2); return showDash ? dash(cols) : []; };
     if (!args['no-mem']) {
         mem = startMemWatch({ panel, stats: () => { const s = srv.stats(); return { rooms: s.rooms.length, players: s.players }; } });
         if (process.stdout.isTTY) setInterval(() => mem.refresh(), 500).unref();
@@ -496,10 +468,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.setEncoding('utf8');
         process.stdin.on('data', key => {
             if (key === '\u0003') stop();
-            else if (key === 'm' || key === 'M') setMap(!showMap);
-            else if ((key === 'n' || key === 'N') && showMap) { mapRoom++; mem.refresh(); }
             else if (key === 'd' || key === 'D') { showDash = !showDash; mem.refresh(); }
         });
-        mem.log(`Keys: M live map${showMap ? ' (shown)' : ''} · N next room · D dashboard (rooms, traffic, tick) · Ctrl+C stop`);
+        mem.log('Keys: D dashboard (rooms, traffic, tick) · Ctrl+C stop');
     }
 }

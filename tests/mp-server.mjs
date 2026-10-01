@@ -158,17 +158,6 @@ check('minionActToHost', got(h, MSG.MINION_ACT).length === 2 && got(h, MSG.MINIO
 const g3 = await client({ mode: 'coop', room: 'war', name: 'Late' });
 check('plotForLateJoiner', g3.first.quest?.title === 'Black Water' && g3.first.spawns?.length === 1 && g3.first.spawns[0].id === 'g5000', { q: g3.first.quest, s: g3.first.spawns });
 g3.ws.close();
-// Console map: the first player is asked for the relief; a bad grid is dropped, a good one kept; the map shows players and the boss
-check('needMapAsked', h.first.needMap === true && g3.first.needMap === true);
-g.ws.send(encode(MSG.MAP, { w: 4, h: 2, rows: ['~~..', 'X~~~'] }));                           // bad character: dropped
-g.ws.send(encode(MSG.MAP, { w: 8, h: 4, rows: ['~~~~~~~~', '~~..::~~', '~~:^#:~~', '~~~~~~~~'] }));
-h.ws.send(encode(MSG.BOSS, { s: { kind: 'kraken', p: [-1800, 0, 1800] }, fx: [], m: [], ev: [] })); // north-east corner
-await wait(80);
-const g4 = await client({ mode: 'coop', room: 'war', name: 'Later' });
-const mv = srv.mapView(0, { cols: 100, rows: 40, colour: false });
-const busiest = mv.lines[0].includes('coop:war');
-check('mapKeptAndRendered', g4.first.needMap === false && busiest && mv.lines.length === 5 && mv.lines.some(l => l.includes('^')) && /boss kraken/.test(mv.lines[0]) && mv.lines[1].trimEnd().endsWith('@'), mv.lines);
-g4.ws.close();
 h.ws.close();
 await wait(100);
 check('hostHandover', got(g, MSG.HOST)[0]?.hostId === g.first.id);

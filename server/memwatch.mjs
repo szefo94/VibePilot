@@ -6,7 +6,7 @@
 // lowest and highest value in view; the colour follows the heap's use of its current size. Log lines go through
 // `log()`, which clears the status line, prints the log line and redraws it, so the two never mix.
 // Interactive terminals only: when the output is piped to a file (`> mp.log`) a plain line is written every minute.
-// `panel()` may return more lines to pin above the memory line (the console map, consoleMap.mjs); refresh() redraws.
+// `panel()` may return more lines to pin above the memory line (the dashboard, dashboard.mjs); refresh() redraws.
 
 const BARS = '▁▂▃▄▅▆▇█';
 const MB = 1024 * 1024;

@@ -43,23 +43,6 @@ TICK ♥  0.53 ms ▅▇▃▅▃▃▄█  max 2.2 ms of 50 ms
 - **TICK:** how long one server tick takes, against its 50 ms budget. It turns yellow and then red as the load rises. The heart beats with every redraw, showing that the server is alive.
 - **Coloured log lines:** kills (`☠ Ghost#3 ➜ Hawk#5 down`), bosses (`@ BOSS KRAKEN appears`, `★ BOSS defeated`) and quests (`☣ quest: Sonar Ghost`, `✔ quest done: …`) appear in the log in colour. Written to a file, they are plain text.
 
-**Live map:** press **M** in the server window, or start with `--map`, to show a map of the busiest room above the memory line. It is redrawn every second; press **N** for the next room and **M** again to hide it.
-
-```text
-MAP  tdm:lobby · 1 player · 9 bot(s)
-  ~~~~~~~~~~~~~~~~~~~~~~~~~~...~~~~~~~~~~w~~~~~~~~~~~
-  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~l~~~~~g~~~~~~~~~~~
-  ~~~~~~~~~~~~~~~~~.F...:===--:-===-::........~~~~~~~
-  ~~~~~~~~~~~~~~..:-=-.........~~f~.v::-===::::-::..~
-  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~c~...:::...::.~~~~
-  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~M.::::~~~~~~~~~~
-```
-
-- **Relief:** `~` sea, then `.` `:` `-` `=` `+` `#` `^` from the beach up to the summits. It is the same terrain as the minimap; the room's first player sends it once.
-- **Pilots:** players are capital letters (the first letter of the callsign), bots are small letters, red or blue by team. `!` is an ace, `@` a boss, `F` the team deathmatch flag.
-- **Orientation:** north is up.
-- **Requirements:** the map needs the memory line, so it doesn't work with `--no-mem`, and an interactive terminal.
-
 A server whose rss keeps climbing while the player count stays flat is leaking memory. `--no-mem` hides the line. When the output goes to a file, it is written there once a minute instead. Behind a tunnel or reverse proxy (Cloudflare, nginx), add `--trust-proxy` to log the players' IPs rather than the proxy's.
 
 Address options:
