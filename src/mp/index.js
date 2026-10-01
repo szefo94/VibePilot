@@ -42,6 +42,8 @@ import { startFlag } from './flag.js';
 import { openRoomPicker } from './rooms.js';
 import { startPlot, updatePlot } from './plot.js';
 import { startMapReport } from './mapReport.js';
+import { setMainMenuAction } from '../game/session.js';
+import { hideMapPicker } from '../ui/mapPicker.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
@@ -51,6 +53,8 @@ if (net.enabled) {
     if (MODES[net.mode].teams) startFlag(); // tdm: the flag in the middle, the bots' first waypoint
     if (enemies) startPlot(); // Freaky mode: the host's quests, bosses and minions for the whole room
     startMapReport(); // the relief for the server's console map, when the server asks
+    hideMapPicker(); // the room decides the map
+    setMainMenuAction(() => openRoomPicker({ canClose: net.status !== 'picking' }), 'Rooms'); // "Main menu" (pause, debrief): the room picker
     if (!new URLSearchParams(location.search).get('name')) net.name = defaultCallsign();
 
     const css = document.createElement('link');
@@ -204,11 +208,12 @@ if (net.enabled) {
             location.assign(u.href);
         });
         box.appendChild(b);
-        // "Rooms": the room picker (joining another room reloads the page onto it)
-        const rooms = document.createElement('button');
-        rooms.type = 'button'; rooms.className = 'mp-callsign'; rooms.textContent = 'Rooms';
-        rooms.addEventListener('click', () => openRoomPicker({ canClose: net.status !== 'picking' }));
-        box.appendChild(rooms);
+        // "Rooms": the room picker — the pause menu's Main menu button already is one (setMainMenuAction); the start menu gets its own
+        if (box.closest('#start-menu')) {
+            const rooms = document.createElement('button');
+            rooms.type = 'button'; rooms.dataset.action = 'menu'; rooms.textContent = 'Rooms';
+            box.appendChild(rooms);
+        }
     }
     // Opened without a room: pick one first (src/mp/rooms.js); otherwise join straight away
     if (needsRoomPick()) { net.status = 'picking'; renderChip(); openRoomPicker(); } else startNet();

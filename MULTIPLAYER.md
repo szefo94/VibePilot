@@ -224,7 +224,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 - 60 messages per second per client.
 - 8 KB per message.
 
-**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy), `--no-mem` (no live memory line, `server/memwatch.mjs`), `--map` (start with the live map of the rooms shown, `server/consoleMap.mjs`; **M** toggles it, **N** switches rooms). `npm run mp-server -- --help` lists them.
+**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy), `--no-mem` (no live memory line, `server/memwatch.mjs`), `--map` (start with the live map of the rooms shown, `server/consoleMap.mjs`; **M** toggles it, **N** switches rooms). The terminal also shows an animated dashboard (`server/dashboard.mjs`: room bars, traffic sparklines, tick load; **D** toggles it), and kills, bosses and quests appear in the log in colour. `npm run mp-server -- --help` lists them.
 
 **Files:**
 
@@ -234,6 +234,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `server/cert.mjs` | Self-signed certificate for `--tls` |
 | `server/geo.mjs` | Player IP and location for the log |
 | `server/memwatch.mjs` | Live memory line under the log (and the map pinned above it) |
+| `server/dashboard.mjs` | Animated terminal dashboard: rooms, traffic, tick load |
 | `server/consoleMap.mjs` | Live map of a room in the server window: relief, players, bots, boss, flag |
 | `src/mp/mapReport.js` | Sends the room's relief for that map (once per room) |
 | `server/deploy/` | systemd unit and `update.sh` for the Pi |
@@ -255,6 +256,9 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 
 ## 8. Log
 
+- **Terminal dashboard and menus:**
+  - The server window shows animated room bars, traffic sparklines and tick load, and logs kills, bosses and quests in colour.
+  - In the game, the pause menu's Rooms button opens the room picker; the start menu has one too.
 - **Console map:** the server window can show a live map of each room (relief from the first player's terrain, with pilots, bots, boss and flag on top). It is toggled with M; N switches rooms.
 - **Freaky mode plot (protocol v10):** the host runs the quest story for the room. Quests, quest-spawned units, bosses (with their shots and minions) and the boss reward are shared. Guests' hits on the boss and on minions go to the host. Late joiners get the current quest and the spawned units.
 - **Bots and team deathmatch (protocol v7–v8):** Ace Hunt shared as bots; team deathmatch as the default with team bots, the flag, team score and kills/deaths; bots see before they attack, rally, farm with guns, bombs and napalm, level up, collide; IP and location in the server log.

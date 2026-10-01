@@ -30,6 +30,19 @@ MEM  rss 61.2 MB ▁▁▂▂▃▃▃▄▄▅  heap 14.8 MB / 22.1 MB  ext 2.3
 - **heap:** JavaScript objects in use, out of the space reserved for them. The line turns yellow above 75% and red above 90%.
 - **ext:** buffers outside the heap, such as network data.
 
+**Dashboard:** three animated lines sit above the memory line and are redrawn twice a second. **D** hides them or shows them again.
+
+```text
+ROOMS  tdm:lobby ▕██▒▒▒▒▒▒▒·▏ 2+7 @kraken   coop:war ▕█·········▏ 1
+NET ⠹  in   1.8 KB/s ▁▁▆████▆   out   2.5 KB/s ▁▇█▇▇▇▇█   · 29 msg/s
+TICK ♥  0.53 ms ▅▇▃▅▃▃▄█  max 2.2 ms of 50 ms
+```
+
+- **ROOMS:** one bar per room: players `█`, bots `▒` and free places `·`, with any boss in the room. A room's name flashes when someone joins.
+- **NET:** traffic in and out, with sparklines of the last few seconds and messages per second. The spinner turns while messages flow.
+- **TICK:** how long one server tick takes, against its 50 ms budget. It turns yellow and then red as the load rises. The heart beats with every redraw, showing that the server is alive.
+- **Coloured log lines:** kills (`☠ Ghost#3 ➜ Hawk#5 down`), bosses (`@ BOSS KRAKEN appears`, `★ BOSS defeated`) and quests (`☣ quest: Sonar Ghost`, `✔ quest done: …`) appear in the log in colour. Written to a file, they are plain text.
+
 **Live map:** press **M** in the server window, or start with `--map`, to show a map of the busiest room above the memory line. It is redrawn every second; press **N** for the next room and **M** again to hide it.
 
 ```text

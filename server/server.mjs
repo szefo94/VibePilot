@@ -25,6 +25,7 @@ import { CERT_DIR, certHosts, ensureSelfSignedCert } from './cert.mjs';
 import { clientIp, locate } from './geo.mjs';
 import { startMemWatch } from './memwatch.mjs';
 import { renderMap, validMap } from './consoleMap.mjs';
+import { createDashboard } from './dashboard.mjs';
 import { WebSocketServer } from 'ws';
 import { cleanName, cleanRoom, decode, DEFAULT_MODE, DEFAULT_PORT, DEFAULT_ROOM, encode, EVENT_TEXT_MAX, FIRE_WEAPONS, LIMITS, MAX_REPORTED_HP, MODES, MSG, PROTOCOL_VERSION, PVP_DAMAGE, respawnPoint, spawnSlot, TEAM_SIZE, teamRespawn, teamSpawn, UNIT_ID, UNIT_WEAPONS, VALIDATION } from '../src/net/protocol.js';
 
@@ -38,7 +39,7 @@ const round = (a, d) => a.map(v => +v.toFixed(d));
 
 /** Start the server; resolves with { port, close(), stats() }. `port: 0` picks a free port (tests). */
 /** `tls: { cert, key }` (PEM strings) serves https:// and wss:// instead of http:// and ws://. */
-export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, tls = null, log = console.log, geo = false, trustProxy = false } = {}) {
+export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowedOrigins = [], serveGame = true, tls = null, log = console.log, geo = false, trustProxy = false, fancy = false } = {}) {
     const rooms = new Map();   // `${mode}:${room}` → { key, mode, name, seed, hostId, tick, players: Map<id, client> }
     const clients = new Set(); // every connection, joined or not
     let nextId = 1;
@@ -92,7 +93,12 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
 
     wss.on('error', () => {}); // ws re-emits listen errors (EADDRINUSE…); the http 'error' handler below reports them
 
-    const send = (c, t, data) => { if (c.ws.readyState === c.ws.OPEN) c.ws.send(encode(t, data)); };
+    // Traffic and tick load for the terminal dashboard (dashboard.mjs): cumulative counters, tick times since last read
+    const traffic = { inBytes: 0, outBytes: 0, inMsgs: 0, outMsgs: 0 }, tickLoad = { sum: 0, max: 0, n: 0 };
+    const sendRaw = (c, msg) => { c.ws.send(msg); traffic.outBytes += msg.length; traffic.outMsgs++; };
+    const send = (c, t, data) => { if (c.ws.readyState === c.ws.OPEN) sendRaw(c, encode(t, data)); };
+    // Gameplay events in the log: coloured in an interactive terminal (fancy), plain in a file
+    const paint = (code, text) => (fancy ? `\x1b[${code}m${text}\x1b[0m` : text);
     const broadcast = (room, t, data, except = null) => { for (const c of room.players.values()) if (c !== except) send(c, t, data); };
 
     /** Place `c` at its slot (join) or a random point near it (respawn): the accepted pose, alive, fresh validation baseline. */
@@ -182,7 +188,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                 broadcast(room, MSG.DOWN, { id: c.id, by: killer ? killer.id : null, byTeam, bot });
                 if (byTeam !== null) room.score[byTeam]++;
                 tally(room, `p${c.id}`, c.team, killer ? `p${killer.id}` : bot ? `b:${bot}` : null, byTeam);
-                log(`x ${c.name}#${c.id} down${killer ? ` (by ${killer.name}#${killer.id})` : ''}`);
+                log(paint('31', `☠ ${killer ? `${killer.name}#${killer.id} ➜ ` : bot ? `${bot} (bot) ➜ ` : ''}${c.name}#${c.id} down`) + paint('2', ` · ${room.key}`));
                 break;
             }
             case MSG.FIRE: {
@@ -232,12 +238,21 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             case MSG.QUEST:
                 if (!mode.enemies || room.hostId !== c.id) return;
                 room.quest = m.q && typeof m.q === 'object' ? m.q : null;
+                if ((m.event === 'start' || m.event === 'complete' || m.event === 'arcComplete') && room.quest) {
+                    const title = String(room.quest.title ?? '').slice(0, 40), arc = String(room.quest.arc ?? '').slice(0, 40);
+                    log(paint('36', m.event === 'start' ? `☣ quest: ${title}` : m.event === 'complete' ? `✔ quest done: ${title}` : `★ story arc done: ${arc}`) + paint('2', ` · ${room.key}`));
+                }
                 broadcast(room, MSG.QUEST, { q: room.quest, event: typeof m.event === 'string' ? m.event.slice(0, 16) : undefined, xp: Math.min(5000, Math.max(0, +m.xp || 0)) || undefined }, c);
                 break;
             case MSG.BOSS:
                 if (!mode.enemies || room.hostId !== c.id) return;
                 routeHits(room, c, mode, m.hits, ['boss', 'bite']);
-                room.bossPos = m.s && isVec(m.s.p, 3) ? { name: String(m.s.kind ?? 'boss').slice(0, 16), x: m.s.p[0], z: m.s.p[2] } : null;
+                for (const e of Array.isArray(m.ev) ? m.ev.slice(0, 6) : []) {
+                    const ev = Array.isArray(e) ? e[0] : e, kind = String(m.s?.kind ?? room.bossPos?.name ?? 'boss').toUpperCase();
+                    const line = { spawn: `@ BOSS ${kind} appears`, enrage: `@ ${kind} is enraged`, defeat: `★ BOSS defeated`, escape: `@ ${kind} escaped` }[ev];
+                    if (line) log(paint(ev === 'defeat' ? '1;32' : '1;35', line) + paint('2', ` · ${room.key}`));
+                }
+                room.bossPos = m.s && isVec(m.s.p, 3) ? { name: String(m.s.kind ?? 'boss').slice(0, 16), x: m.s.p[0], z: m.s.p[2] } : m.s ? room.bossPos : null;
                 broadcast(room, MSG.BOSS, { s: m.s ?? null, fx: Array.isArray(m.fx) ? m.fx.slice(0, 40) : [], m: Array.isArray(m.m) ? m.m.slice(0, 12) : [], ev: Array.isArray(m.ev) ? m.ev.slice(0, 6) : [] }, c);
                 break;
             case MSG.BOSS_HIT: {
@@ -273,6 +288,8 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
                     const killer = room.players.has(m.by) ? `p${m.by}` : typeof m.byBot === 'string' && m.byBot ? `b:${m.byBot.slice(0, 24)}` : null;
                     if (mode.teams && byTeam !== null && byTeam !== team) room.score[byTeam]++;
                     tally(room, `b:${m.name.slice(0, 24)}`, team, killer, byTeam);
+                    const by = room.players.get(m.by);
+                    if (by) log(paint('33', `☠ ${by.name}#${by.id} ➜ ${m.name.slice(0, 24)} (bot)`) + paint('2', ` · ${room.key}`)); // players' kills only: bots trade kills all the time
                 }
                 break;
             case MSG.BOT_HIT: {
@@ -320,9 +337,10 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             for (const c of room.players.values()) if (!c.alive && now >= c.respawnAt) send(c, MSG.SPAWN, placeAtSpawn(c, true));
             const players = [...room.players.values()].map(c => ({ id: c.id, p: c.p, q: c.q, s: c.s, hp: c.hp, mh: c.mh ?? 100, f: c.alive ? c.f : 0, alive: c.alive }));
             const msg = encode(MSG.SNAP, { tick: room.tick, time: now, players });
-            for (const c of room.players.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(msg);
+            for (const c of room.players.values()) if (c.ws.readyState === c.ws.OPEN) sendRaw(c, msg);
         }
     }
+    const timedTick = () => { const t0 = performance.now(); tick(); const ms = performance.now() - t0; tickLoad.sum += ms; tickLoad.n++; tickLoad.max = Math.max(tickLoad.max, ms); };
 
     /** "1.2.3.4 (Kraków, Lesser Poland, Poland · Orange)" — as much as is known yet. */
     const where = c => (c.place ? `${c.ip} (${c.place})` : c.ip);
@@ -334,6 +352,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         clients.add(c);
         ws.on('pong', () => { c.heartbeat = true; });
         ws.on('message', raw => {
+            traffic.inBytes += raw.length ?? raw.byteLength ?? 0; traffic.inMsgs++;
             const now = Date.now();
             if (now - c.budgetAt >= 1000) { c.budget = LIMITS.maxMsgPerSec; c.budgetAt = now; }
             if (--c.budget < 0) return; // flood: drop silently
@@ -343,7 +362,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         ws.on('close', () => { clients.delete(c); leave(c); });
         ws.on('error', () => {});
     });
-    const tickTimer = setInterval(tick, 1000 / LIMITS.tickHz);
+    const tickTimer = setInterval(timedTick, 1000 / LIMITS.tickHz);
     const heartbeat = setInterval(() => {
         for (const c of clients) {
             // Missed a ping, or no HELLO within helloGraceMs (a slow device may still be building its world)
@@ -370,6 +389,12 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         http.listen(port, host, () => done({
             port: http.address().port,
             stats, roomList, mapView,
+            /** For the terminal dashboard: traffic counters (cumulative), the tick load since the last call (then reset), rooms. */
+            load: () => {
+                const t = { avg: tickLoad.n ? tickLoad.sum / tickLoad.n : 0, max: tickLoad.max, n: tickLoad.n, budget: 1000 / LIMITS.tickHz };
+                tickLoad.sum = 0; tickLoad.max = 0; tickLoad.n = 0;
+                return { traffic: { ...traffic }, tick: t, rooms: [...rooms.values()].map(r => ({ key: r.key, players: r.players.size, bots: r.botPos.length || botCount(r), max: LIMITS.maxPlayers, boss: r.bossPos?.name ?? null })) };
+            },
             close: () => new Promise(r => { clearInterval(tickTimer); clearInterval(heartbeat); for (const ws of wss.clients) ws.terminate(); wss.close(); http.close(() => r()); }),
         }));
     });
@@ -389,7 +414,8 @@ const USAGE = `Usage: npm run mp-server -- [options]      (or: node server/serve
   --trust-proxy       behind a reverse proxy or tunnel (Cloudflare, nginx): log the IP it forwards, not the proxy's
   --no-mem            no live memory line under the log (when the output goes to a file it is written once a minute)
   --map               start with the live map of the busiest room shown above the memory line. In the terminal:
-                      M shows / hides the map, N switches to the next room (needs the memory line)
+                      M shows / hides the map, N switches to the next room, D hides / shows the dashboard
+                      (rooms, traffic, tick load) — all need the memory line
   --help              show this help
 Command-line options win over environment variables.`;
 
@@ -427,7 +453,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 
     let srv, mem = null;
     const log = (...parts) => (mem ? mem.log(...parts) : console.log(...parts)); // log lines go above the memory line
-    try { srv = await startMpServer({ port, host, allowedOrigins, tls, geo: !args['no-geo'], trustProxy: !!args['trust-proxy'], log }); } catch (e) {
+    try { srv = await startMpServer({ port, host, allowedOrigins, tls, geo: !args['no-geo'], trustProxy: !!args['trust-proxy'], log, fancy: !!process.stdout.isTTY && !args['no-mem'] }); } catch (e) {
         console.error(e.code === 'EADDRINUSE' ? `Port ${port} is already in use — stop the other program or choose another port: --port ${port + 1}`
             : e.code === 'EACCES' ? `No permission to use port ${port} — use a port above 1024, e.g. --port 8787` : e.message);
         process.exit(1);
@@ -447,7 +473,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         'Stop with Ctrl+C.',
     ].join('\n'));
     // The live map (consoleMap.mjs) pinned above the memory line: M toggles it, N cycles the rooms
-    let showMap = !!args.map, mapRoom = 0, mapTimer = null;
+    let showMap = !!args.map, mapRoom = 0;
     const mapPanel = () => {
         if (!showMap) return [];
         const cols = Math.max(20, (process.stdout.columns || 100) - 4), rows = Math.max(8, (process.stdout.rows || 40) - 8);
@@ -455,10 +481,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         const legend = '  ~ sea  . : - lowland  = + upland  # ^ rock, summit · A-Z players  a-z bots  ! ace  @ boss  F flag · [M] hide  [N] next room';
         return [...lines, `\x1b[2m${legend.slice(0, cols + 2)}\x1b[0m`]; // never wider than the terminal (a wrapped line breaks the redraw)
     };
-    const setMap = on => { showMap = on; clearInterval(mapTimer); mapTimer = on ? setInterval(() => mem.refresh(), 1000) : null; mapTimer?.unref(); mem.refresh(); };
+    // The dashboard (dashboard.mjs: rooms, traffic, tick load) and the map, pinned above the memory line, redrawn twice a second
+    let showDash = true;
+    const dash = createDashboard(() => srv.load());
+    const panel = () => { const cols = Math.max(20, (process.stdout.columns || 100) - 2); return [...mapPanel(), ...(showDash ? dash(cols) : [])]; };
+    const setMap = on => { showMap = on; mem.refresh(); };
     if (!args['no-mem']) {
-        mem = startMemWatch({ panel: mapPanel, stats: () => { const s = srv.stats(); return { rooms: s.rooms.length, players: s.players }; } });
-        if (showMap) setMap(true);
+        mem = startMemWatch({ panel, stats: () => { const s = srv.stats(); return { rooms: s.rooms.length, players: s.players }; } });
+        if (process.stdout.isTTY) setInterval(() => mem.refresh(), 500).unref();
     }
     const stop = () => { mem?.stop(); if (process.stdin.isTTY) process.stdin.setRawMode(false); return srv.close().then(() => process.exit(0)); };
     process.on('SIGINT', stop); process.on('SIGTERM', stop);
@@ -468,7 +498,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
             if (key === '\u0003') stop();
             else if (key === 'm' || key === 'M') setMap(!showMap);
             else if ((key === 'n' || key === 'N') && showMap) { mapRoom++; mem.refresh(); }
+            else if (key === 'd' || key === 'D') { showDash = !showDash; mem.refresh(); }
         });
-        mem.log(`Press M for the live map of the rooms${showMap ? ' (shown)' : ''}, N for the next room.`);
+        mem.log(`Keys: M live map${showMap ? ' (shown)' : ''} · N next room · D dashboard (rooms, traffic, tick) · Ctrl+C stop`);
     }
 }
