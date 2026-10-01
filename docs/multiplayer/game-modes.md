@@ -64,6 +64,9 @@ Each player's **Difficulty** (Settings or the start menu: Easy, Normal or Hard) 
 - **Behaviour:** it hunts the players using a rough radar fix, but only attacks once it has seen you.
 - **Rewards:** anyone can shoot it down, and the XP goes to whoever lands the killing hit.
 
+### Single-player only for now
+**Freaky mode** (random giant bosses) is off in multiplayer: bosses aren't shared between players yet. The missile warning tones, the lead marker, the combo meter and the wider view at speed all work in multiplayer.
+
 ### The host
 - **Who hosts:** the first player in a room hosts it. The host's game flies the bots and the aces and keeps the moving enemy units in step for everyone. If the host leaves, the next player takes over and starts fresh bots.
 - **Keep the host flying:** bots and aces only move while the host is flying, not while the host sits in a menu.

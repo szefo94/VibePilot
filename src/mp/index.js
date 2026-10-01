@@ -43,7 +43,7 @@ import { openRoomPicker } from './rooms.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
-    setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, mission: enemies, respawn: true });
+    setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, bosses: false, mission: enemies, respawn: true }); // Freaky mode bosses aren't shared yet
     if (enemies) startCoop();
     startBots(net.mode); // tdm: team bots on the host; pvp/coop: Ace Hunt on the host (RULES.ace)
     if (MODES[net.mode].teams) startFlag(); // tdm: the flag in the middle, the bots' first waypoint

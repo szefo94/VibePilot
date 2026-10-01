@@ -41,6 +41,7 @@ import { isHost, net, netSend, onNet } from '../net/net.js';
 import { buildLabel, drawLabel, remoteViews, sampleAt } from './remotePlanes.js';
 import { flagPatrol, flagWaypoint } from './flag.js';
 import { onRemoteFire } from './remoteFx.js';
+import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
 
 const SEND_MS = 100, INTERP_DELAY = 150, STALE_MS = 3000, LABEL_RANGE = 600, FIRING_MS = 250;
 const BOT_RESPAWN_MS = 8000, BOT_XP = 100, MAX_BOTS = 12, SPAWN_CLEARANCE = 90;
@@ -268,13 +269,14 @@ function updateGuestBots() {
         b.label.sprite.visible = b.shown && d < LABEL_RANGE;
         if (b.label.sprite.visible) { b.label.sprite.position.copy(b.group.position).y += 10; drawLabel(b.label, b.hp, b.mh); }
     }
-    let threat = false;
+    let threat = false, nearest = Infinity;
     for (const s of missiles.values()) { // between updates: carry on along the last velocity
         s.mesh.position.copy(s.p).addScaledVector(s.v, Math.min(now - s.at, 200));
         if (s.v.lengthSq() > 0) s.mesh.lookAt(s.mesh.position.clone().add(s.v));
-        if (s.target === net.id) threat = true;
+        if (s.target === net.id) { threat = true; nearest = Math.min(nearest, s.mesh.position.distanceTo(plane.position)); }
     }
     setWarning(threat && !state._playerDown ? '⚠ MISSILE — FLARES (Q) / BREAK TURN' : '');
+    reportThreat('bots', threat ? (nearest < MISSILE_CLOSE ? THREAT.missile : THREAT.locked) : THREAT.none); // the warning tone (ui/threatTone.js)
     for (const [key, dmg] of outgoing) {
         const [bot, w] = key.split('|');
         netSend(MSG.BOT_HIT, { bot, dmg: r2(dmg), w });
