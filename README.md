@@ -171,6 +171,11 @@ Gamepad is polled every frame via the browser Gamepad API. Stick deflection is a
 
 All menus work with mouse, keyboard (Tab, Enter/Space, Esc) and gamepad. Animations are reduced when the OS asks for reduced motion.
 
+### Maps and menus
+
+- **Start menu map chooser:** a north-up preview of the current map, with its name, seed, island count, base count and highest summit. Use ◀ / ▶ for the neighbouring seeds, 🎲 for a random new map, or type a seed. Choosing a map reloads onto it and comes back to the start menu.
+- **Main menu button:** the pause menu, game-over screen and debrief all have one. It returns to the start menu on the current map. In multiplayer, the button opens the room picker instead.
+
 ### Mission & Feedback
 
 - **Objective panel** (above the ammo bars): the one place for what to do next. With a Freaky mode quest running it shows the quest (act, arc, step, title, objective with a progress bar, distance and bearing to its beacon); otherwise the nearest base not yet eliminated, with units left, distance and a bearing arrow. Bases conquered sit underneath either way. Eliminate every base for **Mission complete** (+1000 score).
@@ -669,6 +674,9 @@ Two types of mathematical hollow tunnels are placed across the map — 3 challen
 - Path types: helix · sine S-curve · corkscrew dive (random per tube)
 - Named: `Tube Alpha / Beta / Gamma / Delta / Epsilon / …`
 - Tube radius: at least 12 units (full player wingspan); capped to avoid self-intersection
+- **Tubes move:** each tube drifts on a slow loop up to about 42 m from where it was placed, rises and sinks about 9 m, and sways up to 0.22 rad about its vertical axis (`TUBE_MOTION`). Its orbs slide back and forth along it. Walls and gates are tested in the tube's own frame.
+- **Hearts move:** every constellation slowly revolves about its centre, in alternating directions, and each heart swirls on a small circle; hearts never sink into a hill (`HEART_MOTION`).
+- Neither motion uses the seeded random generator, so every map stays the same.
 - 11 heart-shaped orbs placed at even intervals along each tube's curve; orbs bob and pulse with the same heartbeat glow as free collectibles
 
 #### Challenge Tubes (cyan)

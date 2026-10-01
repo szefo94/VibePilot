@@ -45,12 +45,26 @@ function hoopGeometry(r) {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     return g;
 }
-function addCollectibleAt(x, y, z, constellationId) {
+/**
+ * Hearts move: a constellation revolves slowly about its centre (`chain.spin` rad/s, alternating direction) while
+ * each heart swirls on a small circle and bobs (effects.js, moveCollectible). No Math.random: the seeded map is unchanged.
+ */
+export const HEART_MOTION = Object.freeze({ swirl: 3.2, swirlRate: 0.9, clearance: 10 });
+/** Place a heart for `time` seconds of flight (its chain turned, its swirl, its bob already in originY). */
+export function moveCollectible(m, time) {
+    const u = m.userData, c = u.chain;
+    let x = u.originX, z = u.originZ;
+    if (c) { const a = c.spin * time, dx = x - c.x, dz = z - c.z, co = Math.cos(a), si = Math.sin(a); x = c.x + dx * co - dz * si; z = c.z + dx * si + dz * co; }
+    const w = time * HEART_MOTION.swirlRate + u.k;
+    m.position.x = x + Math.cos(w) * HEART_MOTION.swirl; m.position.z = z + Math.sin(w) * HEART_MOTION.swirl;
+}
+function addCollectibleAt(x, y, z, constellationId, chain = null) {
     const m = new THREE.Mesh(collectibleGeo, collectibleMat);
     m.rotation.z = Math.PI; // heart shape is extruded with Y-up convention; flip to appear right-side up in world
     y = Math.max(heightAt(x, z) + 10, Math.min(ceilingLevel - 8, y)); // never inside a hill
     m.position.set(x, y, z);
-    m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null, originY: y, bobPhase: Math.random() * Math.PI * 2 };
+    m.userData = { type: 'collectible', collisionRadius: collectibleRadius, constellationId: constellationId || null, originY: y, bobPhase: Math.random() * Math.PI * 2,
+        originX: x, originZ: z, chain, k: collectibles.length * 2.39 };
     collectibles.push(m); scene.add(m);
 }
 
@@ -82,7 +96,9 @@ export function spawnCollectibleChains(count) {
         const id = `c${i}`;
         const name = CONSTELLATION_NAMES[i % CONSTELLATION_NAMES.length];
         const before = collectibles.length;
-        spawnChain(randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), randomRange(groundLevel + 40, ceilingLevel - 40), randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), COLLECTIBLE_CFG, (x, y, z) => addCollectibleAt(x, y, z, id));
+        const cx = randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8), cy = randomRange(groundLevel + 40, ceilingLevel - 40), cz = randomRange(-MAP_BOUNDARY * .8, MAP_BOUNDARY * .8);
+        const chain = { x: cx, z: cz, spin: (i % 2 ? 1 : -1) * (0.05 + 0.02 * (i % 4)) }; // slow, alternating carousels
+        spawnChain(cx, cy, cz, COLLECTIBLE_CFG, (x, y, z) => addCollectibleAt(x, y, z, id, chain));
         const total = collectibles.length - before;
         constellations[id] = { name, total, remaining: total, completed: false };
     }

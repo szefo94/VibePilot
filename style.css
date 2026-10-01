@@ -680,6 +680,18 @@ body:has(#settings-dialog:not([hidden])) #paused { visibility: hidden; }
 .objective-label { text-transform: uppercase; opacity: 0.75; }
 #objective-name { color: var(--hud-amber); }
 #objective-kicker, #objective-bar { display: none; }
+/* Map chooser (ui/mapPicker.js) */
+.map-pick { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 12px auto 4px; padding: 10px 12px; max-width: 460px; border: 1px solid var(--hud-border, rgba(0,255,120,0.35)); border-radius: 8px; background: rgba(0, 20, 12, 0.55); }
+.map-pick[hidden] { display: none; }
+.map-preview { width: 132px; height: 132px; border-radius: 50%; border: 2px solid var(--hud-border-bright, #2f8); box-shadow: 0 0 10px rgba(0, 255, 120, 0.25); flex: none; }
+.map-info { text-align: left; min-width: 0; }
+.map-kicker { font-size: 10px; letter-spacing: 0.2em; opacity: 0.7; text-transform: uppercase; }
+.map-name { font: bold 18px 'Orbitron', 'Share Tech Mono', sans-serif; color: var(--hud-amber, #ffb000); }
+.map-meta { font-size: 11px; opacity: 0.8; margin: 2px 0 6px; }
+.map-row { display: flex; gap: 6px; margin-top: 4px; }
+.map-row button { padding: 4px 9px; font-size: 12px; }
+.map-seed input { width: 120px; padding: 3px 6px; font: inherit; font-size: 12px; background: rgba(0,0,0,0.4); color: inherit; border: 1px solid rgba(0,255,120,0.35); border-radius: 4px; }
+@media (max-width: 520px) { .map-pick { flex-direction: column; } .map-info { text-align: center; } .map-row { justify-content: center; } }
 #objective.quest { border-color: rgba(255, 210, 58, 0.55); box-shadow: 0 0 14px rgba(255, 170, 0, 0.25); }
 #objective.quest #objective-kicker { display: block; font-size: 10px; letter-spacing: 0.16em; color: #ffd23a; text-transform: uppercase; margin-bottom: 2px; }
 #objective.quest #objective-name { color: #fff2b0; font-weight: bold; }

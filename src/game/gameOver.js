@@ -13,7 +13,7 @@ import { enemies, groundUnits } from '../entities/registry.js';
 import { spawnPlaneDebris } from '../effects/effects.js';
 import { _deathGraphEl, _drawDeathGraph, _statHp, _statLvl, _statScore, _statXp, debriefInfo } from '../ui/debrief.js';
 import { _gameOverPos } from '../player/camera.js';
-import { onGameOver } from './session.js';
+import { onGameOver, mainMenuLabel } from './session.js';
 import { missionProgress } from './mission.js';
 import { acesShotDown } from '../entities/rival.js';
 import { RULES } from './rules.js';
@@ -38,7 +38,7 @@ export function triggerGameOver({ victory = false } = {}) {
     gameOverElement.classList.toggle('victory', victory);
     gameOverElement.innerHTML = `${victory ? 'MISSION COMPLETE' : 'GAME OVER!'}<br><span style="font-size:24px">Score: ${state.score}${_isNewBest ? '  ★ NEW BEST' : ''}</span>` +
         `<br><span style="font-size:16px">Best: ${state._highScore} · Bases ${conquered}/${total}${aces ? ` · Aces ${aces}` : ''}${state.respawns ? ` · Respawns ${state.respawns}` : ''}${victory ? ` · +${MISSION_COMPLETE_BONUS} mission bonus` : ''}</span>` +
-        `<div class="menu-buttons menu-row">${victory ? '' : '<button type="button" data-action="respawn">Respawn</button>'}<button type="button" data-action="restart">Restart</button><button type="button" data-action="replay">Replay this map</button></div>` +
+        `<div class="menu-buttons menu-row">${victory ? '' : '<button type="button" data-action="respawn">Respawn</button>'}<button type="button" data-action="restart">Restart</button><button type="button" data-action="replay">Replay this map</button><button type="button" data-action="menu">${mainMenuLabel}</button></div>` +
         `<div class="menu-hint">${victory ? '' : 'R respawn here (keep score and level) · '}Enter restart · G debrief · arrows orbit the camera</div>`;
     gameOverElement.style.display = 'block';
     onGameOver(); // cursor, focus, menu mode

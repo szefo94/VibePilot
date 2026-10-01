@@ -22,6 +22,7 @@ import { updateComboHud } from './ui/comboHud.js';
 import { updateThreatTone } from './ui/threatTone.js';
 import { updateBossHud } from './ui/bossHud.js';
 import { updateQuestHud } from './ui/questHud.js';
+import './ui/mapPicker.js'; // the start menu's map chooser
 import { runSplash, splashActive } from './ui/splash.js';
 import { updateMinimap, updateRadarSnapshot } from './ui/minimap.js';
 import { _searchlights, buildBaseFences, updateBasePerimeters } from './entities/fences.js';
