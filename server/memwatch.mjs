@@ -6,6 +6,7 @@
 // lowest and highest value in view; the colour follows the heap's use of its current size. Log lines go through
 // `log()`, which clears the status line, prints the log line and redraws it, so the two never mix.
 // Interactive terminals only: when the output is piped to a file (`> mp.log`) a plain line is written every minute.
+// `panel()` may return more lines to pin above the memory line (the console map, consoleMap.mjs); refresh() redraws.
 
 const BARS = '▁▂▃▄▅▆▇█';
 const MB = 1024 * 1024;
@@ -16,7 +17,7 @@ const ansi = (code, text) => `\x1b[${code}m${text}\x1b[0m`;
  * Start the readout. `stats()` returns { rooms, players } (the server's own counts); `out` is the stream.
  * Returns { log } — use it instead of console.log — and stop().
  */
-export function startMemWatch({ intervalMs = 2000, history = 60, stats = () => ({ rooms: 0, players: 0 }), out = process.stdout } = {}) {
+export function startMemWatch({ intervalMs = 2000, history = 60, stats = () => ({ rooms: 0, players: 0 }), out = process.stdout, panel = () => [] } = {}) {
     const live = !!out.isTTY;
     const samples = [];
     const started = Date.now();
@@ -34,7 +35,15 @@ export function startMemWatch({ intervalMs = 2000, history = 60, stats = () => (
             + ` · ${s.rooms} room${s.rooms === 1 ? '' : 's'} · ${s.players} player${s.players === 1 ? '' : 's'} · up ${up < 60 ? `${up}m` : `${Math.floor(up / 60)}h${up % 60}m`}`;
         return live ? `${ansi('1;36', 'MEM')}  ${ansi(colour, plain)}` : `MEM ${plain}`;
     };
-    const draw = () => { if (live) out.write(`\r\x1b[2K${status}`); };
+    let shown = 0; // lines of the pinned block on screen (the cursor sits on its last line)
+    const clear = () => { if (live && shown) out.write(`\r${shown > 1 ? `\x1b[${shown - 1}A` : ''}\x1b[J`); shown = 0; };
+    const draw = () => {
+        if (!live) return;
+        const lines = [...panel(), status];
+        clear();
+        out.write(lines.join('\n'));
+        shown = lines.length;
+    };
 
     let ticks = 0;
     const timer = setInterval(() => {
@@ -49,10 +58,12 @@ export function startMemWatch({ intervalMs = 2000, history = 60, stats = () => (
     return {
         /** Print a log line above the status line. */
         log(...parts) {
-            if (live) out.write('\r\x1b[2K');
+            clear();
             out.write(`${parts.join(' ')}\n`);
             draw();
         },
-        stop() { clearInterval(timer); if (live) out.write('\r\x1b[2K'); },
+        /** Redraw the pinned block now (the panel changed). */
+        refresh: draw,
+        stop() { clearInterval(timer); clear(); },
     };
 }

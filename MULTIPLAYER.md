@@ -216,7 +216,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `name=` | Your callsign, up to 16 characters | Remembered, or a random one; change it with **Callsign** in the menus |
 | `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `tdm` |
 
-**Messages** (`src/net/protocol.js`, version 10): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `QUEST` · `BOSS` · `BOSS_HIT` · `MINION_ACT` · `UNIT_SPAWN` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
+**Messages** (`src/net/protocol.js`, version 10): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `QUEST` · `BOSS` · `BOSS_HIT` · `MINION_ACT` · `UNIT_SPAWN` · `MAP` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
 
 **Limits:**
 - 10 players per room (two teams of five in tdm), 32 rooms per server.
@@ -224,7 +224,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 - 60 messages per second per client.
 - 8 KB per message.
 
-**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy), `--no-mem` (no live memory line, `server/memwatch.mjs`). `npm run mp-server -- --help` lists them.
+**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy), `--no-mem` (no live memory line, `server/memwatch.mjs`), `--map` (start with the live map of the rooms shown, `server/consoleMap.mjs`; **M** toggles it, **N** switches rooms). `npm run mp-server -- --help` lists them.
 
 **Files:**
 
@@ -233,7 +233,9 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `server/server.mjs` | The server: game files, rooms, state, validation, team score. Run it with `npm run mp-server -- --port <n> --host <addr>` |
 | `server/cert.mjs` | Self-signed certificate for `--tls` |
 | `server/geo.mjs` | Player IP and location for the log |
-| `server/memwatch.mjs` | Live memory line under the log |
+| `server/memwatch.mjs` | Live memory line under the log (and the map pinned above it) |
+| `server/consoleMap.mjs` | Live map of a room in the server window: relief, players, bots, boss, flag |
+| `src/mp/mapReport.js` | Sends the room's relief for that map (once per room) |
 | `server/deploy/` | systemd unit and `update.sh` for the Pi |
 | `src/net/protocol.js` | Protocol shared by browser and server: modes, limits, teams, spawns, messages |
 | `src/net/net.js` | Connection, peers, clock, score |
@@ -253,6 +255,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 
 ## 8. Log
 
+- **Console map:** the server window can show a live map of each room (relief from the first player's terrain, with pilots, bots, boss and flag on top). It is toggled with M; N switches rooms.
 - **Freaky mode plot (protocol v10):** the host runs the quest story for the room. Quests, quest-spawned units, bosses (with their shots and minions) and the boss reward are shared. Guests' hits on the boss and on minions go to the host. Late joiners get the current quest and the spawned units.
 - **Bots and team deathmatch (protocol v7–v8):** Ace Hunt shared as bots; team deathmatch as the default with team bots, the flag, team score and kills/deaths; bots see before they attack, rally, farm with guns, bombs and napalm, level up, collide; IP and location in the server log.
 - **Phase 3, co-op:** shared enemy bases (`UNIT_HIT`, `WORLD`), late-joiner damage log.

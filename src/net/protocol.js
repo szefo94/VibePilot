@@ -135,6 +135,8 @@ export const MSG = Object.freeze({
     BOSS_HIT: 'bosshit',  // C→host { dmg, w } — a guest hit the boss
     MINION_ACT: 'minion', // C→host { hit: id } or { shake: true } — a guest shot a minion down / shook them off
     UNIT_SPAWN: 'uspawn', // host → others { id, spec } — a unit a quest spawned (the server keeps them for late joiners)
+    MAP: 'map',           // C→S { w, h, rows } — the room's relief as characters, for the server's console map (server/consoleMap.mjs);
+                          // sent once, by a player whose WELCOME said needMap. rows[0] is north (+z), each row starts in the west (+x)
     EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
     ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }

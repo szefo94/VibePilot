@@ -24,7 +24,7 @@ import { createExplosion } from '../effects/effects.js';
 import { onHook, runHooks } from '../game/hooks.js';
 import { setRules } from '../game/rules.js';
 import { applyQuestSnapshot, makeQuestUnit, questSnapshot, remoteQuestEvent, setQuestAuthority, setQuestOptions, setQuestPilots } from '../game/quests.js';
-import { BOSS_TYPES, applyRemoteFx, bossSnapshot, bossStatus, captureBossFx, clearRemoteBossFx, drainBossFx, setBossPilots, setRemoteBossStatus, shareBossReward } from '../entities/bosses.js';
+import { BOSS_TYPES, aimVector, applyRemoteFx, bossSnapshot, bossStatus, captureBossFx, clearRemoteBossFx, drainBossFx, faceAim, setBossPilots, setRemoteBossStatus, shareBossReward } from '../entities/bosses.js';
 import { applyMinionSnapshot, clearMinionGhosts, hitMinion, minionSnapshot, setMinionTargets, shakeOff, updateMinionGhosts } from '../entities/minions.js';
 import { MSG } from '../net/protocol.js';
 import { isHost, net, netSend, onNet } from '../net/net.js';
@@ -101,11 +101,12 @@ function updateProxyState(s) {
     if (!s) { if (proxy) { createExplosion(proxy.group.position, 3); clearProxy(); } return; }
     if (proxy && proxy.kind !== s.kind) clearProxy();
     if (!proxy) makeProxy(s);
-    Object.assign(proxy, { hp: s.hp, maxHp: s.maxHp, phase: s.phase, enraged: s.enraged, ry: s.ry });
+    Object.assign(proxy, { hp: s.hp, maxHp: s.maxHp, phase: s.phase, enraged: s.enraged, ry: s.ry, pt: s.pt ?? 0 });
     Object.assign(proxy.boss, { charge: s.charge, attack: s.attack, enraged: s.enraged, walking: s.walking, rewardXp: s.xp });
     proxy.to.set(...s.p);
     proxy.beamState = s.beam;
 }
+const _aim = new THREE.Vector3();
 function animateProxy(dt) {
     if (!proxy) return;
     const g = proxy.group;
@@ -114,6 +115,7 @@ function animateProxy(dt) {
     const dy = ((proxy.ry - g.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     g.rotation.y += dy * Math.min(1, 0.2 * dt);
     proxy.model.animate(proxy.t, proxy.boss);
+    faceAim(proxy.model, aimVector(g.rotation.y, proxy.pt ?? 0, _aim)); // the head points where the host's boss aims
     // The beam, as the host has it
     const bs = proxy.beamState;
     if (bs && !proxy.beam) {
