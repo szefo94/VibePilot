@@ -348,7 +348,7 @@ const emitterPos = (b, out) => (b.model.emitters ? b.model.emitters[(b.shotN = (
 /** The phoenix's rebirth: at 0 HP the first time, it bursts into flame and rises again, enraged. */
 function rebirth(au) {
     const b = au.boss;
-    if (b.reborn || b.phase !== 'fight') return false;
+    if (b.reborn || b.phase === 'leave') return false; // any time but its escape — even shot down while still emerging
     b.reborn = true; b.enraged = true;
     au.hp = Math.round(au.maxHp * b.def.rebirth);
     updateUnitLabel(au.label, au.hp);
