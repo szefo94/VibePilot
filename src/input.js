@@ -8,6 +8,7 @@ import { _deathGraphEl } from './ui/debrief.js';
 import { spawnInterceptors } from './entities/airUnits.js';
 import { spawnRival, toggleRivalMode } from './entities/rival.js';
 import { spawnBoss } from './entities/bosses.js';
+import { respawnHere } from './game/gameOver.js';
 import { RULES } from './game/rules.js';
 import { setSetting, settings } from './core/settings.js';
 import { touchAxes, updateTouchAxes } from './ui/touch.js';
@@ -63,6 +64,7 @@ document.addEventListener('keydown', e => {
         if (held) keys[held] = true; // orbit controls during game-over free-look
         if (k === 'g' && !e.repeat) _deathGraphEl.style.display = _deathGraphEl.style.display === 'none' ? 'block' : 'none';
         if (e.key === 'Enter' && !e.repeat && !onControl(e)) restart();
+        if (k === 'r' && !e.repeat) respawnHere(); // carry on in this session (single-player)
         return;
     }
     if (splashActive()) return;

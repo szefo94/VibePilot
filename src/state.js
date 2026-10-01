@@ -19,7 +19,8 @@ export const state = {
     // Control flow
     isGameOver: false,
     isPaused: false,
-    _playerDown: false, // RULES.respawn: shot down, waiting for respawnPlayer() (game/respawn.js)
+    _playerDown: false,
+    respawns: 0,       // single-player: times the pilot carried on after being shot down (game/gameOver.js respawnHere) // RULES.respawn: shot down, waiting for respawnPlayer() (game/respawn.js)
     awaitingStart: true, // start menu showing; game/session.js clears it (or ?autostart)
     // Interceptor event
     _gameElapsed: 0, // seconds-equivalent (frame units at 60 fps)

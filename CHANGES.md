@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Flight feel, lead marker, combo, Freaky mode
+- **Respawn in single-player:** shot down, press **Respawn** (or R) on the game-over screen to carry on in the same session. You keep the map, score, level and XP. A new plane appears at a safe height near the crash, heading for the middle of the map, with full HP and ammo and spawn protection. The game-over screen and debrief count respawns. Restart and Replay this map work as before; after Mission complete there is nothing to respawn into.
 - **Missile warning tones** (`ui/threatTone.js`): slow beeps while an ace locks on, fast beeps once it is locked or a missile is up, and a solid tone when a missile is closer than 300. Flare on the solid tone.
 - **Speed you can feel:** the field of view widens from 75° to 88° with airspeed and dives (less with reduced motion).
 - **Lead marker** (`ui/leadMarker.js`):

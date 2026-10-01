@@ -5,6 +5,7 @@
  * gamepad (D-pad to move, A to select, B to close settings, Start) all work. Restart reloads the page with
  * ?autostart (world init takes ~30 ms); "Replay this map" also keeps the current ?seed.
  */
+import { respawnHere } from './gameOver.js';
 import { state } from '../state.js';
 import { DEBUG_PARAMS } from '../debug/params.js';
 import { onSettingChange, setSetting, settings } from '../core/settings.js';
@@ -69,6 +70,11 @@ export function onGameOver() {
     refresh();
     focusFirst(gameOverElement);
 }
+/** Back to flying after a single-player respawn (game/gameOver.js respawnHere). */
+export function onRespawnHere() {
+    document.activeElement?.blur?.();
+    refresh();
+}
 
 export function restart({ sameMap = false } = {}) {
     const url = new URL(location.href);
@@ -120,6 +126,7 @@ document.addEventListener('click', e => {
     const button = e.target.closest('[data-action]'), action = button?.dataset.action;
     if (action === 'start') startGame();
     else if (action === 'resume') setPaused(false);
+    else if (action === 'respawn') respawnHere();
     else if (action === 'restart') restart();
     else if (action === 'replay') restart({ sameMap: true });
     else if (action === 'settings') openSettings();
