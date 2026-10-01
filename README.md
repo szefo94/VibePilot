@@ -39,7 +39,7 @@ npm run serve            # or: python3 -m http.server 8000
 # then open http://localhost:8000/
 ```
 
-The `master` branch is deployed to GitHub Pages as-is; there is no build step. Three.js is vendored as `three.min.js` (r128) and is not an npm dependency.
+The `master` branch is deployed to GitHub Pages as-is; there is no build step. Three.js is vendored as `three.module.min.js` (r164, ES module build) and is not an npm dependency; `src/core/three.js` publishes it as the global `THREE` and keeps the r128 colours and lighting.
 
 Development checks (Node 18+, run `npm install` once for ESLint and the browser test driver):
 
@@ -87,9 +87,9 @@ Scenarios: `hover` (no input; most comparable), `circle` (steady turn), `combat`
 ## Project Structure
 
 ```text
-index.html            HUD markup, loads three.min.js then src/main.js
+index.html            HUD markup, loads src/main.js
 style.css             HUD / overlay styling
-three.min.js          vendored Three.js r128 (global THREE)
+three.module.min.js   vendored Three.js r164 (ES module; src/core/three.js makes it the global THREE)
 scripts/              serve.mjs (static server), check.mjs (syntax / import check)
 tests/                browser-probes.mjs (headless regression probes), perf-bench.mjs (benchmark)
 src/

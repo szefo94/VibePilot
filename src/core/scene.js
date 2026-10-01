@@ -28,6 +28,9 @@ camera.position.set(0, 0, 25);
 camera.lookAt(0, 0, 0);
 export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
 renderer.setSize(window.innerWidth, window.innerHeight);
+// The r128 look on r164 (core/three.js): linear output, legacy light units
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.useLegacyLights = true;
 document.body.appendChild(renderer.domElement);
 // --- Lighting ---
 // --- Lighting (colours and intensities set by world/sky.js; never add or remove lights at runtime) ---

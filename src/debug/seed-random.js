@@ -1,4 +1,4 @@
-// Seeded Math.random. Classic script loaded before three.min.js and the game modules.
+// Seeded Math.random. Classic script loaded before Three.js and the game modules.
 // Every run is seeded — from ?seed=<number> when given, otherwise a random seed — so any map can be replayed:
 // the seed is exposed as window.__vpSeed and "Replay this map" reloads with ?seed=<that seed>.
 // (Frame timing still varies, so a long flight will eventually diverge.)
