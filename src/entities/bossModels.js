@@ -36,6 +36,9 @@ function chain(parent, n, len, r0, r1, material, dir = new THREE.Vector3(0, 1, 0
     return joints;
 }
 
+/** The building blocks, shared with the mythical bosses (mythModels.js). */
+export { chain, detail, glowMat, mat, mesh, pivot };
+
 // --- Kaiju: a towering reptile with glowing dorsal plates and an atomic breath ---------------------------------------
 export function buildKaiju() {
     const g = new THREE.Group(), skin = mat(0x3b4a39, { roughness: 0.9 }), belly = mat(0x7d7a55), dark = mat(0x23291f);

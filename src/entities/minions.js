@@ -1,5 +1,6 @@
 /**
- * Boss minions (entities/bosses.js 'minions' attack): the kraken's squidlings and Specimen 47's facehuggers.
+ * Boss minions (entities/bosses.js 'minions' attack): the kraken's squidlings, Specimen 47's facehuggers and the
+ * dragon's wyrmlings.
  *
  *   flying   they home in on a pilot (slower than a missile, faster than a cruising plane) and can be shot down
  *   latched  one that reaches its pilot clings to the plane and bites: it drains MINION.drain of the pilot's max HP
@@ -66,7 +67,27 @@ function facehugger() {
     const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.2, 3.2, 8), flesh); tail.position.z = -2.4; tail.rotation.x = Math.PI / 2; g.add(tail);
     return { group: g, animate: (t, latched) => { legs.forEach((l, i) => { l.rotation.z = Math.sin(t * (latched ? 16 : 7) + i) * 0.35; }); tail.rotation.y = Math.sin(t * 6) * 0.4; } };
 }
-const MODELS = { squid: squidling, hugger: facehugger };
+function wyrmling() { // the dragon's brood: a small red drake on flapping wings
+    const g = new THREE.Group(), scale = mat(0x9a2418), dark = mat(0x3a100a), wingMat = mat(0x6a1a12, { side: THREE.DoubleSide }), eye = glow(0xffd23a), ember = glow(0xff6a1a);
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 10), scale); body.scale.set(0.9, 0.8, 1.8); g.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1.1), scale); head.position.set(0, 0.4, 1.7); g.add(head);
+    const throat = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), ember); throat.position.set(0, 0.1, 2.25); g.add(throat);
+    for (const s of [-1, 1]) {
+        const e = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), eye); e.position.set(s * 0.25, 0.6, 2.1); g.add(e);
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.6, 6), dark); horn.position.set(s * 0.25, 0.85, 1.4); horn.rotation.x = -1; g.add(horn);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.3, 2.6, 8), scale); tail.position.z = -2.4; tail.rotation.x = -Math.PI / 2; g.add(tail);
+    const wings = [-1, 1].map(s => {
+        const w = new THREE.Group(); w.position.set(s * 0.5, 0.4, 0.3);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.4, s * 2.6, 0.2, -0.2, s * 2.2, 0, -1.2, 0, 0, 0.4, s * 2.2, 0, -1.2, 0, 0, -0.9], 3));
+        geo.computeVertexNormals();
+        w.add(new THREE.Mesh(geo, wingMat)); g.add(w); w.userData.side = s;
+        return w;
+    });
+    return { group: g, animate: (t, latched) => { const f = Math.sin(t * (latched ? 26 : 14)); wings.forEach(w => { w.rotation.z = -w.userData.side * f * 0.7; }); tail.rotation.y = Math.sin(t * 5) * 0.3; } };
+}
+const MODELS = { squid: squidling, hugger: facehugger, wyrmling };
 
 // --- Behaviour -----------------------------------------------------------------------------------------------------
 

@@ -589,9 +589,16 @@ const probes = {
             const { plane } = await import('./src/player/plane.js');
             const { state } = await import('./src/state.js');
             const { leadStats } = await import('./src/ui/leadMarker.js');
-            plane.position.set(0, 120, 0); plane.quaternion.identity(); state.speed = 0.4;
+            // Held level and on course while the marker settles (the flight model would otherwise turn the nose
+            // toward whatever the random map has ahead), with the ace just off the nose
+            const hold = () => { plane.position.set(0, 120, 0); plane.quaternion.identity(); state.speed = 0.4; };
+            hold();
             const ace = R.spawnAce({ callsign: 'Probe', position: new THREE.Vector3(-20, 122, 180), heading: Math.PI / 2 });
-            await new Promise(r => setTimeout(r, 900));
+            const timer = setInterval(hold, 8);
+            // the marker re-picks every few rendered frames: wait for it (software rendering can be slow), up to 6 s
+            for (let t = 0; t < 6000 && leadStats().target !== ace.id; t += 100) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+            clearInterval(timer);
             const s = leadStats();
             return { ...s, pass: s.target === ace.id && s.inRange === true && s.dist > 100 && s.dist < 300 };
         });
@@ -615,12 +622,11 @@ const probes = {
                 await frames(2);
                 const frame = !document.getElementById('boss-frame').hidden && document.querySelector('#boss-frame .bf-name').textContent === au.boss.def.name;
                 const score0 = state.score;
-                const h = beginHits('missile'); h.damage(au, au.hp + 1); h.finish();
-                simulate(1);
+                for (let k = 0; k < 2 && airUnits.includes(au); k++) { const h = beginHits('missile'); h.damage(au, au.hp + 1); h.finish(); simulate(1); } // the phoenix rises once
                 out[kind] = { second: !!second, phase: au.boss.phase, frame, gone: !airUnits.includes(au), paid: state.score > score0, cleared: B.bossStatus() === null };
             }
             const ok = Object.values(out).every(v => typeof v === 'object' && !v.second && v.frame && v.gone && v.paid && v.cleared);
-            return { out, pass: ok && Object.keys(out).length === 6 };
+            return { out, pass: ok && Object.keys(out).length === Object.keys(B.BOSS_TYPES).length };
         });
     },
     // Freaky mode quests: a quest chain starts; destroy quests use existing units, or spawn new ones when none are left
