@@ -40,13 +40,15 @@ import { startCoop, updateCoop } from './coop.js';
 import { botKiller, botRoster, startBots, updateBots } from './bots.js';
 import { startFlag } from './flag.js';
 import { openRoomPicker } from './rooms.js';
+import { startPlot, updatePlot } from './plot.js';
 
 if (net.enabled) {
     const enemies = MODES[net.mode].enemies;
-    setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, bosses: false, mission: enemies, respawn: true }); // Freaky mode bosses aren't shared yet
+    setRules({ enemies, roamingFighters: false, interceptors: false, ace: false, bosses: false, mission: enemies, respawn: true }); // bosses: on for the host (plot.js)
     if (enemies) startCoop();
     startBots(net.mode); // tdm: team bots on the host; pvp/coop: Ace Hunt on the host (RULES.ace)
     if (MODES[net.mode].teams) startFlag(); // tdm: the flag in the middle, the bots' first waypoint
+    if (enemies) startPlot(); // Freaky mode: the host's quests, bosses and minions for the whole room
     if (!new URLSearchParams(location.search).get('name')) net.name = defaultCallsign();
 
     const css = document.createElement('link');
@@ -125,6 +127,7 @@ if (net.enabled) {
         updateRemoteFx(Math.min(rawDelta * 60, 6));
         updateCoop(rawDelta);
         updateBots(rawDelta);
+        updatePlot(rawDelta);
         if ((chipTimer -= rawDelta) <= 0) { chipTimer = 0.25; renderChip(); }
     });
 

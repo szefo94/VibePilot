@@ -1,6 +1,6 @@
 // Multiplayer browser checks: a real server and two headless players (host + guest), driven through the live ES
 // modules with dynamic import(). Covers team deathmatch (teams, bots, the flag, kills/deaths, score) and Ace Hunt
-// in PvP, and the room picker. Run with `npm run test:mp-browser`; set BROWSER_PATH to a Chromium-based browser (see browser-probes.mjs).
+// in PvP, the co-op Freaky mode plot (quest, spawned units, boss, minions, shared reward) and the room picker. Run with `npm run test:mp-browser`; set BROWSER_PATH to a Chromium-based browser (see browser-probes.mjs).
 import { chromium } from 'playwright-core';
 import { startMpServer } from '../server/server.mjs';
 
@@ -100,6 +100,51 @@ try {
     await until(G, async () => (await import('./src/mp/bots.js')).botStats().bots.length === 1 && /☠ ACE/.test(document.getElementById('net-status').innerText), undefined, 15000);
     const g = await stats(G);
     check('pvpAceSharedWithGuest', g.bots.bots.length === 1 && /ACE/.test(g.bots.bots[0].name) && /☠ ACE/.test(g.roster), g.bots.bots);
+
+
+    // --- Co-op Freaky mode plot: the host's quest, spawns, boss and minions reach the guest; both get paid ----------
+    const Q1 = await player('?mp=coop&room=plot&name=Host&autostart&invulnerable', 'Q1', false);
+    const Q2 = await player('?mp=coop&room=plot&name=Guest&autostart', 'Q2', true);
+    await Q1.evaluate(async () => {
+        const { setSetting } = await import('./src/core/settings.js'); const { simulate } = await import('./src/game/simulation.js');
+        setSetting('freakyMode', true); for (let i = 0; i < 9 * 60; i++) simulate(1);
+    });
+    const questOnGuest = await until(Q2, async () => !!(await import('./src/game/quests.js')).questStatus(), undefined, 20000);
+    const titles = await Promise.all([Q1, Q2].map(p => p.evaluate(async () => (await import('./src/game/quests.js')).questStatus()?.title)));
+    check('plotQuestOnGuest', questOnGuest && titles[0] && titles[0] === titles[1], titles);
+    // No destroyers or helicopters left: finishing the scout makes the next quest spawn its targets, which the guest builds
+    await Q1.evaluate(async () => {
+        const Q = await import('./src/game/quests.js'); const { groundUnits, airUnits } = await import('./src/entities/registry.js');
+        const { killGroundUnit } = await import('./src/entities/groundUnits.js'); const { destroyAirUnit } = await import('./src/entities/airUnits.js');
+        const { simulate } = await import('./src/game/simulation.js'); const { plane } = await import('./src/player/plane.js');
+        for (const u of groundUnits.filter(g => g.userData.type === 'destroyer')) killGroundUnit(u, { reward: false });
+        for (const a of airUnits.filter(x => x.type === 'helicopter')) destroyAirUnit(a, { reward: false });
+        const p = Q.questStatus().goal.point; plane.position.set(p.x, 40, p.z);
+        for (let i = 0; i < 9 * 60; i++) simulate(1);
+    });
+    check('plotSpawnsOnGuest', await until(Q2, async () => (await import('./src/entities/registry.js')).groundUnits.filter(u => +u.userData.netId?.slice(1) >= 5000).length >= 2, undefined, 20000));
+    // A boss: the guest sees it and hits it
+    await Q1.evaluate(async () => { window.__boss = (await import('./src/entities/bosses.js')).spawnBoss('kraken'); });
+    const bossOnGuest = await until(Q2, async () => !!(await import('./src/entities/bosses.js')).bossStatus(), undefined, 20000);
+    const hp0 = await Q1.evaluate(() => window.__boss.hp);
+    await Q2.evaluate(async () => {
+        const { airUnits } = await import('./src/entities/registry.js'); const { beginHits } = await import('./src/combat/hits.js');
+        const h = beginHits('missile'); h.damage(airUnits.find(a => a.id === 'boss-remote'), 120); h.finish();
+    });
+    check('plotBossOnGuestAndHit', bossOnGuest && await until(Q1, h => window.__boss.hp < h, hp0, 10000), hp0);
+    // Minions latch on the guest and bite (spawn grace off so the bites count)
+    const gpos = await Q2.evaluate(async () => { (await import('./src/state.js')).state._graceTimer = 0; return (await import('./src/player/plane.js')).plane.position.toArray(); });
+    const hpB0 = await Q2.evaluate(async () => (await import('./src/state.js')).state.planeHP);
+    await Q1.evaluate(async gp => (await import('./src/entities/minions.js')).spawnMinions('squid', new THREE.Vector3(gp[0], gp[1] + 8, gp[2] + 12), 2), gpos);
+    const warned = await until(Q2, () => document.getElementById('parasite-warning')?.hidden === false, undefined, 25000);
+    check('plotMinionsBiteGuest', warned && await until(Q2, async h => (await import('./src/state.js')).state.planeHP < h, hpB0, 15000));
+    // Defeat: both get the boss XP; the guest's boss goes away
+    const xp = await Promise.all([Q1, Q2].map(p => p.evaluate(async () => (await import('./src/state.js')).state.score)));
+    await Q1.evaluate(async () => { const { beginHits } = await import('./src/combat/hits.js'); const h = beginHits('missile'); h.damage(window.__boss, window.__boss.hp + 1); h.finish(); });
+    await until(Q2, async () => !(await import('./src/entities/bosses.js')).bossStatus(), undefined, 10000);
+    const xp2 = await Promise.all([Q1, Q2].map(p => p.evaluate(async () => (await import('./src/state.js')).state.score)));
+    check('plotBossRewardShared', xp2[0] > xp[0] && xp2[1] > xp[1] && await Q2.evaluate(async () => !(await import('./src/entities/bosses.js')).bossStatus()), { xp, xp2 });
+    await Q1.context().close(); await Q2.context().close();
 
     // --- Room picker: the bare address lists a room per mode with players and bots; joining one goes there ----
     const P = await (await browser.newContext({ viewport: { width: 1100, height: 700 } })).newPage();

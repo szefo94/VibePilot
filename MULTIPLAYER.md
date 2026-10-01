@@ -216,7 +216,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `name=` | Your callsign, up to 16 characters | Remembered, or a random one; change it with **Callsign** in the menus |
 | `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `tdm` |
 
-**Messages** (`src/net/protocol.js`, version 9): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
+**Messages** (`src/net/protocol.js`, version 10): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `QUEST` · `BOSS` · `BOSS_HIT` · `MINION_ACT` · `UNIT_SPAWN` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
 
 **Limits:**
 - 10 players per room (two teams of five in tdm), 32 rooms per server.
@@ -243,6 +243,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 | `src/mp/coop.js` | Shared enemy bases |
 | `src/mp/bots.js` | Bots: Ace Hunt aces and team bots, on the host and as seen by everyone else |
 | `src/mp/flag.js` | Team deathmatch flag |
+| `src/mp/plot.js` | Freaky mode plot: the host's quests, bosses, minions and quest-spawned units, shared with everyone |
 | `src/mp/rooms.js` | Room picker |
 | `src/mp/lobby.js`, `src/mp/callsigns.js` | Callsign prompt and random callsigns |
 | `src/mp/mp.css` | Multiplayer HUD styles |
@@ -252,6 +253,7 @@ The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node vers
 
 ## 8. Log
 
+- **Freaky mode plot (protocol v10):** the host runs the quest story for the room. Quests, quest-spawned units, bosses (with their shots and minions) and the boss reward are shared. Guests' hits on the boss and on minions go to the host. Late joiners get the current quest and the spawned units.
 - **Bots and team deathmatch (protocol v7–v8):** Ace Hunt shared as bots; team deathmatch as the default with team bots, the flag, team score and kills/deaths; bots see before they attack, rally, farm with guns, bombs and napalm, level up, collide; IP and location in the server log.
 - **Phase 3, co-op:** shared enemy bases (`UNIT_HIT`, `WORLD`), late-joiner damage log.
 - **Phase 2, PvP:** proxy targets, `HIT`/`DOWN`, remote shots, notifications, laser, callsigns, HTTPS, phone controls.

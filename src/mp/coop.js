@@ -20,6 +20,7 @@ import { isHost, net, netSend, onNet } from '../net/net.js';
 const units = new Map();   // net id → unit
 const applied = new Map(); // `${id}|${weapon}` → damage already applied here (ours and others')
 const pending = [];        // damage that arrived before the world existed
+const orphans = new Map(); // net id → [[weapon, damage]] for units not spawned here yet
 let ready = false, worldTimer = 0;
 
 const idOf = u => u.userData?.netId ?? u.netId;
@@ -30,7 +31,7 @@ function apply(id, weapon, dmg) {
     const key = `${id}|${weapon}`;
     applied.set(key, (applied.get(key) ?? 0) + dmg);
     const unit = units.get(id);
-    if (!unit) return;
+    if (!unit) { (orphans.get(id) ?? orphans.set(id, []).get(id)).push([weapon, dmg]); return; } // a unit spawned later (plot.js): kept for it
     const hits = beginHits(weapon, { remote: true });
     hits.damage(unit, dmg);
     hits.finish();
@@ -88,3 +89,15 @@ export function updateCoop(rawDelta) {
 
 /** For tests and debugging: what this client has synced. */
 export const coopStats = () => ({ ready, units: units.size, pending: pending.length, applied: Object.fromEntries(applied) });
+
+/** A unit added after the world was built (a Freaky mode quest spawn, src/mp/plot.js): shared under net id `id`. */
+export function registerSharedUnit(id, unit) {
+    if (unit.group) unit.netId = id; else unit.userData.netId = id;
+    units.set(id, unit);
+    for (const [weapon, dmg] of orphans.get(id) ?? []) { // damage that arrived before it existed here
+        const hits = beginHits(weapon, { remote: true });
+        hits.damage(unit, dmg); hits.finish();
+    }
+    orphans.delete(id);
+}
+export const coopReady = () => ready;

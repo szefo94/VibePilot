@@ -139,6 +139,25 @@ check('botFromHostOnly', got(g2, MSG.BOT).length === 2 && got(g2, MSG.BOT)[0].bo
 check('botHitToHost', got(h, MSG.BOT_HIT).length === 1 && got(h, MSG.BOT_HIT)[0].dmg === 200 && got(h, MSG.BOT_HIT)[0].from === g.first.id && got(g2, MSG.BOT_HIT).length === 0);
 check('botFireToTarget', got(g, MSG.BOT_FIRE).length === 1 && got(g, MSG.BOT_FIRE)[0].dmg === 60 && got(g2, MSG.BOT_FIRE).length === 0);
 check('botDownBroadcast', got(g2, MSG.BOT_DOWN)[0]?.by === g.first.id && got(g, MSG.BOT_DOWN).length === 1);
+// Freaky mode plot: the host's quest, boss and spawned units go to everyone (kept for late joiners); guests' boss hits and minion actions go to the host
+g.ws.send(encode(MSG.QUEST, { q: { title: 'Fake' } }));                                      // not the host: dropped
+h.ws.send(encode(MSG.QUEST, { q: { title: 'Black Water', step: 0 }, event: 'start', xp: 99999 }));
+h.ws.send(encode(MSG.UNIT_SPAWN, { id: 'g5000', spec: { type: 'tank', x: 1, z: 2 } }));
+h.ws.send(encode(MSG.UNIT_SPAWN, { id: 'bad id!', spec: { type: 'tank' } }));                 // bad id: dropped
+h.ws.send(encode(MSG.BOSS, { s: { kind: 'kraken', hp: 900 }, fx: [], m: [[1, 'squid', 0, 0, 0, 1, g.first.id]], ev: ['spawn'], hits: [{ target: g.first.id, dmg: 3, w: 'bite', bot: 'PARASITE' }, { target: g.first.id, dmg: 3, w: 'laser' }] }));
+g.ws.send(encode(MSG.BOSS_HIT, { dmg: 9999, w: 'missile' }));
+g.ws.send(encode(MSG.MINION_ACT, { hit: 1 }));
+g.ws.send(encode(MSG.MINION_ACT, { shake: true }));
+await wait(80);
+check('questFromHostOnly', got(g2, MSG.QUEST).length === 1 && got(g2, MSG.QUEST)[0].q.title === 'Black Water' && got(g2, MSG.QUEST)[0].xp === 5000 && got(h, MSG.QUEST).length === 0, got(g2, MSG.QUEST));
+check('unitSpawnRelayed', got(g2, MSG.UNIT_SPAWN).length === 1 && got(g2, MSG.UNIT_SPAWN)[0].spec.type === 'tank');
+check('bossRelayed', got(g2, MSG.BOSS)[0]?.s?.kind === 'kraken' && got(g2, MSG.BOSS)[0].m.length === 1 && !('hits' in got(g2, MSG.BOSS)[0]) && got(h, MSG.BOSS).length === 0);
+check('bossHitsToTarget', got(g, MSG.BOT_FIRE).filter(f => f.w === 'bite').length === 1 && got(g, MSG.BOT_FIRE).length === 2 && got(g2, MSG.BOT_FIRE).length === 0);
+check('bossHitToHost', got(h, MSG.BOSS_HIT)[0]?.dmg === 300 && got(h, MSG.BOSS_HIT)[0].from === g.first.id && got(g2, MSG.BOSS_HIT).length === 0);
+check('minionActToHost', got(h, MSG.MINION_ACT).length === 2 && got(h, MSG.MINION_ACT)[0].hit === 1 && got(h, MSG.MINION_ACT)[1].shake === true && got(h, MSG.MINION_ACT)[1].from === g.first.id);
+const g3 = await client({ mode: 'coop', room: 'war', name: 'Late' });
+check('plotForLateJoiner', g3.first.quest?.title === 'Black Water' && g3.first.spawns?.length === 1 && g3.first.spawns[0].id === 'g5000', { q: g3.first.quest, s: g3.first.spawns });
+g3.ws.close();
 h.ws.close();
 await wait(100);
 check('hostHandover', got(g, MSG.HOST)[0]?.hostId === g.first.id);

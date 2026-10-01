@@ -18,7 +18,7 @@
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, maxSpeed } from '../config.js';
 
-export const PROTOCOL_VERSION = 9; // 9: Three.js r164 (seeded maps differ from r128 clients)
+export const PROTOCOL_VERSION = 10; // 10: Freaky mode plot shared (QUEST, BOSS, BOSS_HIT, MINION_ACT, UNIT_SPAWN)
 export const DEFAULT_PORT = 8787;
 
 // pvp: players damage each other · enemies: shared enemy bases (kills synced, the host keeps moving units in step)
@@ -129,6 +129,12 @@ export const MSG = Object.freeze({
     BOT_FIRE: 'botfire',  // enemies: S→C { dmg, w, bot, team } — a bot hit you (from BOT.hits; never from a bot's teammate)
     BOT_DOWN: 'botdown',  // enemies: host → others { bot, name, team, by, byBot, byTeam, xp, gone } — shot down (by player id / by a bot), crashed, or gone (removed)
     SCORE: 'score',       // S→C { score: [red, blue], stats: { 'p<id>' | 'b:<bot name>': { k, d, team } } } — after every shoot-down (also in WELCOME)
+    // Freaky mode plot (src/mp/plot.js): the host runs the story, bosses and minions; the others show and join in
+    QUEST: 'quest',       // host → others { q: snapshot | null, event?, xp? } — the quest (the server keeps the last for late joiners)
+    BOSS: 'boss',         // host → others { s: boss snapshot | null, fx: [...], m: minions, ev: [events], hits: [{ target, dmg, w }] } — 10 Hz; hits go to each target only (BOT_FIRE)
+    BOSS_HIT: 'bosshit',  // C→host { dmg, w } — a guest hit the boss
+    MINION_ACT: 'minion', // C→host { hit: id } or { shake: true } — a guest shot a minion down / shook them off
+    UNIT_SPAWN: 'uspawn', // host → others { id, spec } — a unit a quest spawned (the server keeps them for late joiners)
     EVENT: 'event',       // C→S { text, hl } → others { from, text, hl } — a gameplay notification to show with the player's name
     ACTION: 'action',     // reserved: client → host { kind, ... }
     PING: 'ping',         // C→S  { c: clientTime }

@@ -112,7 +112,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (!room) {
             if (rooms.size >= LIMITS.maxRooms) return reject(c, 'server full');
             const seed = Number.isInteger(m.seed) && m.seed > 0 ? m.seed >>> 0 : 1;
-            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0], stats: {} }; // units: damage log for late joiners; stats: kills/deaths per pilot
+            room = { key, mode: m.mode, name, seed, hostId: null, tick: 0, players: new Map(), units: {}, score: [0, 0], stats: {}, quest: null, spawns: [] }; // units: damage log for late joiners; stats: kills/deaths per pilot; quest + spawns: the Freaky mode plot
             rooms.set(key, room);
         }
         if (room.players.size >= LIMITS.maxPlayers) return reject(c, 'room full');
@@ -128,7 +128,7 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         room.players.set(c.id, c);
         if (MODES[room.mode].hostAuthority && room.hostId === null) room.hostId = c.id;
         const spawn = placeAtSpawn(c);
-        send(c, MSG.WELCOME, { units: room.units, id: c.id, slot: c.slot, team: c.team, score: room.score, stats: room.stats, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
+        send(c, MSG.WELCOME, { units: room.units, quest: room.quest, spawns: room.spawns, id: c.id, slot: c.slot, team: c.team, score: room.score, stats: room.stats, mode: room.mode, room: room.name, seed: room.seed, hostId: room.hostId, spawn,
             players: [...room.players.values()].filter(p => p !== c).map(p => ({ id: p.id, name: p.name, slot: p.slot, team: p.team })) });
         broadcast(room, MSG.JOIN, { id: c.id, name: c.name, slot: c.slot, team: c.team }, c);
         log(`+ ${c.name}#${c.id} → ${key} slot ${c.slot}${c.team === null ? '' : ` team ${c.team ? 'Blue' : 'Red'}`} (${room.players.size}) from ${where(c)}`);
@@ -221,14 +221,37 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
             case MSG.BOT: {
                 // The host's bots: shared with everyone; their hits on players go to each target only (as BOT_FIRE)
                 if (!mode.enemies || room.hostId !== c.id || !Array.isArray(m.bots) || m.bots.length > 12 || (m.m !== undefined && (!Array.isArray(m.m) || m.m.length > 12))) return;
-                for (const h of Array.isArray(m.hits) ? m.hits.slice(0, 20) : []) {
-                    const target = room.players.get(h?.target);
-                    if (target && target !== c && target.alive && (h.w === 'gun' || h.w === 'missile') && !(mode.teams && h.team === target.team)) {
-                        send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +h.dmg || 0)), w: h.w, bot: String(h.bot ?? 'ACE').slice(0, 24), team: h.team === 0 || h.team === 1 ? h.team : null });
-                    }
-                }
+                routeHits(room, c, mode, m.hits, ['gun', 'missile']);
                 room.bots = m.bots.length; // for the room picker
                 broadcast(room, MSG.BOT, { bots: m.bots, m: m.m, fx: Array.isArray(m.fx) ? m.fx.slice(0, 8) : undefined, from: c.id }, c);
+                break;
+            }
+            // Freaky mode plot: the host's quest and boss go to everyone; guests' hits and minion actions go to the host
+            case MSG.QUEST:
+                if (!mode.enemies || room.hostId !== c.id) return;
+                room.quest = m.q && typeof m.q === 'object' ? m.q : null;
+                broadcast(room, MSG.QUEST, { q: room.quest, event: typeof m.event === 'string' ? m.event.slice(0, 16) : undefined, xp: Math.min(5000, Math.max(0, +m.xp || 0)) || undefined }, c);
+                break;
+            case MSG.BOSS:
+                if (!mode.enemies || room.hostId !== c.id) return;
+                routeHits(room, c, mode, m.hits, ['boss', 'bite']);
+                broadcast(room, MSG.BOSS, { s: m.s ?? null, fx: Array.isArray(m.fx) ? m.fx.slice(0, 40) : [], m: Array.isArray(m.m) ? m.m.slice(0, 12) : [], ev: Array.isArray(m.ev) ? m.ev.slice(0, 6) : [] }, c);
+                break;
+            case MSG.BOSS_HIT: {
+                const host = mode.enemies && room.players.get(room.hostId);
+                if (host && host !== c && c.alive && UNIT_WEAPONS.includes(m.w)) send(host, MSG.BOSS_HIT, { from: c.id, dmg: Math.min(300, Math.max(0, +m.dmg || 0)), w: m.w });
+                break;
+            }
+            case MSG.MINION_ACT: {
+                const host = mode.enemies && room.players.get(room.hostId);
+                if (host && host !== c) send(host, MSG.MINION_ACT, { from: c.id, hit: Number.isInteger(m.hit) ? m.hit : undefined, shake: m.shake === true || undefined });
+                break;
+            }
+            case MSG.UNIT_SPAWN: {
+                if (!mode.enemies || room.hostId !== c.id || typeof m.id !== 'string' || !UNIT_ID.test(m.id) || !m.spec || typeof m.spec !== 'object' || room.spawns.length >= 400) return;
+                const spawn = { id: m.id, spec: m.spec };
+                room.spawns.push(spawn);
+                broadcast(room, MSG.UNIT_SPAWN, spawn, c);
                 break;
             }
             case MSG.BOT_DOWN:
@@ -271,6 +294,16 @@ export function startMpServer({ port = DEFAULT_PORT, host = '127.0.0.1', allowed
         if (Object.keys(room.stats).length < 64 || room.stats[victim]) rec(victim, victimTeam).d++;
         if (killer && killer !== victim && !(MODES[room.mode].teams && killerTeam === victimTeam) && (Object.keys(room.stats).length < 64 || room.stats[killer])) rec(killer, killerTeam).k++;
         broadcast(room, MSG.SCORE, { score: room.score, stats: room.stats });
+    }
+
+    /** Bots' and bosses' hits on players: each goes to its target only (BOT_FIRE), capped; never at the shooter's team. */
+    function routeHits(room, c, mode, hits, weapons) {
+        for (const h of Array.isArray(hits) ? hits.slice(0, 20) : []) {
+            const target = room.players.get(h?.target);
+            if (target && target !== c && target.alive && weapons.includes(h.w) && !(mode.teams && h.team != null && h.team === target.team)) {
+                send(target, MSG.BOT_FIRE, { dmg: Math.min(60, Math.max(0, +h.dmg || 0)), w: h.w, bot: String(h.bot ?? 'ACE').slice(0, 24), team: h.team === 0 || h.team === 1 ? h.team : null });
+            }
+        }
     }
 
     /** One server tick: respawns due, then one snapshot of every room. */

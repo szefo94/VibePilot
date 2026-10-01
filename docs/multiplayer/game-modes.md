@@ -64,8 +64,15 @@ Each player's **Difficulty** (Settings or the start menu: Easy, Normal or Hard) 
 - **Behaviour:** it hunts the players using a rough radar fix, but only attacks once it has seen you.
 - **Rewards:** anyone can shoot it down, and the XP goes to whoever lands the killing hit.
 
-### Single-player only for now
-**Freaky mode** (random giant bosses) is off in multiplayer: bosses aren't shared between players yet. The missile warning tones, the lead marker, the combo meter and the wider view at speed all work in multiplayer.
+### Freaky mode: the quest plot (PvP, co-op, team deathmatch)
+- **Who decides:** Freaky mode follows the **host's** setting. When the host turns it on, everyone in the room gets the same story.
+- **One story for the room:** the host's game runs the quests. Everyone sees the same quest tracker, radio messages, map markers and pickups, and any player counts for scouting and pickups.
+- **Targets:** a quest goes after units that are still on the map. If none are left, it spawns new ones, and everyone sees them. Where a quest would build a new base, multiplayer spawns an outpost of tanks instead.
+- **Bosses:** a story arc's finale summons its boss. The boss fights whichever player is nearest, and everyone can shoot it.
+- **Minions:** the kraken's and Specimen 47's minions can latch onto any player and drain part of that player's max HP. Roll hard to shake them off, or shoot them down while they fly.
+- **Reward:** when a boss goes down, every player in the room gets its XP.
+- **New host:** if the host leaves, the next host starts the story from the beginning.
+- **Other features:** the missile warning tones, the lead marker, the combo meter and the wider view at speed all work in multiplayer.
 
 ### The host
 - **Who hosts:** the first player in a room hosts it. The host's game flies the bots and the aces and keeps the moving enemy units in step for everyone. If the host leaves, the next player takes over and starts fresh bots.
