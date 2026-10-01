@@ -8,8 +8,10 @@ import { hitMarkerEl, memDebugEl } from '../ui/dom.js';
 import { _planeMaterials, _playerMuzzleLight, plane } from '../player/plane.js';
 import { _fenceRegistry, activeExplosions, airUnits, bullets, collectibles, enemies, enemyBullets, groundUnits, markers, missiles, napalmFireParticles } from '../entities/registry.js';
 import { _expMatPool, explosionGeometry } from '../combat/resources.js';
-import { collectibleMat } from '../entities/collectibles.js';
-import { tubes } from '../entities/tubes.js';
+import { HEART_MOTION, collectibleMat, moveCollectible } from '../entities/collectibles.js';
+import { moveTube, tubes } from '../entities/tubes.js';
+import { heightAt } from '../world/terrain.js';
+let _motionTime = 0; // seconds of flight: drives the moving hearts and tubes
 
 // V5: bullet tracer shared material
 export const _tracerMat = markShared(new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.55 }));
@@ -55,14 +57,17 @@ export function updateEffects(dt) {
     const _hbGlow = Math.max(0, _hbRaw); // 0..1 positive-only pulse
     const _hbIntensity = 0.25 + _hbGlow * 1.4;
     collectibleMat.emissiveIntensity = _hbIntensity;
+    _motionTime += dt / 60;
     for (let i = 0; i < collectibles.length; i++) {
         const _hc = collectibles[i];
         _hc.rotation.y += 0.018 * dt;
         _hc.userData.bobPhase += 0.022 * dt;
-        _hc.position.y = _hc.userData.originY + Math.sin(_hc.userData.bobPhase) * 2.5;
+        moveCollectible(_hc, _motionTime); // its constellation turning, its own swirl (entities/collectibles.js)
+        _hc.position.y = Math.max(_hc.userData.originY + Math.sin(_hc.userData.bobPhase) * 2.5, heightAt(_hc.position.x, _hc.position.z) + HEART_MOTION.clearance);
     }
-    // Tube-heart bob + glow
+    // Tubes drift and sway; their hearts slide, bob and glow
     for (const _tb of tubes) {
+        if (!_tb.completed) moveTube(_tb, _motionTime);
         for (const _tc of _tb.collectibles) {
             _tc.rotation.y += 0.018 * dt;
             if (_tc.userData.bobPhase !== undefined) {

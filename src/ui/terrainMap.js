@@ -80,6 +80,19 @@ export function bakeTerrainMap() {
 }
 onHook('worldReady', bakeTerrainMap);
 
+/** Draw the whole map north-up (west on the left, like the minimap facing north) into `canvas` — the start menu's preview. */
+export function drawMapPreview(canvas) {
+    if (!image) return;
+    const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgb(14,52,82)'; ctx.fillRect(0, 0, w, h);
+    ctx.save(); ctx.translate(w, h); ctx.scale(-w / image.width, -h / image.height); // the baked image runs east→west, south→north
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(image, 0, 0);
+    ctx.restore();
+}
+/** The highest summit's height above the sea (m), or 0. */
+export const highestSummit = () => landmarks.reduce((m, l) => (l.kind === 'peak' ? Math.max(m, parseInt(l.label, 10)) : m), 0);
+
 /** For tests: whether the layer is baked and what it marks. */
 export const terrainMapStats = () => ({ baked: !!image, size: image?.width ?? 0, landmarks: landmarks.reduce((n, m) => ({ ...n, [m.kind]: (n[m.kind] ?? 0) + 1 }), {}) });
 

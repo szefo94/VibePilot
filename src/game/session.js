@@ -3,7 +3,9 @@
  *
  * Menus are real <button>/<input> elements in index.html, so mouse, keyboard (Tab, Enter/Space, Esc) and
  * gamepad (D-pad to move, A to select, B to close settings, Start) all work. Restart reloads the page with
- * ?autostart (world init takes ~30 ms); "Replay this map" also keeps the current ?seed.
+ * ?autostart (world init takes ~30 ms); "Replay this map" also keeps the current ?seed. "Main menu" goes back to the
+ * start menu on the current map, where another can be chosen (ui/mapPicker.js); multiplayer replaces it with its
+ * room picker (setMainMenuAction).
  */
 import { respawnHere } from './gameOver.js';
 import { state } from '../state.js';
@@ -76,6 +78,21 @@ export function onRespawnHere() {
     refresh();
 }
 
+let mainMenuAction = () => { // back to the start menu, on this map
+    const url = new URL(location.href);
+    if (window.__vpSeed != null) url.searchParams.set('seed', window.__vpSeed);
+    url.searchParams.delete('autostart');
+    location.assign(url.href);
+};
+/** Multiplayer: what "Main menu" does instead (its room picker), and what the button says. */
+export function setMainMenuAction(fn, label) {
+    mainMenuAction = fn;
+    mainMenuLabel = label;
+    document.querySelectorAll('[data-action="menu"]').forEach(b => { b.textContent = label; });
+}
+export let mainMenuLabel = 'Main menu';
+export const goToMainMenu = () => mainMenuAction();
+
 export function restart({ sameMap = false } = {}) {
     const url = new URL(location.href);
     if (sameMap && window.__vpSeed != null) url.searchParams.set('seed', window.__vpSeed);
@@ -129,6 +146,7 @@ document.addEventListener('click', e => {
     else if (action === 'respawn') respawnHere();
     else if (action === 'restart') restart();
     else if (action === 'replay') restart({ sameMap: true });
+    else if (action === 'menu') goToMainMenu();
     else if (action === 'settings') openSettings();
     else if (action === 'close-settings') closeSettings();
     else if (action === 'difficulty') setSetting('difficulty', button.dataset.value);

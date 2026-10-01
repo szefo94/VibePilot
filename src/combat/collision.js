@@ -24,7 +24,8 @@ import { runHooks } from '../game/hooks.js';
 import { disposeOwned } from '../core/utils.js';
 import { DEBUG_PARAMS } from '../debug/params.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
-import { TUBE_XP, _nearestTubeT, _tubeStatusEl, showTubeRibbon, tubes } from '../entities/tubes.js';
+import { TUBE_XP, _nearestTubeT, _tubeStatusEl, showTubeRibbon, tubeLocal, tubes } from '../entities/tubes.js';
+const _tubeP = new THREE.Vector3(), _orbP = new THREE.Vector3();
 import { _playerBulletPool } from './weapons.js';
 
 // --- Collision Math ---
@@ -175,9 +176,9 @@ export function resolveCollisions() {
         if (tube.isChallenge && tube.state !== 'entered') continue;
         for (let i = tube.collectibles.length - 1; i >= 0; i--) {
             const tc = tube.collectibles[i];
-            if (_planePickupBox.containsPoint(tc.position)) {
-                const _bPos = tc.position.clone();
-                scene.remove(tc); disposeOwned(tc.geometry); tc.material.dispose();
+            if (_planePickupBox.containsPoint(tc.getWorldPosition(_orbP))) { // orbs ride their (moving) tube
+                const _bPos = _orbP.clone();
+                tc.removeFromParent(); disposeOwned(tc.geometry); tc.material.dispose();
                 tube.collectibles.splice(i, 1);
                 const burstColor = tube.isChallenge ? 0x00ccff : 0xff8800;
                 for (let _b = 0; _b < 6; _b++) {
@@ -208,7 +209,7 @@ export function resolveCollisions() {
     let _inAnyChallengeTube = false, nearWall = null;
     for (const tube of tubes) {
         if (!tube.isChallenge || tube.completed || tube.state === 'done') continue;
-        const { t, d } = _nearestTubeT(tube.curve, plane.position);
+        const { t, d } = _nearestTubeT(tube.curve, tubeLocal(tube, plane.position, _tubeP)); // in the tube's (moving) frame
         const inside   = d < tube.tubeRadius - planeSphereRadius;
         const nearEnd  = t < 0.12 || t > 0.88;
         if (tube.state === 'idle') {
@@ -243,7 +244,7 @@ export function resolveCollisions() {
                         const xp    = Math.max(20, Math.round(TUBE_XP * ratio));
                         tube.state  = 'done'; tube.completed = true;
                         scene.remove(tube.mesh); tube.geo.dispose(); tube.mesh.material.dispose();
-                        tube.collectibles.forEach(tc => { scene.remove(tc); disposeOwned(tc.geometry); tc.material.dispose(); });
+                        tube.collectibles.forEach(tc => { tc.removeFromParent(); disposeOwned(tc.geometry); tc.material.dispose(); });
                         tube.collectibles = [];
                         _tubeStatusEl.style.display = 'none';
                         if (!state.isGameOver) { addXP(xp); state.score += xp; scoreElement.textContent = state.score; _healPlayer(20); } // G6

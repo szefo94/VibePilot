@@ -9,7 +9,7 @@ export const _deathGraphEl = (() => {
     div.innerHTML = '<div style="text-align:center;font-size:17px;letter-spacing:3px;color:#ffdd88;margin-bottom:12px">— MISSION DEBRIEF —</div>' +
         '<canvas id="_deathCanvas" role="img" width="590" height="360" style="max-width:100%;height:auto"></canvas>' +
         '<div id="_deathSummary" style="text-align:center;font-size:13px;color:#aab;margin-top:8px"></div>' +
-        '<div class="menu-buttons menu-row"><button type="button" data-action="restart">Restart</button><button type="button" data-action="replay">Replay this map</button></div>' +
+        '<div class="menu-buttons menu-row"><button type="button" data-action="restart">Restart</button><button type="button" data-action="replay">Replay this map</button><button type="button" data-action="menu">Main menu</button></div>' +
         '<div style="text-align:center;font-size:11px;color:#667;margin-top:8px">[G] toggle debrief · Enter restart</div>';
     document.body.appendChild(div); return div;
 })();

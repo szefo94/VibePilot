@@ -654,7 +654,7 @@ const probes = {
         });
     },
     // Boss facing: a boss behind which the player sits turns round before it attacks; its head points along its aim
-    async bossFacing(page) {
+    bossFacing: Object.assign(async page => {
         await worldReady(page);
         return page.evaluate(async () => {
             const B = await import('./src/entities/bosses.js');
@@ -664,15 +664,17 @@ const probes = {
             if (!au) return { pass: false, why: 'no spawn' };
             for (let f = 0; f < 260; f++) simulate(1);
             const g = au.group, behind = g.position.clone().addScaledVector(new THREE.Vector3(Math.sin(g.rotation.y), 0, Math.cos(g.rotation.y)), -300);
-            behind.y = g.position.y + 40;
+            const { maxHeightNear } = await import('./src/world/terrain.js');
+            behind.y = Math.max(g.position.y + 40, maxHeightNear(behind.x, behind.z, 40) + 60); // never inside a hill
             let first = null;
             for (let f = 0; f < 600 && !first; f++) { plane.position.copy(behind); simulate(1); if (au.boss.attack) first = { f, facing: au.boss.facing }; }
             const head = (au.boss.model.head ?? au.boss.model.emitter).getWorldDirection(new THREE.Vector3());
             const align = head.angleTo(au.boss.aim);
             au.hp = 0; simulate(1); simulate(1);
-            return { kind: au.boss.kind, first, align: +align.toFixed(3), pass: !!first && first.f > 30 && first.facing <= B.BOSS.faceCone && align < 0.05 };
+            const { state } = await import('./src/state.js');
+            return { kind: au.boss.kind, first, align: +align.toFixed(3), gameOver: state.isGameOver, pass: !!first && first.f > 30 && first.facing <= B.BOSS.faceCone && align < 0.05 };
         });
-    },
+    }, { query: '?autostart&invulnerable' }), // a crash (hill, ceiling, boundary) would leave the boss no one to attack
     // The one objective panel shows the Freaky mode quest; the minimap's terrain layer is baked with its landmarks;
     // challenge tubes (solid) and free tubes (fly-through) look different
     async questPanelMapTubes(page) {
@@ -690,7 +692,7 @@ const probes = {
             setSetting('freakyMode', false);
             const map = terrainMapStats();
             const challenge = tubes.find(t => t.isChallenge), free = tubes.find(t => !t.isChallenge);
-            const looks = (!challenge || challenge.mesh.children.length === 3) && (!free || free.mesh.isPoints);
+            const looks = (!challenge || challenge.mesh.children.filter(c => !challenge.collectibles.includes(c)).length === 3) && (!free || free.mesh.isPoints);
             return { quest, tracker, map, looks, pass: quest && !tracker && map.baked && (map.landmarks.peak ?? 0) > 0 && looks };
         });
     },

@@ -3,6 +3,11 @@
  *   challenge (teal)  SOLID: a glassy wall with a wire cage — flying through the wall destroys the plane. Enter and
  *                     leave through the glowing gates at its two ends (rings with chevrons pointing in).
  *   free (orange)     FLY-THROUGH: only a loose cloud of dots, no wall — cross it anywhere, collect its orbs.
+ *
+ * Tubes move: each drifts on a slow loop around where it was placed and sways about its vertical axis
+ * (TUBE_MOTION), and its orbs slide back and forth along it. The curve, the mesh and the orbs (children of the mesh)
+ * live in the tube's own frame, centred on its home; collisions test the plane in that frame (worldToLocal).
+ * The motion uses no Math.random, so the seeded map is unchanged.
  */
 import { ceilingLevel, groundLevel } from '../config.js';
 import { scene } from '../core/scene.js';
@@ -32,6 +37,7 @@ function gate(curve, end, radius) {
 
 // --- Tube challenges (ideas 7-9) ---
 export const tubes = [];
+export const TUBE_MOTION = Object.freeze({ drift: 42, rise: 9, period: 52, sway: 0.22, swayPeriod: 70, orbSlide: 0.025 }); // m, m, s, rad, s, share of the tube
 export const TUBE_XP = 200;
 // Persistent HUD for challenge tube runs
 export const _tubeStatusEl = (() => { const el = document.createElement('div'); el.id = 'tube-status'; el.style.cssText = 'display:none;position:fixed;top:42%;left:50%;transform:translate(-50%,-50%);color:#00ccff;font:bold 20px monospace;text-align:center;text-shadow:0 0 10px #00ccff,0 0 20px #00ccff;pointer-events:none;z-index:200;letter-spacing:2px;'; document.body.appendChild(el); return el; })();
@@ -100,6 +106,8 @@ export function spawnTube(cx, cy, cz, type = 'challenge') {
         if (safeRadius > tubeRadius) { curve = candidate; tubeRadius = safeRadius; }
     }
     if (tubeRadius < MIN_TUBE_RADIUS) { console.warn(`spawnTube: no self-intersection-free path near (${Math.round(cx)}, ${Math.round(cz)}); skipped`); return; }
+    const home = new THREE.Vector3(cx, cy, cz); // the tube lives in its own frame around here, so it can move
+    curve = new THREE.CatmullRomCurve3(curve.points.map(p => p.clone().sub(home)));
     const tubeGeo = new THREE.TubeGeometry(curve, 48, tubeRadius, 8, false);
     const isChallenge = type === 'challenge';
     const tubeColor  = isChallenge ? 0x00ccff : 0xff8800; // cyan = challenge, orange = free
@@ -109,27 +117,43 @@ export function spawnTube(cx, cy, cz, type = 'challenge') {
         ? new THREE.Mesh(tubeGeo, new THREE.MeshBasicMaterial({ color: tubeColor, wireframe: true, transparent: true, opacity: 0.55 }))
         : new THREE.Points(tubeGeo, new THREE.PointsMaterial({ color: tubeColor, size: 1.4, transparent: true, opacity: 0.6, depthWrite: false }));
     if (isChallenge) { tubeMesh.add(new THREE.Mesh(tubeGeo, WALL_MAT), gate(curve, 0, tubeRadius), gate(curve, 1, tubeRadius)); }
+    tubeMesh.position.copy(home);
     scene.add(tubeMesh);
     // Place collectibles at even intervals along the curve
     const numTC = 10, tubeCols = [];
     for (let k = 0; k <= numTC; k++) {
-        const pos = curve.getPoint(k / numTC).clone();
+        const pos = curve.getPoint(k / numTC).clone().add(home);
         pos.y = Math.max(groundLevel + 5, Math.min(ceilingLevel - 5, pos.y));
+        pos.sub(home); // in the tube's frame
         const tcm = new THREE.Mesh(collectibleGeo, new THREE.MeshStandardMaterial({ color: orbColor, emissive: orbColor, emissiveIntensity: 0.4 }));
         tcm.rotation.z = Math.PI; // match regular hearts — flip upside-down ExtrudeGeometry
         tcm.position.copy(pos);
-        tcm.userData = { originY: pos.y, bobPhase: Math.random() * Math.PI * 2 };
-        scene.add(tcm);
+        tcm.userData = { originY: pos.y, bobPhase: Math.random() * Math.PI * 2, t: k / numTC, dy: pos.y - curve.getPoint(k / numTC).y };
+        tubeMesh.add(tcm); // rides with the tube
         tubeCols.push(tcm);
     }
     const totalOrbs = tubeCols.length;
     // challenge-specific state; free tubes carry the same fields but logic ignores them
     tubes.push({ mesh: tubeMesh, geo: tubeGeo, curve, tubeRadius, name, collectibles: tubeCols,
-        completed: false, cx, cz, isChallenge,
+        completed: false, cx, cz, home, phase: tubes.length * 1.7, isChallenge,
         state: 'idle',   // 'idle' | 'entered' | 'done'
         entryT: null, inRunCollected: 0, totalOrbs,
         wasInside: false });
 }
+/** Move a tube for `time` seconds of flight: drift on a slow loop, rise and sink, sway; its orbs slide along it. */
+export function moveTube(tube, time) {
+    const M = TUBE_MOTION, a = (time / M.period) * Math.PI * 2 + tube.phase;
+    tube.mesh.position.set(tube.home.x + Math.sin(a) * M.drift, tube.home.y + Math.sin(a * 2) * M.rise, tube.home.z + Math.sin(a + Math.PI / 2) * Math.cos(a * 0.5) * M.drift);
+    tube.mesh.rotation.y = Math.sin((time / M.swayPeriod) * Math.PI * 2 + tube.phase) * M.sway;
+    tube.mesh.updateMatrixWorld(true);
+    for (const o of tube.collectibles) { // slide along the tube (bobbing on top: effects.js)
+        const t = Math.min(1, Math.max(0, o.userData.t + Math.sin(time * 0.7 + o.userData.t * 9) * M.orbSlide)), p = tube.curve.getPoint(t);
+        o.position.x = p.x; o.position.z = p.z; o.userData.originY = p.y + o.userData.dy;
+    }
+}
+/** The plane's position in a tube's own frame (for its walls and gates). */
+export const tubeLocal = (tube, world, out) => tube.mesh.worldToLocal(out.copy(world));
+
 // --- Visual Effects Subsystem (ideas 1-6, 10) ---
 // Idea 7-9 tube ribbon banner
 export function showTubeRibbon(name, xp = TUBE_XP) {

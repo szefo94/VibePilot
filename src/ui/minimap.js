@@ -38,7 +38,7 @@ export function updateRadarSnapshot() {
         : { wx: au.group.position.x, wz: au.group.position.z, color: au.isHostile ? '#ff4444' : '#aaddff', shape: 'triangle' }); });
     rivalMissilesInFlight().forEach(m => { if (!m.userData.decoyed) _radarBlips.push({ wx: m.position.x, wz: m.position.z, color: '#ff33cc', shape: 'dot' }); });
     baseMarkers.forEach(bm => { if (!bm.eliminated) _radarBlips.push({ wx: bm.position.x, wz: bm.position.z, color: bm.isHostile ? '#ff8844' : '#88ccff', shape: 'square', label: `${bm.name} ${bm.alive}/${bm.total}` }); });
-    tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.cx, wz: t.cz, color: t.isChallenge ? '#00ccff' : '#ff8800', shape: 'ring', dashed: !t.isChallenge }); }); // dashed = fly-through
+    tubes.forEach(t => { if (!t.completed) _radarBlips.push({ wx: t.mesh.position.x, wz: t.mesh.position.z, color: t.isChallenge ? '#00ccff' : '#ff8800', shape: 'ring', dashed: !t.isChallenge }); }); // dashed = fly-through
     runHooks('radarBlips', _radarBlips); // extra blips from optional systems (game/hooks.js)
 }
 export function updateMinimap() {
