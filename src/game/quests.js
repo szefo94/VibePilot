@@ -11,6 +11,9 @@
  *   escapes   a boss that escapes comes back after a while ("It's back!").
  *
  * Events go out through the 'questEvent' hook (ui/questHud.js; multiplayer shares them). One quest at a time.
+ * Multiplayer: only the host runs the story (setQuestAuthority); every pilot counts for scouting and pickups
+ * (setQuestPilots); units it spawns are described as specs ('questSpawn' hook, makeQuestUnit) so the others build
+ * the same; the others show the host's quest from questSnapshot() through applyQuestSnapshot().
  */
 import { MAP_BOUNDARY, ceilingLevel, groundLevel, waterLevel } from '../config.js';
 import { state } from '../state.js';
@@ -39,7 +42,14 @@ const AIR = new Set(['helicopter', 'fighter', 'ac130', 'tanker']);
 let quest = null;        // the current quest: { arc, arcIndex, step, title, text, speaker, goal, act }
 let order = [], arcPos = 0, stepIdx = 0, act = 1, wait = QUEST.firstDelay, place = null, returnIn = 0;
 const items = [];        // collect quests: { mesh, pos, taken }
-let beacon = null;
+let beacon = null, nextItemId = 1;
+let authority = true, pilotsFn = () => [plane.position], newBases = true, remote = null;
+/** Multiplayer: false on the other players (they show the host's quest). */
+export function setQuestAuthority(on) { authority = on; if (!on) { clearItems(); quest = null; } }
+/** Multiplayer: every pilot's position (scouting and pickups count for anyone). */
+export function setQuestPilots(fn) { pilotsFn = fn || (() => [plane.position]); }
+/** newBases: false in multiplayer (a new base would not be shared): an outpost of tanks instead. */
+export function setQuestOptions({ newBases: nb = true } = {}) { newBases = nb; }
 
 const alive = u => (u.group ? u.hp > 0 && airUnits.includes(u) : u.userData.hp > 0 && !!u.parent);
 const posOf = u => (u.group ? u.group.position : groundUnitWorldPos(u));
@@ -69,31 +79,43 @@ function pointFor(where) {
 
 // --- Spawning missing targets ----------------------------------------------------------------------------------------
 function spawnUnits(unit, n) {
-    const out = [];
+    const specs = [];
     if (AIR.has(unit)) {
-        const c = (place ?? plane.position).clone();
-        const a = Math.random() * Math.PI * 2;
+        const c = (place ?? plane.position).clone(), a = Math.random() * Math.PI * 2;
         c.x += Math.cos(a) * 500; c.z += Math.sin(a) * 500;
         for (let i = 0; i < n; i++) {
             const x = THREE.MathUtils.clamp(c.x + (Math.random() - 0.5) * 240, -MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8), z = THREE.MathUtils.clamp(c.z + (Math.random() - 0.5) * 240, -MAP_BOUNDARY * 0.8, MAP_BOUNDARY * 0.8);
-            const y = Math.max(heightAt(x, z), waterLevel) + 90 + Math.random() * 40;
-            const au = createAirUnit(unit, x, y, z);
-            if (unit === 'fighter' || unit === 'tanker') { const h = Math.random() * Math.PI * 2, s = unit === 'fighter' ? 0.12 : 0.04; au.velocity = new THREE.Vector3(Math.sin(h) * s, 0, Math.cos(h) * s); }
-            else { au.orbitCenter = new THREE.Vector3(x, y, z); au.orbitAngle = Math.random() * Math.PI * 2; au.orbitRadius = unit === 'ac130' ? 220 : 90; au.orbitSpeed = (unit === 'ac130' ? 0.002 : 0.005) * (Math.random() < 0.5 ? -1 : 1); au.orbitAltitude = y; }
-            airUnits.push(au); out.push(au);
+            const y = Math.max(heightAt(x, z), waterLevel) + 90 + Math.random() * 40, h = Math.random() * Math.PI * 2;
+            specs.push({ type: unit, air: true, x, y, z, heading: h, dir: Math.random() < 0.5 ? -1 : 1, phase: Math.random() * Math.PI * 2 });
         }
-        return out;
+    } else {
+        const sea = unit === 'destroyer';
+        const at = sea ? (s => s && new THREE.Vector3(s.x, waterLevel, s.z))(findSpot('sea')) : landSpot(place ?? plane.position);
+        if (at) for (let i = 0; i < n; i++) specs.push({ type: unit, air: false, x: at.x + (i - (n - 1) / 2) * (sea ? 90 : 30), z: at.z + (Math.random() - 0.5) * 30, heading: Math.random() * Math.PI * 2 });
     }
-    const sea = unit === 'destroyer';
-    const at = sea ? (s => s && new THREE.Vector3(s.x, waterLevel, s.z))(findSpot('sea')) : landSpot(place ?? plane.position);
-    if (!at) return out;
-    for (let i = 0; i < n; i++) {
-        const u = createGroundUnit(unit), x = at.x + (i - (n - 1) / 2) * (sea ? 90 : 30), z = at.z + (Math.random() - 0.5) * 30;
-        u.position.set(x, sea ? u.position.y : u.position.y + (heightAt(x, z) - (groundLevel + 2)), z); // units are modelled standing on groundLevel + 2
-        u.rotation.y = Math.random() * Math.PI * 2;
-        groundUnits.push(u); scene.add(u); out.push(u);
+    return specs.map(spec => {
+        const u = makeQuestUnit(spec);
+        spec.hp = u.group ? u.hp : u.userData.hp; // the others copy it exactly
+        runHooks('questSpawn', u, spec);
+        return u;
+    });
+}
+/** Build one quest unit from its spec (the host's, or one a multiplayer host shared). */
+export function makeQuestUnit(spec) {
+    if (spec.air) {
+        const au = createAirUnit(spec.type, spec.x, spec.y, spec.z);
+        if (spec.type === 'fighter' || spec.type === 'tanker') { const v = spec.type === 'fighter' ? 0.12 : 0.04; au.velocity = new THREE.Vector3(Math.sin(spec.heading) * v, 0, Math.cos(spec.heading) * v); }
+        else { au.orbitCenter = new THREE.Vector3(spec.x, spec.y, spec.z); au.orbitAngle = spec.phase; au.orbitRadius = spec.type === 'ac130' ? 220 : 90; au.orbitSpeed = (spec.type === 'ac130' ? 0.002 : 0.005) * spec.dir; au.orbitAltitude = spec.y; }
+        if (spec.hp) au.hp = au.maxHp = spec.hp;
+        airUnits.push(au);
+        return au;
     }
-    return out;
+    const u = createGroundUnit(spec.type), sea = spec.type === 'destroyer';
+    u.position.set(spec.x, sea ? u.position.y : u.position.y + (heightAt(spec.x, spec.z) - (groundLevel + 2)), spec.z); // units are modelled standing on groundLevel + 2
+    u.rotation.y = spec.heading;
+    if (spec.hp) u.userData.hp = u.userData.maxHp = spec.hp;
+    groundUnits.push(u); scene.add(u);
+    return u;
 }
 
 // --- Goals -----------------------------------------------------------------------------------------------------------
@@ -113,8 +135,9 @@ function resolve(v) {
         g.targets.forEach(t => { if (t.group) t.questTarget = true; else t.userData.questTarget = true; });
     } else if (g.type === 'base') {
         let bm = baseMarkers.filter(b => !b.eliminated && b.isHostile && b.alive > 0).sort((a, b) => a.position.distanceToSquared(plane.position) - b.position.distanceToSquared(plane.position))[0];
-        if (!bm) { const at = landSpot(plane.position), islet = at && getNearestIslet(at.x, at.z); if (islet) { spawnForwardBase(at.x, at.z, islet); bm = baseMarkers[baseMarkers.length - 1]; } } // all gone: a new one
-        g.base = bm ?? null;
+        if (!bm && newBases) { const at = landSpot(plane.position), islet = at && getNearestIslet(at.x, at.z); if (islet) { spawnForwardBase(at.x, at.z, islet); bm = baseMarkers[baseMarkers.length - 1]; } } // all gone: a new one
+        if (!bm) return resolve({ goal: { type: 'destroy', unit: 'tank', count: 4 } }); // no base to build here: an outpost of tanks
+        g.base = bm;
     } else if (g.type === 'scout') {
         g.point = pointFor(g.where) ?? plane.position.clone().add(new THREE.Vector3(600, 0, 0));
         if (!place && g.where !== 'high') place = g.point.clone();
@@ -138,7 +161,7 @@ function resolve(v) {
 function progress(g) {
     if (g.type === 'destroy') return { done: g.targets.filter(t => !alive(t)).length, need: g.count };
     if (g.type === 'base') return { done: g.base ? (g.base.eliminated || g.base.alive <= 0 ? 1 : 0) : 1, need: 1 };
-    if (g.type === 'scout') { const d = Math.hypot(plane.position.x - g.point.x, plane.position.z - g.point.z); const ok = d < g.radius && (g.where !== 'high' || plane.position.y > ceilingLevel - 45); return { done: ok ? 1 : 0, need: 1 }; }
+    if (g.type === 'scout') { const ok = pilotsFn().some(p => Math.hypot(p.x - g.point.x, p.z - g.point.z) < g.radius && (g.where !== 'high' || p.y > ceilingLevel - 45)); return { done: ok ? 1 : 0, need: 1 }; }
     if (g.type === 'collect') return { done: items.filter(i => i.taken).length, need: g.count };
     return { done: g.defeated ? 1 : 0, need: 1 };
 }
@@ -166,7 +189,7 @@ function makeItem(pos, kind) {
     const gem = new THREE.Mesh(new THREE.OctahedronGeometry(3, 1), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, flatShading: true, roughness: 0.3 }));
     const halo = new THREE.Mesh(new THREE.TorusGeometry(5, 0.35, 8, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 }));
     g.add(gem, halo); g.position.copy(pos); scene.add(g);
-    return { mesh: g, gem, halo, pos: pos.clone(), taken: false, t: Math.random() * 6 };
+    return { id: nextItemId++, kind, mesh: g, gem, halo, pos: pos.clone(), taken: false, t: Math.random() * 6 };
 }
 function clearItems() { for (const i of items) scene.remove(i.mesh); items.length = 0; }
 function setBeacon(p) {
@@ -187,7 +210,7 @@ function begin() {
     if (!order.length) order = ['water', 'heat', ...shuffled(ARCS.slice(2).map(a => a.id))].map(id => ARCS.findIndex(a => a.id === id));
     const arc = ARCS[order[arcPos]], variants = arc.steps[stepIdx];
     const v = variants.find(viable) ?? variants[0];
-    quest = { arc: arc.name, arcIndex: arcPos, arcCount: ARCS.length, step: stepIdx, steps: arc.steps.length, title: v.title, text: v.text, speaker: SPEAKERS[v.speaker], act, goal: null };
+    quest = { arc: arc.name, arcIndex: arcPos, arcCount: ARCS.length, step: stepIdx, steps: arc.steps.length, title: v.title, text: v.text, speaker: SPEAKERS[v.speaker], speakerKey: v.speaker, act, goal: null };
     quest.goal = resolve(v);
     runHooks('questEvent', 'start', quest);
 }
@@ -216,11 +239,12 @@ export function updateQuests(dt) {
         i.t += dt / 60;
         i.gem.rotation.y = i.t * 2; i.halo.rotation.set(Math.PI / 2 + Math.sin(i.t) * 0.3, i.t, 0);
         i.mesh.position.y = i.pos.y + Math.sin(i.t * 2) * 2;
-        if (on && plane.position.distanceTo(i.mesh.position) < QUEST.pickupRadius) {
+        if (on && authority && pilotsFn().some(p => p.distanceTo(i.mesh.position) < QUEST.pickupRadius)) {
             i.taken = true; scene.remove(i.mesh); createExplosion(i.mesh.position, 0.6); _playCollectYellow();
             runHooks('questEvent', 'progress', quest);
         }
     }
+    if (!authority) { setBeacon(remote?.focus ?? null); return; } // another player's game: the host's quest is shown
     if (!on) { setBeacon(null); return; }
     if (!quest) { if ((wait -= dt) <= 0) begin(); setBeacon(null); return; }
     const g = quest.goal;
@@ -248,12 +272,19 @@ onSettingChange((key, on) => {
 
 /** The quest in progress (for the HUD, the minimap and tests), or null. */
 export function questStatus() {
+    if (!authority) return remote;
     if (!quest) return null;
     const p = progress(quest.goal);
     return { ...quest, done: p.done, need: p.need, objective: goalText(quest.goal, p), focus: focus(quest.goal), waitingFor: wait };
 }
 /** Quest targets for the minimap. */
 export function questBlips(blips) {
+    if (!authority) { // the host's quest
+        for (const [x, z] of remote?.targets ?? []) blips.push({ wx: x, wz: z, color: '#ffd23a', shape: 'ring' });
+        for (const i of items) if (!i.taken) blips.push({ wx: i.pos.x, wz: i.pos.z, color: '#ffd23a', shape: 'dot' });
+        if (remote?.focus) blips.push({ wx: remote.focus.x, wz: remote.focus.z, color: '#ffd23a', shape: 'square', label: `◆ ${remote.title}` });
+        return;
+    }
     const g = quest?.goal;
     if (!g) return;
     for (const t of g.targets ?? []) if (alive(t)) { const p = posOf(t); blips.push({ wx: p.x, wz: p.z, color: '#ffd23a', shape: 'ring' }); }
@@ -265,3 +296,29 @@ export function questBlips(blips) {
 export function _debugComplete() { if (quest) { if (quest.goal.type === 'boss') quest.goal.defeated = true; else complete(); } }
 export const questItems = () => items;
 export const kindOfTarget = kindOf;
+
+// --- Multiplayer: the host's quest on the other players' screens ---------------------------------------------------------
+/** Host: the quest as the others need it (null when none). */
+export function questSnapshot() {
+    if (!quest) return null;
+    const p = progress(quest.goal), f = focus(quest.goal), r1 = v => +v.toFixed(1);
+    return { arc: quest.arc, step: quest.step, steps: quest.steps, act: quest.act, title: quest.title, text: quest.text, speaker: quest.speakerKey,
+        objective: goalText(quest.goal, p), done: p.done, need: p.need, focus: f ? [r1(f.x), r1(f.y), r1(f.z)] : null,
+        items: items.map(i => [i.id, i.kind, r1(i.pos.x), r1(i.pos.y), r1(i.pos.z), i.taken ? 1 : 0]),
+        targets: (quest.goal.targets ?? []).filter(alive).map(t => { const q = posOf(t); return [r1(q.x), r1(q.z)]; }) };
+}
+/** Others: show the host's quest (null clears it). */
+export function applyQuestSnapshot(s) {
+    if (!s) { remote = null; clearItems(); return; }
+    remote = { ...s, speaker: SPEAKERS[s.speaker] ?? SPEAKERS.command, focus: s.focus ? new THREE.Vector3(...s.focus) : null };
+    const seen = new Set();
+    for (const [id, kind, x, y, z, taken] of s.items) {
+        seen.add(id);
+        let it = items.find(i => i.id === id);
+        if (!it && !taken) { it = makeItem(new THREE.Vector3(x, y, z), kind); it.id = id; items.push(it); }
+        if (it && taken && !it.taken) { it.taken = true; scene.remove(it.mesh); createExplosion(it.mesh.position, 0.6); _playCollectYellow(); }
+    }
+    for (let i = items.length - 1; i >= 0; i--) if (!seen.has(items[i].id)) { scene.remove(items[i].mesh); items.splice(i, 1); }
+}
+/** Others: the quest event to show, built from the host's snapshot. */
+export const remoteQuestEvent = s => ({ ...s, speaker: SPEAKERS[s.speaker] ?? SPEAKERS.command });

@@ -8,7 +8,9 @@
  *            minion off
  *
  * Targets come from `minionTargets()` (the local player; multiplayer's host adds the others through
- * setMinionTargets). Damage to a remote target goes to `remoteBite(targetId, damage)`.
+ * setMinionTargets). Damage to a remote target goes to `remoteBite(targetId, damage)`. The host shares them
+ * (minionSnapshot); the other players draw that (applyMinionSnapshot) and report hits and shakes back (hooks
+ * 'minionHit', 'minionShake'), which the host applies (hitMinion, shakeOff).
  */
 import { maxRollRate } from '../config.js';
 import { state } from '../state.js';
@@ -19,12 +21,13 @@ import { damagePlayer, removeBullet } from '../combat/collision.js';
 import { createExplosion } from '../effects/effects.js';
 import { difficulty } from '../core/settings.js';
 import { showNotification } from '../ui/notifications.js';
+import { runHooks } from '../game/hooks.js';
 
 export const MINION = Object.freeze({ max: 8, speed: 1.15, turn: 0.045, life: 720, drain: 0.12, latch: 360, bites: 12, shakeRate: 0.7, shakeFrames: 45, hp: 3 });
 
 const minions = []; // { kind, group, v, phase: 'fly' | 'latched', life, target, offset, bitten, hp, t, anim }
 const localTarget = { id: 'local', local: true, get position() { return plane.position; }, get alive() { return !state.isGameOver && !state._playerDown; } };
-let targetsFn = () => [localTarget], remoteBite = null, shake = 0;
+let targetsFn = () => [localTarget], remoteBite = null, shake = 0, nextId = 1;
 const warn = document.createElement('div');
 warn.id = 'parasite-warning'; warn.hidden = true; warn.setAttribute('role', 'alert');
 document.body.appendChild(warn);
@@ -76,7 +79,7 @@ export function spawnMinions(kind, from, count) {
         scene.add(group);
         const target = nearestTarget(group.position);
         const v = target ? _w.subVectors(target.position, group.position).normalize().multiplyScalar(0.7).add(_v.set((Math.random() - 0.5) * 0.6, 0.35, (Math.random() - 0.5) * 0.6)) : _w.set(0, 0.5, 0);
-        minions.push({ kind, group, v: v.clone(), phase: 'fly', life: MINION.life, target, offset: null, bitten: 0, hp: MINION.hp, t: Math.random() * 5, anim: animate });
+        minions.push({ id: nextId++, kind, group, v: v.clone(), phase: 'fly', life: MINION.life, target, offset: null, bitten: 0, hp: MINION.hp, t: Math.random() * 5, anim: animate });
     }
 }
 function nearestTarget(p) {
@@ -146,3 +149,44 @@ export function updateMinions(dt) {
 
 /** For tests and the multiplayer host: the minions in flight or latched. */
 export const minionList = () => minions;
+
+// --- Multiplayer ---------------------------------------------------------------------------------------------------------
+/** Host: [[id, kind, x, y, z, latched, targetId]] for the others. */
+export const minionSnapshot = () => minions.map(m => [m.id, m.kind, ...m.group.position.toArray().map(v => +v.toFixed(1)), m.phase === 'latched' ? 1 : 0, m.target?.id ?? null]);
+/** Host: another player shot one down. */
+export function hitMinion(id) { const i = minions.findIndex(m => m.id === id); if (i >= 0) kill(i); }
+/** Host: another player rolled hard — everything latched on them falls off. */
+export function shakeOff(targetId) { for (let i = minions.length - 1; i >= 0; i--) if (minions[i].phase === 'latched' && minions[i].target?.id === targetId) kill(i); }
+
+const ghosts = new Map(); // others: id → { kind, group, anim, offset, t, seen }
+let ghostShake = 0;
+/**
+ * Others: draw the host's minions. `mine(targetId)` says whether a target is this player: those latched on it ride
+ * this plane and show the warning; rolling hard reports a shake ('minionShake'); bullets report hits ('minionHit').
+ */
+export function applyMinionSnapshot(list, mine) {
+    const seen = new Set();
+    for (const [id, kind, x, y, z, latched, targetId] of list) {
+        seen.add(id);
+        let gh = ghosts.get(id);
+        if (!gh) { const { group, animate } = MODELS[kind](); group.scale.setScalar(1.6); scene.add(group); gh = { group, anim: animate, offset: new THREE.Vector3((Math.random() - 0.5) * 8, 0.8, (Math.random() - 0.5) * 3), t: Math.random() * 5 }; ghosts.set(id, gh); }
+        gh.latched = !!latched; gh.mine = latched && mine(targetId); gh.to = new THREE.Vector3(x, y, z);
+    }
+    for (const [id, gh] of ghosts) if (!seen.has(id)) { createExplosion(gh.group.position, 0.5); scene.remove(gh.group); ghosts.delete(id); }
+}
+/** Others: every step. */
+export function updateMinionGhosts(dt) {
+    let onMe = 0;
+    for (const [id, gh] of ghosts) {
+        gh.t += dt / 60; gh.anim(gh.t, gh.latched);
+        if (gh.mine) { onMe++; gh.group.position.copy(gh.offset).applyMatrix4(plane.matrixWorld); gh.group.quaternion.copy(plane.quaternion); continue; }
+        if (gh.to) { const prev = gh.group.position.clone(); gh.group.position.lerp(gh.to, Math.min(1, 0.25 * dt)); if (prev.distanceToSquared(gh.group.position) > 1e-4) gh.group.lookAt(gh.group.position.clone().add(gh.group.position.clone().sub(prev))); }
+        if (!gh.latched) for (let b = bullets.length - 1; b >= 0; b--) if (bullets[b].position.distanceTo(gh.group.position) < 3) { removeBullet(bullets[b], b); runHooks('minionHit', id); }
+    }
+    ghostShake = onMe && Math.abs(state.rollRate) > maxRollRate * MINION.shakeRate ? ghostShake + dt : 0;
+    if (ghostShake > MINION.shakeFrames) { ghostShake = 0; runHooks('minionShake'); showNotification('Shook it off!', false, { local: true }); }
+    warn.hidden = !onMe;
+    if (onMe) warn.textContent = `⚠ ${onMe} PARASITE${onMe > 1 ? 'S' : ''} BITING — ROLL HARD TO SHAKE ${onMe > 1 ? 'THEM' : 'IT'} OFF`;
+}
+/** Others: forget every ghost (host gone or the boss is down). */
+export function clearMinionGhosts() { for (const gh of ghosts.values()) scene.remove(gh.group); ghosts.clear(); warn.hidden = true; }
