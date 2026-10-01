@@ -34,6 +34,7 @@ import { onHook } from '../game/hooks.js';
 import { setRules } from '../game/rules.js';
 import { FLARE_DURATION } from '../config.js';
 import { state } from '../state.js';
+import { plane } from '../player/plane.js';
 import { showNotification } from '../ui/notifications.js';
 import { MODES, MSG, PVP_KILL_XP, TEAM_SIZE, TEAMS, teamRespawn } from '../net/protocol.js';
 import { isHost, net, netSend, onNet } from '../net/net.js';
@@ -42,7 +43,7 @@ import { flagPatrol, flagWaypoint } from './flag.js';
 import { onRemoteFire } from './remoteFx.js';
 
 const SEND_MS = 100, INTERP_DELAY = 150, STALE_MS = 3000, LABEL_RANGE = 600, FIRING_MS = 250;
-const BOT_RESPAWN_MS = 8000, BOT_XP = 100, MAX_BOTS = 12;
+const BOT_RESPAWN_MS = 8000, BOT_XP = 100, MAX_BOTS = 12, SPAWN_CLEARANCE = 90;
 const BOT_NAMES = [['Viper', 'Hawk', 'Cobra', 'Falcon', 'Raptor'], ['Ghost', 'Talon', 'Wolf', 'Lynx', 'Orca']];
 const r2 = v => +v.toFixed(2), r4 = v => +v.toFixed(4);
 const feed = (text, hl = false) => showNotification(text, hl, { local: true });
@@ -121,11 +122,18 @@ function reconcileTeams(now) {
     }
     for (const e of teamBots.values()) {
         if (e.au || now < e.respawnAt || state.awaitingStart) continue;
-        const s = teamRespawn(e.team), heading = 2 * Math.atan2(s.q[1], s.q[3]);
+        const s = clearSpawn(e.team), heading = 2 * Math.atan2(s.q[1], s.q[3]);
         e.au = spawnAce({ callsign: e.name, position: new THREE.Vector3(...s.p), heading, color: TEAMS[e.team].bot,
             friendly: e.team === net.team, blipColor: TEAMS[e.team].css, xp: BOT_XP, waypoint: flagWaypoint(), rally: true, patrol: flagPatrol(), farms: true }); // to the flag before any target, then hunts and farms from there
         e.au.netBot = e.id;
     }
+}
+/** A respawn point for a bot that isn't on top of another aircraft or a player (they would collide at once). */
+function clearSpawn(team) {
+    const busy = [plane.position, ...airUnits.filter(a => a.hp > 0).map(a => a.group.position), ...[...remoteViews()].filter(v => v.shown).map(v => v.group.position)];
+    let s = teamRespawn(team);
+    for (let i = 0; i < 12 && busy.some(p => Math.hypot(p.x - s.p[0], p.y - s.p[1], p.z - s.p[2]) < SPAWN_CLEARANCE); i++) s = teamRespawn(team);
+    return s;
 }
 function despawn(e) {
     const au = e.au;

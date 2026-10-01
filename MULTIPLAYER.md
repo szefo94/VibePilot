@@ -2,6 +2,7 @@
 
 Multiplayer development happens on the **`multiplayer`** branch. This file is the plan and reference. The step-by-step guides are:
 
+- [Game modes](docs/multiplayer/game-modes.md): what each mode does and the address that opens it
 - [Server hosting quick start](docs/multiplayer/server-hosting-quick-start.md): run the server on any port, locally, on your LAN or on the internet
 - [Test 1: two tabs on one computer](docs/multiplayer/test-1-two-tabs.md)
 - [Server setup on a Raspberry Pi 5](docs/multiplayer/server-setup-raspberry-pi.md)
@@ -11,18 +12,20 @@ Multiplayer development happens on the **`multiplayer`** branch. This file is th
 1. [Goals](#1-goals)
 2. [Branches](#2-branches)
 3. [Architecture](#3-architecture)
-4. [Development plan](#4-development-plan)
-5. [Test stages](#5-test-stages)
-6. [Reference: protocol, files, commands](#6-reference)
-7. [Log](#7-log)
+4. [Where the state lives](#4-where-the-state-lives)
+5. [Development plan](#5-development-plan)
+6. [Test stages](#6-test-stages)
+7. [Reference: protocol, files, commands](#7-reference)
+8. [Log](#8-log)
 
 ## 1. Goals
 
 | Mode | What players share | Status |
 |---|---|---|
-| **1. Shared skies** | One map; everyone sees everyone's plane. No enemies. (`?mp=skies`) | Done |
-| **2. PvP + co-op** | Shared enemy bases and mission, **and** every weapon hits other players; 0 HP → respawn nearby (`?mp=pvp`) | **Default: working** |
-| **3. Co-op** | The same shared war, no damage between players (`?mp=coop`) | Working |
+| **Team deathmatch** | Red against Blue, five a side; the host's bots fill the empty places. No friendly fire; a server-kept score and kills/deaths. A flag in the middle where the bots gather. (`?mp=tdm`) | **Default: working** |
+| **PvP** | Shared enemy bases and mission, **and** every weapon hits every other player; 0 HP → respawn nearby. Ace Hunt aces hunt everyone. (`?mp=pvp`) | Working |
+| **Co-op** | The same shared war and aces, no damage between players (`?mp=coop`) | Working |
+| **Shared skies** | One map; everyone sees everyone's plane. No enemies. (`?mp=skies`) | Done |
 
 Principles:
 
@@ -65,9 +68,13 @@ git merge master           # bring single-player changes in (conflicts: only the
 
 | Seam | File | Used by multiplayer for |
 |---|---|---|
-| `RULES` + `setRules()` | `src/game/rules.js` | Turning off enemies, ace, interceptors and mission; turning on respawn |
-| `onHook()` / `runHooks()`: `frame`, `playerDown`, `radarBlips` | `src/game/hooks.js` | Per-frame network work, reporting a crash, minimap blips |
+| `RULES` + `setRules()` | `src/game/rules.js` | Turning interceptors and roaming fighters off, Ace Hunt on the host only, respawn on |
+| `onHook()` / `runHooks()` | `src/game/hooks.js` | `frame`, `playerDown`, `radarBlips`, `notification`, `worldReady`, `unitHit` (with the shooter), `playerFired`, `rivalDown`, `aceLevelUp`, `aceDropped`, `aceImpact` |
 | `playerDown()` / `respawnPlayer()` | `src/game/respawn.js` | Showing a wreck instead of game over; respawning where the server says |
+| Proxy air units (`au.proxy`: `damage`, `ram`) | `src/combat/hits.js`, `combat/collision.js` | Other players and the host's bots as targets: hits and rams are handed to their owner |
+| `beginHits(weapon, { remote, shooter })` | `src/combat/hits.js` | Applying synced damage quietly; damage by a bot (the bot is paid, not the player) |
+| `setRivalTargets(targets, onRemoteHit, traffic)`, `spawnAce({ … })`, `rewardAce()`, `rivalList()` | `src/entities/rival.js` | Bots that hunt other players and bots, team colours, allies, rally point, patrol area, farming |
+| `notifications.quietly()`, `showNotification(…, { local })` | `src/ui/notifications.js` | Sharing gameplay notifications; keeping device messages local |
 
 ## 3. Architecture
 
@@ -97,13 +104,15 @@ git merge master           # bring single-player changes in (conflicts: only the
 
 **One server does everything.** The multiplayer server serves the game files and handles WebSocket on **one port**. Players open `https://your-server/?mp`, so there are no cross-origin problems and nothing to configure in the client. It serves only public files (`index.html`, `style.css`, `three.min.js`, `src/**`), never `.git`, `server/` or `node_modules`.
 
-**Multiplayer rules** (shared skies):
+**Multiplayer rules:**
 
 | Setting | Value |
 |---|---|
-| `enemies`, `ace`, `interceptors`, `mission` | Off |
-| `respawn` | On: a crash leaves a wreck with an orbit camera, and you respawn at your slot 3 s later with full HP and spawn protection |
-| Collisions between players | Off; planes pass through each other until PvP |
+| `enemies`, `mission` | On in tdm, pvp and coop (shared, see `src/mp/coop.js`); off in shared skies |
+| `ace` | Ace Hunt on the host only, in pvp and coop; tdm has team bots instead |
+| `interceptors`, `roamingFighters` | Off (they spawn at random, so they can't be shared yet) |
+| `respawn` | On: a crash leaves a wreck with an orbit camera, and you respawn 3 s later near your start with full HP and spawn protection |
+| Collisions between players | Ramming counts as a crash for both |
 
 **Remote planes** (`src/mp/remotePlanes.js`):
 - Each other player is drawn as the player airframe in their slot colour, with a name tag that stays the same size on screen.
@@ -111,50 +120,60 @@ git merge master           # bring single-player changes in (conflicts: only the
 - Planes are drawn 100 ms behind server time, blending between two snapshots (position lerp, rotation slerp).
 - If snapshots are late, a plane keeps moving along its last velocity for up to 250 ms, then holds. It is hidden after 3 s without data.
 
-## 4. Development plan
+## 4. Where the state lives
+
+**The server keeps everything in memory.** There is no database and nothing is written to disk while it runs. A restart (or a crash) starts every room from scratch: players reconnect by themselves and get a new room, and the score, kills/deaths and destroyed enemy units are reset.
+
+| What | Where | Lost on a server restart? |
+|---|---|---|
+| Rooms: mode, name, map seed, host, players | `rooms` map in `server/server.mjs` | Yes; a room is also deleted when its last player leaves |
+| Each player: name, slot, team, alive, accepted position, HP | The player's entry in its room (`room.players`) | Yes |
+| Damage done to the shared enemy units (for late joiners) | `room.units` | Yes |
+| Team score and kills/deaths of every player and bot | `room.score`, `room.stats` | Yes |
+| The bots themselves (position, HP, level, XP) | The **host's browser**, not the server (`src/mp/bots.js`, `src/entities/rival.js`) | Yes, and also when the host leaves |
+| Location lookups for the log | A cache in `server/geo.mjs` | Yes (looked up again) |
+| TLS certificate (self-signed, `--tls`) | `~/.vibepilot/certs/` on the server computer (on Windows `C:\Users\<you>\.vibepilot\certs`) | **No**, it is reused |
+| Server log (joins and leaves with IP and location) | Only the server's terminal window; redirect it to keep it, e.g. `npm run mp-server -- … > mp.log` | Yes, unless redirected |
+
+**Each player's browser** keeps its own things in `localStorage` for the address it opened: the callsign (`vibepilot_mp_name`), settings such as difficulty and touch wheels (`vibepilot_settings`) and the best score (`vibepilot_hs`). Their level, XP and HP in a multiplayer session live only in that open page: reloading starts a new pilot.
+
+## 5. Development plan
 
 **Phase 0: foundation ✅**
 - [x] Protocol shared by browser and Node; server with rooms, heartbeat, flood/size/room limits and `/health`.
 - [x] `ws` dependency and the `npm run mp-server` / `npm run test:mp` scripts.
 - [x] Seams on `master`; the `multiplayer` branch.
 
-**Phase 1: shared skies (in progress)**
+**Phase 1: shared skies ✅**
 - [x] The server owns the state: snapshots, spawn slots, validation with `CORRECT`, down/respawn, and serving the game.
 - [x] Client: joins onto the room's map, remote planes with interpolation, roster panel, minimap blips, respawn instead of game over.
-- [x] Automated tests: 25 server checks; a two-tab browser run; the 27 single-player tests still pass.
-- [x] **Test stage 1 by hand** ([guide](docs/multiplayer/test-1-two-tabs.md)): two tabs work.
-- [x] Configurable port and host (`--port`, `--host`, `--origins`; [quick start](docs/multiplayer/server-hosting-quick-start.md)).
-- [x] Callsign prompt on entry (remembered); the bare server address opens multiplayer (`?sp` = single-player).
+- [x] Configurable port and host; HTTPS (`--tls`, `--public`, own certificates); callsigns; the bare address opens multiplayer (`?sp` = single-player).
+- [x] Tested over the internet (router port 443 → 8443, phone and PC).
 - [ ] Room choice in the lobby (currently `?room=`; default `lobby`).
-- [ ] Stages 2–4: LAN, Raspberry Pi, internet.
-- [ ] Tuning from real play: interpolation delay, report rate, spawn layout (the spawn line can face an obstacle on some maps).
+- [ ] Tuning from real play: interpolation delay, report rate, spawn layout (a spawn can face an obstacle on some maps).
 
-**Phase 2: PvP**
-- [x] Remote planes are **proxy air units** (`au.proxy`, a seam on master): bullets, missiles, bombs and napalm, the lock-on reticle and missile homing all target them. `hits.js` hands each hit to the proxy, which sends `HIT` with the weapon's `PVP_DAMAGE` (gun 4 · missile 45 · bomb 60 · napalm 10); the server caps it.
-- [x] The victim applies it with `damagePlayer()` (flares stop gun and missile hits, spawn protection applies) and at 0 HP reports `DOWN { by }`. The server broadcasts it: kill feed, +150 score for the shooter, kills in the roster.
-- [x] Respawn at a random point 80–350 units from the player's start slot, 35–90 above the ground, random heading.
-- [x] Name tags carry an HP bar; the roster shows everyone's HP.
-- [x] Other players' shots are drawn on your screen (`src/mp/remoteFx.js`): gun tracers (a firing flag in `STATE`), missile pairs that home on their target, flares, bombs and napalm (`FIRE` messages, checked by the server). They are visuals only; hits stay shooter-decided.
-- [ ] Scoreboard (Tab). Respawn points that avoid obstacles (the server doesn't know the map yet).
-- [x] Collisions between players: ramming counts as a crash for both.
+**Phase 2: PvP ✅**
+- [x] Remote planes are proxy air units: every weapon, the lock-on and missile homing target them; the shooter reports hits (`HIT`, capped by the server); the victim applies them, and reports `DOWN { by }` at 0 HP.
+- [x] Respawn near the start, name tags with HP bars, other players' shots drawn (`src/mp/remoteFx.js`), shared notifications (`EVENT`), aiming laser, ramming.
+- [ ] Respawn points that avoid obstacles (the server doesn't know the map yet).
 - [ ] Trust model: the shooter decides hits (fine among friends). The server already clamps damage and rate-limits messages.
 
-**Phones and tablets** (on master, so single-player too)
-- [x] Touch overlay: joystick (pitch/roll), throttle, GUN (hold), MSL/FLR/BOMB/NAP, pause, fullscreen. TILT steers with the motion sensor (needs `https://`, e.g. `--tls`).
-- [ ] Check the tilt directions on a real phone (they are untested on hardware).
-
-**Also done in phase 2**
-- [x] Every gameplay notification is shared with the player's name (`EVENT`): "Bravo: ★ Orion Constellation — COMPLETE", level-ups, bases. Device-only messages (mute, tilt) stay local.
-- [x] The aiming laser is visible to others (`STATE.f` bit 2).
-- [x] Join straight away: the bare address opens `?mp=pvp` in room `lobby` with a remembered or random callsign ("Ghost Hornet"); **Callsign** in the start and pause menus changes it.
-- [x] Name tags are sized in the world and fade out beyond ~320 units, so they don't cover planes.
-
-**Phase 3: Co-op**
-- [x] Shared enemies in `pvp` and `coop` rooms (`src/mp/coop.js`): units get net ids `g<i>`/`a<i>` in the seeded creation order; hits are synced as `UNIT_HIT` and applied quietly by the others (no double rewards or notifications); the server keeps damage totals for late joiners; the host sends moving air units twice a second (`WORLD`). Each player's copy of an enemy shoots at that player.
-- [ ] Share the random spawners too (interceptor waves, the ace, roaming fighters). They're off in multiplayer for now.
-- [x] Stable unit ids in the order the map generates them (`netId`).
-- [ ] Authority for enemies. Start with the host's browser: the server already tracks the host and hands it over. The host runs the AI and sends `WORLD` deltas at 10 Hz. Guests turn their AI off and interpolate, and send their damage as `ACTION` for the host to apply.
+**Phase 3: Co-op and bots ✅ (first version)**
+- [x] Shared enemies (`src/mp/coop.js`): net ids in the seeded creation order, hits synced as `UNIT_HIT`, damage totals kept for late joiners, the host sends moving air units (`WORLD`).
+- [x] Ace Hunt in pvp and coop: the host's aces hunt every player; the others see them as bots (`BOT`, `BOT_HIT`, `BOT_FIRE`, `BOT_DOWN`).
+- [x] **Team deathmatch** (default): two teams of five, bots fill them (`src/mp/bots.js`), no friendly fire, server-kept team score and kills/deaths (`SCORE`), team spawns north and south, the flag in the middle (`src/mp/flag.js`).
+- [x] Bots: must see a target before attacking, rally at the flag after every spawn, keep clear of other aircraft, farm the enemy bases with guns, bombs and napalm for XP, level up, heal on pickups, die in mid-air collisions.
+- [ ] Share the remaining random spawners (interceptor waves, roaming fighters).
+- [ ] Authority for enemies: today every player's copy of the bases runs its own AI (only damage and aircraft positions are synced), and a base only shoots at the local player.
 - [ ] Later option: the server runs the simulation itself. That needs the game logic separated from THREE and the page (a headless core), a large refactor. A Pi 5 has the CPU for it.
+
+**Phones and tablets** (on master, so single-player too)
+- [x] Touch overlay with two wheels (any axis on any direction, Settings → Touch wheels), weapons, pause, tilt steering, LEVEL, fullscreen; compact objective; motion indicator.
+- [ ] Check tilt steering on a real phone (untested on hardware).
+
+**Next**
+- [ ] Team deathmatch score limit and end of match (unlimited for now).
+- [ ] Full-screen scoreboard on Tab (the roster already shows score and K/D).
 
 **Later**
 - Binary encoding.
@@ -162,7 +181,7 @@ git merge master           # bring single-player changes in (conflicts: only the
 - Reconnecting to the same slot.
 - Spectator mode.
 
-## 5. Test stages
+## 6. Test stages
 
 Each stage must pass before moving to the next.
 
@@ -176,50 +195,65 @@ Each stage must pass before moving to the next.
 **Automated checks** (run before each push to `multiplayer`):
 
 ```sh
-npm run check        # every module parses, every import resolves
+npm run check           # every module parses, every import resolves
 npm run lint
-npm run test:mp      # 25 server checks: rooms, seeds, slots, snapshots, validation, respawn, limits, static files
-npm run test:browser # 27 single-player browser tests (needs Node 20+ for Playwright)
+npm run test:mp         # 49 server checks: rooms, seeds, slots, snapshots, validation, respawn, limits, static files, PvP, co-op, bots, teams, score
+npm run test:mp-browser # two headless players: team deathmatch (teams, bots, flag, kills/deaths, score, ramming) and shared aces
+npm run test:browser    # 27 single-player browser tests
 ```
 
-## 6. Reference
+The browser tests need a Chromium-based browser (`BROWSER_PATH`) and a Node version the installed `playwright-core` supports.
 
-**URL parameters** (multiplayer branch):
+## 7. Reference
+
+**URL parameters** (multiplayer branch; [game-modes.md](docs/multiplayer/game-modes.md) has every address):
 
 | Parameter | Meaning | Default |
 |---|---|---|
-| `?mp=pvp` | Enable multiplayer in that mode (`pvp`, `coop`, `skies`) on the server that served the page. The multiplayer server sends its bare address to `?mp=pvp`. | Off (on when served by the multiplayer server) |
+| `?mp=tdm` | Enable multiplayer in that mode (`tdm`, `pvp`, `coop`, `skies`) on the server that served the page. The multiplayer server sends its bare address to `?mp=tdm`. | Off (on when served by the multiplayer server) |
 | `?sp` | Force single-player on the multiplayer server | – |
 | `?mp=wss://host/` | Connect to a different server | – |
 | `room=` | Room name, `[a-z0-9_-]`, up to 24 characters | `lobby` |
 | `name=` | Your callsign, up to 16 characters | Remembered, or a random one; change it with **Callsign** in the menus |
-| `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `pvp` |
+| `mode=` | Same as the `?mp=` value, when `?mp=` holds a server address | `tdm` |
 
-**Messages** (`src/net/protocol.js`, version 2): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `PING` · `PONG`, plus `FIRE` · `HIT` · `HOST` · `WORLD` · `ACTION`, reserved for phases 2–3.
+**Messages** (`src/net/protocol.js`, version 8): `HELLO` · `WELCOME` · `REJECT` · `JOIN` · `LEAVE` · `HOST` · `STATE` · `SNAP` · `CORRECT` · `DOWN` · `SPAWN` · `FIRE` · `HIT` · `UNIT_HIT` · `WORLD` · `BOT` · `BOT_HIT` · `BOT_FIRE` · `BOT_DOWN` · `SCORE` · `EVENT` · `ACTION` · `PING` · `PONG`. Each is documented where it is defined.
 
 **Limits:**
-- 8 players per room, 32 rooms per server.
-- Reports and snapshots at 20 Hz.
+- 10 players per room (two teams of five in tdm), 32 rooms per server.
+- Reports and snapshots at 20 Hz; the host shares its bots at 10 Hz.
 - 60 messages per second per client.
 - 8 KB per message.
+
+**Server options:** `--port`, `--host`, `--tls`, `--public`, `--tls-cert` / `--tls-key`, `--origins`, `--no-geo` (log IPs without the location lookup), `--trust-proxy` (behind a tunnel or reverse proxy). `npm run mp-server -- --help` lists them.
 
 **Files:**
 
 | Path | What it is |
 |---|---|
-| `server/server.mjs` | The server: game files, rooms, state, validation. Run it with `npm run mp-server -- --port <n> --host <addr>` |
+| `server/server.mjs` | The server: game files, rooms, state, validation, team score. Run it with `npm run mp-server -- --port <n> --host <addr>` |
+| `server/cert.mjs` | Self-signed certificate for `--tls` |
+| `server/geo.mjs` | Player IP and location for the log |
 | `server/deploy/` | systemd unit and `update.sh` for the Pi |
-| `src/net/protocol.js` | Protocol shared by browser and server |
-| `src/net/net.js` | Connection, peers, clock |
-| `src/mp/index.js` | Entry point: rules, hooks, roster |
+| `src/net/protocol.js` | Protocol shared by browser and server: modes, limits, teams, spawns, messages |
+| `src/net/net.js` | Connection, peers, clock, score |
+| `src/mp/index.js` | Entry point: rules, hooks, PvP, kill feed, roster |
 | `src/mp/remotePlanes.js` | Other players' planes |
+| `src/mp/remoteFx.js` | Other players' (and bots') shots |
+| `src/mp/coop.js` | Shared enemy bases |
+| `src/mp/bots.js` | Bots: Ace Hunt aces and team bots, on the host and as seen by everyone else |
+| `src/mp/flag.js` | Team deathmatch flag |
+| `src/mp/lobby.js`, `src/mp/callsigns.js` | Callsign prompt and random callsigns |
 | `src/mp/mp.css` | Multiplayer HUD styles |
-| `tests/mp-server.mjs` | Server tests |
+| `tests/mp-server.mjs`, `tests/mp-browser.mjs` | Server tests; two-player browser tests |
 
 **Capacity** (measured on the relay, estimated for a Pi 5): an 8-player room uses about 1–2 Mbit/s of upload and a few percent of one Pi 5 core. Your home upload speed limits the number of rooms long before the Pi does.
 
-## 7. Log
+## 8. Log
 
+- **Bots and team deathmatch (protocol v7–v8):** Ace Hunt shared as bots; team deathmatch as the default with team bots, the flag, team score and kills/deaths; bots see before they attack, rally, farm with guns, bombs and napalm, level up, collide; IP and location in the server log.
+- **Phase 3, co-op:** shared enemy bases (`UNIT_HIT`, `WORLD`), late-joiner damage log.
+- **Phase 2, PvP:** proxy targets, `HIT`/`DOWN`, remote shots, notifications, laser, callsigns, HTTPS, phone controls.
 - **Phase 1, shared skies:**
   - The server owns the state: 20 Hz snapshots, spawn slots, speed and bounds validation with `CORRECT`, down/respawn.
   - The server serves the game itself.
