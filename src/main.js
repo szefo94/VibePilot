@@ -1,4 +1,5 @@
 /** Entry point: world initialisation and the per-frame update loop. */
+import './core/three.js'; // first: publishes the global THREE every other module uses
 import { MINIMAP_REFRESH_S, SPLASH_ENABLED, STEER_CURSOR_RADIUS, STEER_RETURN_DECAY, TARGET_FPS, maxSpeed } from './config.js';
 import { difficulty, settings } from './core/settings.js';
 import { updateEngineSound } from './audio.js';

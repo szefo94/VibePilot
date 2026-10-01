@@ -4,7 +4,7 @@
  * merged mesh is a poor fit — the carrier's hull, deck and island. Ground units don't move, so each box's world
  * matrix is baked once. The B key draws exactly these boxes (effects/debug.js).
  */
-const _p = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1);
+const _p = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1), _up = new THREE.Vector3(0, 1, 0);
 
 /** Boxes of one mesh in its own geometry space: [{ half: Vector3, offset: Matrix4 }] (offset: box centre + turn). */
 export function meshBoxes(mesh) {
@@ -13,7 +13,7 @@ export function meshBoxes(mesh) {
         return list.map(b => {
             const center = b.center ? new THREE.Vector3(...b.center) : new THREE.Vector3(...b.min).add(new THREE.Vector3(...b.max)).multiplyScalar(0.5);
             const half = b.size ? new THREE.Vector3(...b.size).multiplyScalar(0.5) : new THREE.Vector3(...b.max).sub(new THREE.Vector3(...b.min)).multiplyScalar(0.5);
-            return { half, offset: new THREE.Matrix4().compose(center, _q.setFromAxisAngle(THREE.Object3D.DefaultUp, b.ry || 0), _one) };
+            return { half, offset: new THREE.Matrix4().compose(center, _q.setFromAxisAngle(_up, b.ry || 0), _one) };
         });
     }
     mesh.geometry.computeBoundingBox();

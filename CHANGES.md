@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Three.js r128 → r164
+- Three.js is now the ES module build `three.module.min.js` (r164); `src/core/three.js`, imported first by `main.js`, publishes it as the same global `THREE`, so no game code had to change apart from one renamed constant (`Object3D.DefaultUp`).
+- **The look is kept.** Newer Three.js changed two defaults: colour management (r152) and light units (r155). Colour management is switched off with linear output, and the legacy lights are kept (`renderer.useLegacyLights`, which r164 still has; the browser console shows one deprecation warning). A fixed scene of models rendered on both versions looks the same by day and by night.
+- **Maps for a given seed changed.** r164 draws a few more random numbers while starting up, so `?seed=N` builds a different map than on r128. Maps are still identical from run to run and for everyone in a multiplayer room.
+- Going further (r165+) means moving the lights to physical units and retuning them: the next step if needed.
+
 ### Fire, villages, collectibles, phone controls, water fix
 - **Water flicker fixed.** A sea-floor plane half a unit under the water z-fought with it, a fast flicker that got worse far away. The floor is gone, the camera's near plane went from 0.1 to 0.5 for depth precision, the underwater shelf sits clearly below the surface, and runway and deck markings no longer touch their surfaces.
 - **Fire** (`effects/fire.js`): buildings burn once below 75 % HP, napalm sets anything alight for 10 s, and destroyed units smoulder for 15 s. Flames and smoke are two GPU point clouds (one draw call each). Napalm now damages hangars and airports, and a burning building keeps taking fire damage, so two drops bring a hangar down. Bombs, missiles and napalm meet the real terrain or water, no longer an invisible flat floor.
