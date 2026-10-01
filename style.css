@@ -897,3 +897,10 @@ body.menu-open #boss-frame, body.menu-open #boss-alert, body.menu-open #boss-vig
 body.touch #boss-frame { top: 52px; width: min(420px, 56vw); padding: 4px 8px; }
 body.touch #boss-frame .bf-title { display: none; }
 @media (prefers-reduced-motion: reduce) { #boss-vignette.on, #boss-frame.enraged, #boss-alert { animation: none; } #boss-vignette.on { opacity: 0.4; } }
+
+/* Parasites latched on (entities/minions.js) */
+#parasite-warning { position: fixed; top: 41%; left: 50%; transform: translateX(-50%); z-index: 400; pointer-events: none; white-space: nowrap;
+    color: #9cff6a; font: bold 17px 'Share Tech Mono', 'Courier New', monospace; letter-spacing: 0.14em; text-shadow: 0 0 10px rgba(120, 255, 80, 0.9), 0 0 2px #000;
+    animation: flight-warning-blink 0.35s steps(1) infinite; }
+#parasite-warning[hidden] { display: none; }
+body.menu-open #parasite-warning { display: none; }

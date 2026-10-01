@@ -2,10 +2,10 @@
  * Freaky mode: giant bosses as random special events, one at a time (Settings → Freaky mode; K summons one now).
  *
  *   kaiju   GORGAZON          rises from the sea           atomic breath beam, energy volleys
- *   kraken  KRAKOTH           surfaces from the deep       tentacles burst from the water under you, volleys
+ *   kraken  KRAKOTH           surfaces from the deep       tentacles burst from the water under you, volleys, squidlings
  *   golem   MAGMAROK          erupts from the volcano      lava bombs, volleys        (on the highest peak)
  *   robot   TITAN-9           awakens in a village         homing missiles, eye laser
- *   alien   SPECIMEN 47       breaks out of a base         acid spray, volleys        (a hangar or airbase is lost)
+ *   alien   SPECIMEN 47       breaks out of a base         acid spray, volleys, facehuggers (a hangar or airbase is lost)
  *   zombot  STAHLMOND ZOMBOT  descends from the Moon       plasma bursts, beam        (flies)
  *
  * A boss is an ordinary hostile air unit in `airUnits` (`isBoss`), so bullets, missiles, bombs, the lock-on and
@@ -29,6 +29,7 @@ import { difficulty, onSettingChange, settings } from '../core/settings.js';
 import { RULES } from '../game/rules.js';
 import { runHooks } from '../game/hooks.js';
 import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
+import { clearMinions, spawnMinions, updateMinions } from './minions.js';
 import { buildAlien, buildGolem, buildKaiju, buildKraken, buildRobot, buildZombot } from './bossModels.js';
 import { acidBlob, lavaRock, missile as missileModel, orb, plasmaBolt } from '../effects/projectileModels.js';
 
@@ -45,10 +46,10 @@ export const BOSS = Object.freeze({
 
 export const BOSS_TYPES = Object.freeze({
     kaiju: { name: 'GORGAZON', title: 'Kaiju of the Deep', verb: 'rises from the sea', where: 'sea', build: buildKaiju, hp: 1500, xp: 900, radius: 42, color: '#59c8ff', shot: 0x8fe4ff, attacks: ['beam', 'volley'], speed: 0.16 },
-    kraken: { name: 'KRAKOTH', title: 'Terror of the Tides', verb: 'surfaces from the deep', where: 'sea', build: buildKraken, hp: 1300, xp: 850, radius: 40, color: '#ff5c9a', shot: 0xff7ab8, attacks: ['tentacles', 'volley'], speed: 0.1 },
+    kraken: { name: 'KRAKOTH', title: 'Terror of the Tides', verb: 'surfaces from the deep', where: 'sea', build: buildKraken, hp: 1300, xp: 850, radius: 40, color: '#ff5c9a', shot: 0xff7ab8, attacks: ['tentacles', 'volley', 'minions'], speed: 0.1, minion: 'squid' },
     golem: { name: 'MAGMAROK', title: 'Heart of the Volcano', verb: 'erupts from the volcano', where: 'peak', build: buildGolem, hp: 1600, xp: 950, radius: 44, color: '#ff7a1a', shot: 0xff5a10, attacks: ['lava', 'volley'], speed: 0 },
     robot: { name: 'TITAN-9', title: 'Rampaging Mech', verb: 'awakens in a village', where: 'village', build: buildRobot, hp: 1400, xp: 900, radius: 46, color: '#ff4848', shot: 0xff4a3a, attacks: ['missiles', 'beam'], speed: 0.12 },
-    alien: { name: 'SPECIMEN 47', title: 'Escaped from a military facility', verb: 'breaks out of the base', where: 'base', build: buildAlien, hp: 1100, xp: 850, radius: 36, color: '#66ff55', shot: 0x66ff55, attacks: ['acid', 'volley'], speed: 0.28 },
+    alien: { name: 'SPECIMEN 47', title: 'Escaped from a military facility', verb: 'breaks out of the base', where: 'base', build: buildAlien, hp: 1100, xp: 850, radius: 36, color: '#66ff55', shot: 0x66ff55, attacks: ['acid', 'volley', 'minions'], speed: 0.28, minion: 'hugger' },
     zombot: { name: 'STAHLMOND ZOMBOT', title: 'Iron robo-zombie from the dark side of the Moon', verb: 'descends from the Moon', where: 'sky', build: buildZombot, hp: 1200, xp: 950, radius: 36, color: '#ff3a3a', shot: 0xff3a3a, attacks: ['plasma', 'beam'], speed: 0.6 },
 });
 
@@ -161,6 +162,7 @@ export const bossShots = () => shots;
 export function updateBossSystem(dt) {
     for (let i = pending.length - 1; i >= 0; i--) if ((pending[i].at -= dt) <= 0) { pending[i].fn(); pending.splice(i, 1); }
     updateShots(dt);
+    updateMinions(dt);
     for (let i = effects.length - 1; i >= 0; i--) if (!effects[i].update(dt)) { scene.remove(effects[i].mesh); effects.splice(i, 1); }
     if (active && !airUnits.includes(active)) finish(active);
     if (!active && RULES.bosses && settings.freakyMode && !state.isGameOver && !state.awaitingStart && (timer -= dt) <= 0) {
@@ -179,6 +181,7 @@ function finish(au) {
         runHooks('bossEvent', 'defeat', au);
     } else runHooks('bossEvent', 'escape', au);
     clearAttack(b);
+    clearMinions();
     for (const e of effects) scene.remove(e.mesh);
     effects.length = 0;
     active = null;
@@ -343,6 +346,12 @@ const ATTACKS = {
             if (along > 0 && along < b.beam.len && off < 6 + planeSphereRadius && Math.floor(b.attackT / 12) !== Math.floor((b.attackT - dt) / 12)) damagePlayer(dmg(7), from);
         }
         return b.attackT > 85 + (b.enraged ? 130 : 100);
+    },
+    // A brood of minions that latch on and bite (entities/minions.js)
+    minions(au, b, dt) {
+        b.charge = Math.min(1, b.attackT / 50);
+        if (crossed(b, dt, 50)) spawnMinions(b.def.minion, emitterPos(b, new THREE.Vector3()), b.enraged ? 5 : 3);
+        return b.attackT > 70;
     },
     // Tentacles burst from the water under the player, after a warning ring
     tentacles(au, b, dt) {

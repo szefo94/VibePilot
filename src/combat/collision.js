@@ -56,7 +56,7 @@ function segmentDistSq(a, b, c) {
 const bulletDistSq = (b, c) => b.prevPosition ? segmentDistSq(b.prevPosition, b.position, c) : b.position.distanceToSquared(c);
 
 // Return a player bullet (and its tracer) to the pool
-function removeBullet(b, index) {
+export function removeBullet(b, index) {
     if (b.tracer) { scene.remove(b.tracer); b.tracer.geometry.dispose(); b.tracer = null; }
     scene.remove(b); _playerBulletPool.push(b); bullets.splice(index, 1);
 }
