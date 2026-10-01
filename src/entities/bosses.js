@@ -30,6 +30,7 @@ import { RULES } from '../game/rules.js';
 import { runHooks } from '../game/hooks.js';
 import { MISSILE_CLOSE, THREAT, reportThreat } from '../ui/threatTone.js';
 import { buildAlien, buildGolem, buildKaiju, buildKraken, buildRobot, buildZombot } from './bossModels.js';
+import { acidBlob, lavaRock, missile as missileModel, orb, plasmaBolt } from '../effects/projectileModels.js';
 
 /** Times in frames at 60 fps, distances in world units. */
 export const BOSS = Object.freeze({
@@ -56,9 +57,6 @@ const shots = [];      // { mesh, v, gravity, dmg, r, life, homing, aoe, decoyed
 const effects = [];    // { mesh, life, update(dt) } — beams, warning rings, tentacles, the volcano
 const pending = [];    // { at, fn } — delayed explosions (a defeat), in frames
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-const shotGeo = new THREE.SphereGeometry(1, 8, 6), missileGeo = new THREE.ConeGeometry(1.1, 5, 6).rotateX(Math.PI / 2);
-const shotMats = new Map();
-const shotMat = color => shotMats.get(color) ?? (shotMats.set(color, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })), shotMats.get(color));
 
 function rand([a, b]) { return a + Math.random() * (b - a); }
 const surface = (x, z) => Math.max(heightAt(x, z), waterLevel);
@@ -273,7 +271,7 @@ const ATTACKS = {
         const to = predict(from.distanceTo(plane.position) / 1.3, new THREE.Vector3());
         for (let i = 0; i < n; i++) {
             _v.subVectors(to, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.07).multiplyScalar(1.3);
-            fire(from, _v, { dmg: 9, r: 3.4, color: b.def.shot });
+            fire(from, _v, { dmg: 9, r: 3.4, color: b.def.shot, look: 'orb' });
         }
         return false;
     },
@@ -284,7 +282,7 @@ const ATTACKS = {
         for (let i = 0; i < n; i++) {
             _v.subVectors(plane.position, from).normalize().applyAxisAngle(_up, (i - (n - 1) / 2) * 0.09).multiplyScalar(1.15);
             _v.y += 0.12;
-            fire(from, _v, { dmg: 7, r: 3, color: b.def.shot, gravity: 0.0025 });
+            fire(from, _v, { dmg: 7, r: 3, color: b.def.shot, gravity: 0.0025, look: 'acid' });
         }
         return false;
     },
@@ -292,7 +290,7 @@ const ATTACKS = {
         b.charge = 1;
         for (const at of [20, 34, 48]) if (crossed(b, dt, at)) {
             const from = emitterPos(b, new THREE.Vector3());
-            for (let i = -1; i <= 1; i++) { _v.subVectors(predict(25, _w), from).normalize().applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot }); }
+            for (let i = -1; i <= 1; i++) { _v.subVectors(predict(25, _w), from).normalize().applyAxisAngle(_up, i * 0.05).multiplyScalar(2.2); fire(from, _v, { dmg: 6, r: 2.4, color: b.def.shot, look: 'plasma' }); }
         }
         return b.attackT > 60;
     },
@@ -304,7 +302,7 @@ const ATTACKS = {
         for (let i = 0; i < n; i++) {
             const to = predict(T, new THREE.Vector3()).add(_w.set((Math.random() - 0.5) * 70, 0, (Math.random() - 0.5) * 70));
             const v = to.sub(from).divideScalar(T); v.y += 0.5 * G * T;
-            fire(from, v, { dmg: 14, r: 4.5, color: b.def.shot, gravity: G, aoe: 26 });
+            fire(from, v, { dmg: 14, r: 4.5, color: b.def.shot, gravity: G, aoe: 26, look: 'lava' });
         }
         return false;
     },
@@ -313,7 +311,7 @@ const ATTACKS = {
         b.charge = Math.min(1, b.attackT / 40);
         for (const [i, at] of [40, 52, 64, 76].entries()) if (crossed(b, dt, at)) {
             const pod = b.model.pods[i % 2].getWorldPosition(new THREE.Vector3());
-            fire(pod, _v.set(0, 0.9, 0), { dmg: 15, r: 2.4, color: b.def.shot, homing: true, life: 460, geo: missileGeo });
+            fire(pod, _v.set(0, 0.9, 0), { dmg: 15, r: 2.4, color: b.def.shot, homing: true, life: 460, look: 'missile' });
         }
         return b.attackT > 90;
     },
@@ -357,17 +355,21 @@ const ATTACKS = {
     },
 };
 
-function fire(from, v, { dmg: d, r, color, gravity = 0, homing = false, aoe = 0, life = 300, geo = shotGeo }) {
-    const mesh = new THREE.Mesh(geo, shotMat(color));
-    mesh.position.copy(from); mesh.scale.setScalar(geo === shotGeo ? r : 1);
+const LOOKS = { orb: c => orb(c), lava: () => lavaRock(), acid: c => acidBlob(c), plasma: c => plasmaBolt(c), missile: c => missileModel(c, 'z') };
+function fire(from, v, { dmg: d, r, color, gravity = 0, homing = false, aoe = 0, life = 300, look = 'orb' }) {
+    const mesh = LOOKS[look](color); // detailed, animated shots (effects/projectileModels.js)
+    mesh.position.copy(from);
+    if (look !== 'missile') mesh.scale.setScalar(r * (look === 'plasma' ? 0.8 : 0.7)); else mesh.scale.setScalar(2.2);
+    if (look === 'plasma' || look === 'missile') mesh.quaternion.setFromUnitVectors(_w.set(0, 0, 1), _v.copy(v).normalize());
     scene.add(mesh);
-    shots.push({ mesh, v: v.clone(), gravity, dmg: dmg(d), r, life, homing, aoe, decoyed: false });
+    shots.push({ mesh, v: v.clone(), gravity, dmg: dmg(d), r, life, homing, aoe, decoyed: false, t: Math.random() * 10 });
 }
 
 function updateShots(dt) {
     for (let i = shots.length - 1; i >= 0; i--) {
         const s = shots[i], p = s.mesh.position;
-        s.life -= dt;
+        s.life -= dt; s.t += dt / 60;
+        s.mesh.userData.animate?.(s.t);
         if (s.homing) {
             if (!s.decoyed && state.flareTimer > 0 && p.distanceTo(plane.position) < 160) s.decoyed = true; // flares spoof it up close
             if (!s.decoyed && !state._playerDown) { const speed = Math.min(1.25, s.v.length() + 0.012 * dt); s.v.lerp(_v.subVectors(plane.position, p).normalize().multiplyScalar(speed), 0.03 * dt).setLength(speed); }

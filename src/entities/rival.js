@@ -27,6 +27,7 @@ import { _up3 } from '../core/scratch.js';
 import { plane } from '../player/plane.js';
 import { airUnits, collectibles, enemyBullets, groundUnits, markers, missiles } from './registry.js';
 import { pointsHit } from '../combat/hitShapes.js';
+import { missile as missileModel } from '../effects/projectileModels.js';
 import { beginHits } from '../combat/hits.js';
 import { canDamageGround, groundUnitWorldPos } from '../combat/damage.js';
 import { _bombBodyGeo, _napClusterOrbGeo, _napClusterOrbMat, bombMaterial } from '../combat/resources.js';
@@ -110,8 +111,6 @@ onSettingChange((key, value) => {
 });
 
 // Shared missile mesh resources — never disposed
-const _mslGeo = new THREE.CylinderGeometry(0.22, 0.22, 2.4, 6); // Y-aligned, oriented with setFromUnitVectors(_up3, dir)
-const _mslMat = new THREE.MeshBasicMaterial({ color: 0xff2233 });
 
 // --- Public API -------------------------------------------------------------------------------
 
@@ -512,10 +511,11 @@ function updateMissileLock(au, dist, offBore, dt) {
 }
 
 function launchMissile(au, side) {
-    const m = new THREE.Mesh(_mslGeo, _mslMat);
+    const m = missileModel(0xff2233, 'y'); // Y-aligned, oriented with setFromUnitVectors(_up3, dir)
+    const anim = m.userData.animate;
     au.group.localToWorld(m.position.set(side * 5.9, -0.3, 0.5));
     const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(au.group.quaternion);
-    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id, owner: au };
+    m.userData = { dir, speed: RIVAL.mslLaunchSpeed, life: RIVAL.mslLife, decoyed: false, targetId: T.id, owner: au, animate: anim };
     m.quaternion.setFromUnitVectors(_up3, dir);
     scene.add(m); rivalMissiles.push(m);
 }
@@ -533,6 +533,7 @@ function updateRivalMissiles(dt) {
     for (let i = rivalMissiles.length - 1; i >= 0; i--) {
         const m = rivalMissiles[i], d = m.userData;
         d.life -= dt;
+        d.animate?.(d.life * 0.05); // engine flicker
         d.speed = Math.min(RIVAL.mslMaxSpeed, d.speed + RIVAL.mslAccel * dt);
         const t = targetById(d.targetId, d.owner);
         // Its target's flares only spoof it in the terminal phase → timing matters, not spamming
