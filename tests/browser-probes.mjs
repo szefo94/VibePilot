@@ -298,6 +298,35 @@ const probes = {
             return { partHp: e.parts[0].userData.hp, bulletRemoved: !bullets.includes(b), pass: e.parts[0].userData.hp === 4 && !bullets.includes(b) };
         });
     },
+    // Flying into a ground unit still crashes after the bounding-sphere reject, and a far unit costs no box tests
+    async groundCrash(page) {
+        await worldReady(page);
+        return page.evaluate(async () => {
+            const { state } = await import('./src/state.js');
+            const { groundUnits } = await import('./src/entities/registry.js');
+            const pm = await import('./src/player/plane.js');
+            const { resolveCollisions } = await import('./src/combat/collision.js');
+            state.isPaused = true;
+            const place = pos => {
+                pm.plane.position.copy(pos); pm.plane.updateMatrixWorld(true);
+                pm.corePlaneComponents.forEach((m, i) => pm.planePartBoxes[i].copy(pm.planePartLocalBoxes[i]).applyMatrix4(m.matrixWorld));
+            };
+            const crashed = {};
+            for (const type of ['carrier', 'hangar', 'tank', 'destroyer', 'airport']) {
+                const u = groundUnits.find(g => g.userData.type === type && g.userData.partBoxes);
+                if (!u) continue;
+                const parts = u.userData.partBoxes;
+                state.isGameOver = false; state._graceTimer = 0;
+                place(new THREE.Vector3().setFromMatrixPosition(parts[parts.length - 1].world)); // its last (outermost) box
+                resolveCollisions();
+                crashed[type] = state.isGameOver;
+            }
+            state.isGameOver = false;
+            place(new THREE.Vector3(0, 400, 0)); resolveCollisions(); // open sky: nothing to hit
+            const clear = !state.isGameOver;
+            return { crashed, clear, pass: clear && Object.keys(crashed).length >= 3 && Object.values(crashed).every(Boolean) };
+        });
+    },
     // #10 debug helpers are not recreated every frame and are released when toggled off
     async debugLeak(page) {
         await worldReady(page);
