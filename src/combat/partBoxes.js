@@ -46,6 +46,16 @@ export function boxHitsPart(aabb, part) {
 }
 const _neg = new THREE.Vector3();
 
+/** Bounding sphere of a unit's baked boxes ({ center, radius }, world space), cached on the array: a cheap reject before the box tests. */
+export function partBoxesSphere(parts) {
+    if (parts._sphere) return parts._sphere;
+    const box = new THREE.Box3(), corner = new THREE.Vector3();
+    for (const { half, world } of parts)
+        for (let i = 0; i < 8; i++) box.expandByPoint(corner.set(i & 1 ? half.x : -half.x, i & 2 ? half.y : -half.y, i & 4 ? half.z : -half.z).applyMatrix4(world));
+    const center = box.getCenter(new THREE.Vector3());
+    return (parts._sphere = { center, radius: box.getSize(corner).length() / 2 });
+}
+
 /** Ships are long and thin: their bounding sphere is far off the hull, so shots at them test the boxes instead. */
 const PRECISE = new Set(['carrier', 'destroyer']);
 /** Is `pos` within `r` of unit `u`? Ships (once baked) by their boxes, everything else by its sphere. */

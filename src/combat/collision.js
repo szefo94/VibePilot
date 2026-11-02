@@ -15,7 +15,7 @@ import { addToConqueredRow, showNotification } from '../ui/notifications.js';
 import { _healPlayer, addXP } from '../game/progression.js';
 import { triggerGameOver } from '../game/gameOver.js';
 import { canDamageGround, groundUnitWorldPos } from './damage.js';
-import { boxHitsPart, nearGroundUnit } from './partBoxes.js';
+import { boxHitsPart, nearGroundUnit, partBoxesSphere } from './partBoxes.js';
 import { pointsHit, segmentHits } from './hitShapes.js';
 import { beginHits } from './hits.js';
 import { showHitDirection } from '../ui/threats.js';
@@ -26,6 +26,7 @@ import { DEBUG_PARAMS } from '../debug/params.js';
 import { collectibleRadius, markerRadius, spawnSingleHoopWithMarker } from '../entities/collectibles.js';
 import { TUBE_XP, _nearestTubeT, _tubeStatusEl, showTubeRibbon, tubeLocal, tubes } from '../entities/tubes.js';
 const _tubeP = new THREE.Vector3(), _orbP = new THREE.Vector3();
+const _planeBox = new THREE.Box3(), _planeC = new THREE.Vector3();
 import { _playerBulletPool } from './weapons.js';
 
 // --- Collision Math ---
@@ -288,8 +289,15 @@ export function resolveCollisions() {
     }
     // Player vs Ground units (§2.1 — oriented boxes baked once, combat/partBoxes.js)
     if (!state.isGameOver) {
+        const planeR = _planeBox.makeEmpty();
+        for (const pb of planePartBoxes) planeR.union(pb);
+        planeR.getCenter(_planeC); const pr = planeR.getSize(_sv1).length() / 2;
         for (const u of groundUnits) {
-            if (u.userData.partBoxes && u.userData.partBoxes.some(upb => planePartBoxes.some(ppb => boxHitsPart(ppb, upb)))) { triggerGameOver(); break; }
+            const parts = u.userData.partBoxes;
+            if (!parts) continue;
+            const s = partBoxesSphere(parts); // most units are far away: skip their box tests
+            if (_planeC.distanceToSquared(s.center) > (s.radius + pr) ** 2) continue;
+            if (parts.some(upb => planePartBoxes.some(ppb => boxHitsPart(ppb, upb)))) { triggerGameOver(); break; }
         }
     }
     if (!state.isGameOver) {
